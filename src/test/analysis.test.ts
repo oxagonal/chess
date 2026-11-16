@@ -204,10 +204,10 @@ describe('my-games explorer + ratings', () => {
   });
 
   it('picks explorer rating bands', () => {
-    expect(bandsForRating(1650)).toEqual([1400, 1600]);
-    expect(bandsForRating(1750)).toEqual([1600, 1800]);
-    expect(bandsForRating(800)).toEqual([0, 1000]);
-    expect(bandsForRating(2700)).toEqual([2200, 2500]);
+    expect(bandsForRating(1650)).toEqual([1400, 1600, 1800]);
+    expect(bandsForRating(1750)).toEqual([1400, 1600, 1800]);
+    expect(bandsForRating(800)).toEqual([0, 1000, 1200]);
+    expect(bandsForRating(2700)).toEqual([2000, 2200, 2500]);
     expect(toLichessRating(1500, 'chesscom-blitz')).toBe(1775);
   });
 });

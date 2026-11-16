@@ -10,18 +10,15 @@ export function bandLabel(b: number): string {
 }
 
 /**
- * Pick the two explorer bands that best bracket a Lichess rating: the band containing it plus its
- * nearer neighbour, so a 1650 player gets 1400–1799 and a 1750 player gets 1600–1999.
+ * Explorer bands for a Lichess rating: the band containing it plus one below and one above, since
+ * your opponents span a range and a single band is noisy (a 1650 player gets 1400–2199). At the
+ * ends of the scale you get the three nearest bands.
  */
 export function bandsForRating(rating: number): number[] {
   let i = 0;
   for (let j = 0; j < LICHESS_BANDS.length; j++) if (rating >= LICHESS_BANDS[j]) i = j;
-  const lo = LICHESS_BANDS[i];
-  const hi = LICHESS_BANDS[i + 1];
-  if (hi === undefined) return [LICHESS_BANDS[i - 1], lo];
-  if (i === 0) return [lo, hi];
-  const mid = (lo + hi) / 2;
-  return rating < mid ? [LICHESS_BANDS[i - 1], lo] : [lo, hi];
+  const start = Math.max(0, Math.min(i - 1, LICHESS_BANDS.length - 3));
+  return LICHESS_BANDS.slice(start, start + 3);
 }
 
 export type RatingPool = 'lichess' | 'chesscom-blitz' | 'chesscom-rapid' | 'chesscom-bullet';
