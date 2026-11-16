@@ -182,7 +182,11 @@ table.data tr.selected td { background: #2f3a2a; }
 }
 .evalbox.white { background: #fff; color: #000; }
 .evalbox.black { background: #000; color: #fff; }
-.evalbox.best { font-weight: 700; }
+/* Special moves: the box itself takes the colour. */
+.evalbox.best { background: var(--good); border-color: var(--good); color: #000; font-weight: 700; }
+.evalbox.inaccuracy { background: var(--warn); border-color: var(--warn); color: #000; }
+.evalbox.mistake { background: var(--bad); border-color: var(--bad); color: #fff; }
+.evalbox sup { font-size: 9px; margin-left: 1px; }
 .explorer tr.inrep.mine td:first-child { color: var(--mine); }
 .explorer tr.inrep.theirs td:first-child { color: var(--theirs); }
 .explorer .explorer-comment { font-weight: 400; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }

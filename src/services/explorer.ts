@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Lichess opening explorer client: IndexedDB cache + a single serial request queue that backs off
  * for a minute on HTTP 429, as Lichess's API guidelines ask.
  */
@@ -17,7 +17,7 @@ const SPACING_MS = 60;
 
 export function paramsLabel(p: ExplorerParams): string {
   if (p.db === 'masters') return 'Masters';
-  return `Lichess ${p.ratings.join('/')} Â· ${p.speeds.join(', ')}`;
+  return `Lichess ${p.ratings.join('/')} · ${p.speeds.join(', ')}`;
 }
 
 function cacheKey(p: ExplorerParams, key: string): string {
@@ -37,14 +37,32 @@ function emit() {
   for (const fn of listeners) fn({ waitingUntil, inFlight });
 }
 
-let chain: Promise<unknown> = Promise.resolve();
-function enqueue<T>(task: () => Promise<T>): Promise<T> {
-  const run = chain.then(task, task);
-  chain = run.then(
-    () => sleep(SPACING_MS),
-    () => sleep(SPACING_MS),
-  );
-  return run;
+/**
+ * One request at a time. "high" (what's on screen right now) always goes before "low" (background
+ * coverage runs and depth measurements), so the board never waits behind hundreds of lookups.
+ */
+export type Priority = 'high' | 'low';
+const queues: Record<Priority, (() => Promise<void>)[]> = { high: [], low: [] };
+let pumping = false;
+function enqueue<T>(task: () => Promise<T>, priority: Priority): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    queues[priority].push(() => task().then(resolve, reject));
+    void pump();
+  });
+}
+async function pump() {
+  if (pumping) return;
+  pumping = true;
+  try {
+    for (;;) {
+      const next = queues.high.shift() ?? queues.low.shift();
+      if (!next) break;
+      await next();
+      await sleep(SPACING_MS);
+    }
+  } finally {
+    pumping = false;
+  }
 }
 
 function sleep(ms: number, signal?: AbortSignal) {
@@ -101,7 +119,7 @@ export async function getCachedExplorer(p: ExplorerParams, key: string): Promise
   return row && Date.now() - row.fetchedAt < MAX_AGE ? row.data : undefined;
 }
 
-export async function fetchExplorer(p: ExplorerParams, key: string, signal?: AbortSignal): Promise<PositionStats> {
+export async function fetchExplorer(p: ExplorerParams, key: string, signal?: AbortSignal, priority: Priority = 'high'): Promise<PositionStats> {
   const cached = await getCachedExplorer(p, key);
   if (cached) return cached;
   return enqueue(async () => {
@@ -149,8 +167,8 @@ export async function fetchExplorer(p: ExplorerParams, key: string, signal?: Abo
       await db.explorerCache.put({ key: cacheKey(p, key), fetchedAt: Date.now(), data });
       return data;
     }
-    throw new Error('Opening explorer is rate limiting us â€” try again in a few minutes.');
-  });
+    throw new Error('Opening explorer is rate limiting us — try again in a few minutes.');
+  }, priority);
 }
 
 export async function clearExplorerCache() {

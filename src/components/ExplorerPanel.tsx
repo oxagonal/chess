@@ -25,6 +25,7 @@ export interface SavedMove {
 }
 
 const MAX_EVAL_MOVES = 10;
+const TIE_CP = 10;
 
 function useMoveEvals(key: string, moves: string[], enabled: boolean, depth: number) {
   const [evals, setEvals] = useState<EvalMap>(new Map());
@@ -119,7 +120,10 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   const evalMoves = [...new Set(rows.filter((r, i) => i < MAX_EVAL_MOVES || r.rep).map(rowUci).filter((u): u is string => !!u))];
   const { evals, status } = useMoveEvals(fenKey, evalMoves, settings.loaded && settings.engineEnabled, settings.engineDepth);
   const sideToMove: Color = turnOfKey(fenKey);
-  const best = Math.max(...[...evals.values()].map((e) => evalScore(e) * (sideToMove === 'white' ? 1 : -1)));
+  const moverScores = [...evals.values()].map((e) => evalScore(e) * (sideToMove === 'white' ? 1 : -1));
+  const best = Math.max(...moverScores);
+  // Moves within TIE_CP of the best are all "best" (engines can't separate them meaningfully).
+  const bestCount = moverScores.filter((s) => best - s <= TIE_CP).length;
   return (
     <div className="panel explorer">
       {title && <h3>{title}</h3>}
@@ -141,6 +145,11 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
       {waitUntil && <div className="note">Lichess rate limit — pausing about a minute before the next lookup.</div>}
       {error && <div className="error">{error}</div>}
       {notes}
+      {settings.engineEnabled && bestCount > 1 && evals.size > 1 && (
+        <div className="muted small" style={{ marginBottom: 4 }}>
+          {bestCount} moves are equally best here (within 0.1).
+        </div>
+      )}
       {loading && !data && !saved.length && <div className="muted">Loading…</div>}
       {!loading && !error && !rows.length && (
         <div className="muted">{tab === 'mine' ? 'You have not reached this position in your imported games.' : 'No games in this position.'}</div>
@@ -191,10 +200,23 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   {settings.engineEnabled && (
                     <td
                       className="num"
-                      title={ev ? `${ev.source === 'cloud' ? 'Lichess cloud' : 'Stockfish'} depth ${ev.depth}${loss <= 0 ? ' · best move' : ''}` : 'Not evaluated'}
+                      title={
+                        ev
+                          ? `${ev.source === 'cloud' ? 'Lichess cloud' : 'Stockfish'} depth ${ev.depth} · ${
+                              loss <= TIE_CP ? (bestCount > 1 ? `one of ${bestCount} equally best moves` : 'best move') : loss >= 100 ? `mistake (${(loss / 100).toFixed(1)} worse than best)` : loss >= 40 ? `inaccuracy (${(loss / 100).toFixed(1)} worse than best)` : `${(loss / 100).toFixed(2)} worse than best`
+                            }`
+                          : 'Not evaluated'
+                      }
                     >
                       {ev ? (
-                        <span className={`evalbox ${evalScore(ev) < 0 ? 'black' : 'white'}${loss <= 0 ? ' best' : ''}`}>{formatEval(ev)}</span>
+                        <span
+                          className={`evalbox ${
+                            loss <= TIE_CP ? 'best' : loss >= 100 ? 'mistake' : loss >= 40 ? 'inaccuracy' : evalScore(ev) < 0 ? 'black' : 'white'
+                          }`}
+                        >
+                          {formatEval(ev)}
+                          {loss <= TIE_CP && bestCount > 1 && <sup>=</sup>}
+                        </span>
                       ) : (
                         <span className="muted">…</span>
                       )}

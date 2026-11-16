@@ -8,7 +8,7 @@ import { moveGames, type CoverageResult, type PositionStats } from '../lib/types
 import { turnOfKey, type Color } from '../lib/chess';
 import { estimateDepth, type DepthProfile } from '../lib/depth';
 import type { RepGraph } from '../lib/graph';
-import { fetchExplorer, paramsLabel, type ExplorerParams } from './explorer';
+import { fetchExplorer, paramsLabel, type ExplorerParams, type Priority } from './explorer';
 
 export function effectiveBands(s: AppSettings): number[] {
   if (s.bandsMode === 'manual' && s.manualBands.length) return [...s.manualBands].sort((a, b) => a - b);
@@ -49,7 +49,7 @@ export async function runCoverageForGraph(
 ): Promise<CoverageResult> {
   const s = await getSettings();
   const n = opts.oneInN ?? s.oneInN;
-  const provider = await statsProvider(s, graph.color, opts.signal);
+  const provider = await statsProvider(s, graph.color, opts.signal, 'low');
   const result = await computeCoverage(graph, provider, {
     repId,
     threshold: 1 / n,
@@ -65,14 +65,14 @@ export async function runCoverageForGraph(
 export type StatsProvider = (key: string) => Promise<PositionStats | undefined>;
 
 /** Opponent-move statistics from the source chosen in Settings. */
-export async function statsProvider(s: AppSettings, color: Color, signal?: AbortSignal): Promise<StatsProvider> {
+export async function statsProvider(s: AppSettings, color: Color, signal?: AbortSignal, priority: Priority = 'high'): Promise<StatsProvider> {
   if (s.probabilitySource === 'mygames') {
     const games = await db.games.where('userColor').equals(color).toArray();
     const idx = new GameStatsIndex(games);
     return async (key) => idx.get(key);
   }
   const params = s.probabilitySource === 'masters' ? MASTERS : lichessParams(s);
-  return (key) => fetchExplorer(params, key, signal);
+  return (key) => fetchExplorer(params, key, signal, priority);
 }
 
 /**
@@ -114,7 +114,7 @@ export async function measureDepth(
   opts: { signal?: AbortSignal; onProgress?: (queried: number) => void } = {},
 ): Promise<DepthProfile> {
   const s = await getSettings();
-  const provider = await statsProvider(s, color, opts.signal);
+  const provider = await statsProvider(s, color, opts.signal, 'low');
   const profile = await estimateDepth(color, provider, n, opts);
   await db.kv.put({ key: depthKey(s, color, n), value: profile });
   return profile;

@@ -714,7 +714,8 @@ function useLineReach(
   useEffect(() => {
     if (!color || !settings.loaded) return;
     const ctrl = new AbortController();
-    setState((s) => ({ ...s, loading: true }));
+    // Drop the previous position's figure at once — showing it while the new one loads is misleading.
+    setState({ loading: true });
     const t = setTimeout(async () => {
       try {
         const provider = await statsProvider(settings, color, ctrl.signal);
@@ -759,7 +760,7 @@ function ReachPanel({ reach, repProb, source, atStart }: { reach: LineReach; rep
           <b style={{ fontSize: 26 }}>{p === undefined ? '…' : p === 0 ? 'never' : oneIn(p)}</b>
           <span className="muted">
             {p === undefined
-              ? ''
+              ? 'calculating…'
               : p === 0
                 ? '— this line doesn\'t occur in the database'
                 : atStart || p >= 1 / 1.05
