@@ -547,7 +547,7 @@ function GameViewer({ id }: { id: string }) {
 
         {r.kind === 'you-deviated' &&
           r.key &&
-          graph?.childrenOf(r.key).filter((m) => m.mine).map((m) => <MoveNote key={m.id} id={m.id} san={m.san} title={`Note on ${m.san} (your prep)`} />)}
+          graph?.childrenOf(r.key).filter((m) => m.mine).map((m) => <MoveNote key={m.id} id={m.id} san={m.san} label="(your prep)" />)}
 
         <div className="panel">
           <h3>Moves</h3>

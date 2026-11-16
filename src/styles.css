@@ -208,3 +208,6 @@ table.data tr.selected td { background: #2f3a2a; }
 .movenote.compact { padding: 4px 0 8px; }
 .movenote.compact h3 { font-size: 13px; }
 .movenote textarea { width: 100%; box-sizing: border-box; }
+
+/* Chess moves inside all-caps headings keep their real case (Bd3, not BD3). */
+.keep-case { text-transform: none; letter-spacing: 0; }

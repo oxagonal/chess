@@ -10,13 +10,14 @@ import { setMoveComment } from '../db/repertoire';
 export function MoveNote({
   id,
   san,
-  title,
+  label,
   compact = false,
   autoFocus = false,
 }: {
   id: string;
   san: string;
-  title?: string;
+  /** Shown after the move, e.g. "(missed)". */
+  label?: string;
   compact?: boolean;
   autoFocus?: boolean;
 }) {
@@ -40,7 +41,10 @@ export function MoveNote({
   return (
     <div className={compact ? 'movenote compact' : 'panel movenote'}>
       <div className="row" style={{ alignItems: 'baseline' }}>
-        <h3 style={{ margin: 0 }}>{title ?? `Note on ${san}`}</h3>
+        <h3 style={{ margin: 0 }}>
+          Note on <span className="keep-case">{san}</span>
+          {label ? ` ${label}` : ''}
+        </h3>
         <span className="spacer" />
         {saved && <span className="badge good">Saved</span>}
         {dirty && <span className="muted small">unsaved</span>}

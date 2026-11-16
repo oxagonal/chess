@@ -537,7 +537,7 @@ function Session({ setup }: { setup: SessionSetup }) {
           </span>
         </div>
 
-        {noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} title={`Note on ${noteMove.san} (missed)`} />}
+        {noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" />}
       </div>
     </div>
   );
