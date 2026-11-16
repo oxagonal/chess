@@ -155,6 +155,15 @@ export function oneIn(prob: number): string {
   return `1 in ${Math.round(n).toLocaleString()}`;
 }
 
+/** Just N from "1 in N" (e.g. "142", "2.5"); "1" for every game. */
+export function oneInNumber(prob: number): string {
+  if (prob <= 0) return '—';
+  const n = 1 / prob;
+  if (n < 1.05) return '1';
+  if (n < 10) return n.toFixed(1).replace(/\.0$/, '');
+  return Math.round(n).toLocaleString();
+}
+
 export function pct(x: number, digits = 1): string {
   return `${(x * 100).toFixed(digits)}%`;
 }

@@ -7,7 +7,7 @@ import { moveGames, type MoveStat, type PositionStats } from '../lib/types';
 import { turnOfKey, type Color } from '../lib/chess';
 import { useGames } from '../hooks';
 import { WdlBar } from './ui';
-import { oneIn } from '../lib/coverage';
+import { oneInNumber } from '../lib/coverage';
 import { evalScore, evaluateMoves, formatEval, type EvalMap } from '../services/engine';
 
 type Tab = 'lichess' | 'masters' | 'mine';
@@ -169,8 +169,8 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
               <th className="num">Games</th>
               <th className="num">%</th>
               {showReach && (
-                <th className="num" title="Share of all your games that reach the position after this move (saved in your repertoire or not)">
-                  Reach
+                <th className="num" title="You reach the position after this move once every this many games (saved in your repertoire or not)">
+                  1 in
                 </th>
               )}
               {settings.engineEnabled && (
@@ -203,7 +203,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   </td>
                   <td className="num">{stat ? n.toLocaleString() : '—'}</td>
                   <td className="num">{stat && total ? ((n / total) * 100).toFixed(1) : '—'}</td>
-                  {showReach && <td className="num">{stat && total ? <b>{n ? oneIn((reachHere! * n) / total) : 'never'}</b> : '—'}</td>}
+                  {showReach && <td className="num">{stat && total ? <b>{n ? oneInNumber((reachHere! * n) / total) : 'never'}</b> : '—'}</td>}
                   {settings.engineEnabled && (
                     <td
                       className="num"
