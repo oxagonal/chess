@@ -9,6 +9,7 @@ import { CoveragePage } from './pages/Coverage';
 import { InsightsPage } from './pages/Insights';
 import { GamesPage } from './pages/Games';
 import { SettingsPage } from './pages/Settings';
+import { SyncIndicator } from './components/SyncPanel';
 
 export interface PageProps {
   route: Route;
@@ -68,6 +69,8 @@ export function App() {
             </a>
           ))}
         </nav>
+        <span className="spacer" />
+        <SyncIndicator />
       </header>
       <main className="main">
         <Page route={route} />

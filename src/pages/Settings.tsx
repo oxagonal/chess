@@ -13,6 +13,8 @@ import { clearExplorerCache } from '../services/explorer';
 import { deleteAllGames } from '../services/sync';
 import { download, exportBackup, importBackup, wipeEverything } from '../services/backup';
 import type { ProbabilitySource } from '../lib/types';
+import { SyncPanel } from '../components/SyncPanel';
+import { useSyncStatus } from '../services/cloudSync';
 
 const SPEEDS = ['ultraBullet', 'bullet', 'blitz', 'rapid', 'classical', 'correspondence'];
 
@@ -26,6 +28,7 @@ export function SettingsPage() {
   const gameCount = useLiveQuery(() => db.games.count(), []);
   const [msg, setMsg] = useState<string | null>(null);
   const [detected, setDetected] = useState<string | null>(null);
+  const synced = useSyncStatus().connected;
   if (!s.loaded) return null;
   const set = (patch: Partial<AppSettings>) => updateSettings(patch);
 
@@ -95,9 +98,12 @@ export function SettingsPage() {
           />
         </label>
         <p className="muted small">
-          Everything is stored in this browser only (IndexedDB). Usernames are only sent to lichess.org / chess.com to download your games.
+          {synced ? 'Everything is stored in this browser and synced through your GitHub gist.' : 'Everything is stored in this browser only (IndexedDB).'}{' '}
+          Usernames are only sent to lichess.org / chess.com to download your games.
         </p>
       </div>
+
+      <SyncPanel />
 
       <div className="panel col">
         <h2>Your rating & move probabilities</h2>
@@ -249,7 +255,7 @@ export function SettingsPage() {
               style={{ display: 'none' }}
               onChange={async (e) => {
                 const f = e.target.files?.[0];
-                if (!f || !confirm('Replace ALL current data with this backup?')) return;
+                if (!f || !confirm(synced ? 'Replace ALL current data with this backup — on all your synced devices?' : 'Replace ALL current data with this backup?')) return;
                 try {
                   await importBackup(await f.text());
                   flash('Backup restored.');
@@ -262,17 +268,30 @@ export function SettingsPage() {
           <button onClick={async () => (await clearExplorerCache(), flash('Explorer cache cleared.'))}>
             Clear explorer cache ({cacheCount ?? 0})
           </button>
-          <button className="danger" onClick={async () => confirm('Delete all imported games?') && (await deleteAllGames(), flash('Games deleted.'))}>
+          <button
+            className="danger"
+            onClick={async () => confirm(synced ? 'Delete all imported games on all your synced devices?' : 'Delete all imported games?') && (await deleteAllGames(), flash('Games deleted.'))}
+          >
             Delete games ({gameCount ?? 0})
           </button>
           <button
             className="danger"
-            onClick={async () => confirm('Delete EVERYTHING (repertoires, progress, games, settings)?') && (await wipeEverything(), flash('All data deleted.'))}
+            onClick={async () =>
+              confirm(
+                synced
+                  ? 'Delete EVERYTHING (repertoires, progress, games, settings) on all your synced devices? To clear only this device, disconnect sync first.'
+                  : 'Delete EVERYTHING (repertoires, progress, games, settings)?',
+              ) && (await wipeEverything(), flash('All data deleted.'))
+            }
           >
             Delete all data
           </button>
         </div>
-        <p className="muted small">Your data lives only in this browser. Export a backup regularly, especially before clearing browser data.</p>
+        <p className="muted small">
+          {synced
+            ? 'Restoring a backup or deleting data here applies to all your synced devices.'
+            : 'Your data lives only in this browser. Export a backup regularly, especially before clearing browser data — or turn on sync above.'}
+        </p>
       </div>
     </div>
   );

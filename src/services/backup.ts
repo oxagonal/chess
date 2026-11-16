@@ -1,4 +1,5 @@
 import { db } from '../db/db';
+import { noteLocalDataReplaced } from './cloudSync';
 
 const TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv'] as const;
 
@@ -11,18 +12,21 @@ export async function exportBackup(): Promise<string> {
 export async function importBackup(json: string): Promise<void> {
   const data = JSON.parse(json) as Record<string, unknown[]>;
   if ((data as unknown as { app?: string }).app !== 'chess-prep') throw new Error('Not a Chess Prep backup file');
-  await db.transaction('rw', TABLES.map((t) => db.table(t)), async () => {
+  await db.transaction('rw', [...TABLES.map((t) => db.table(t)), db.syncState], async () => {
     for (const t of TABLES) {
       await db.table(t).clear();
       if (Array.isArray(data[t])) await db.table(t).bulkAdd(data[t]);
     }
+    // With sync on, the backup becomes what every device has.
+    await noteLocalDataReplaced();
   });
 }
 
 export async function wipeEverything(): Promise<void> {
-  await db.transaction('rw', [...TABLES.map((t) => db.table(t)), db.explorerCache], async () => {
+  await db.transaction('rw', [...TABLES.map((t) => db.table(t)), db.explorerCache, db.syncState], async () => {
     for (const t of TABLES) await db.table(t).clear();
     await db.explorerCache.clear();
+    await noteLocalDataReplaced();
   });
 }
 

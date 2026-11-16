@@ -7,6 +7,8 @@ export interface Repertoire {
   color: Color;
   createdAt: number;
   updatedAt: number;
+  /** Set automatically on every write; the newer copy wins when devices sync. */
+  modifiedAt?: number;
 }
 
 /** An edge in a repertoire's position graph. */
@@ -22,6 +24,8 @@ export interface RepMove {
   mine: boolean;
   comment?: string;
   createdAt: number;
+  /** Set automatically on every write; the newer copy wins when devices sync. */
+  modifiedAt?: number;
 }
 
 /** Spaced-repetition state for one of *your* moves (mirrors ts-fsrs Card, dates as epoch ms). */
@@ -42,6 +46,8 @@ export interface ReviewCard {
   state: number;
   lastReview?: number;
   createdAt: number;
+  /** Set automatically on every write; the newer copy wins when devices sync. */
+  modifiedAt?: number;
 }
 
 export type ReviewSource = 'learn' | 'review' | 'game';
@@ -56,6 +62,8 @@ export interface ReviewLogEntry {
   reviewedAt: number;
   source: ReviewSource;
   gameId?: string;
+  /** Set automatically on every write; the newer copy wins when devices sync. */
+  modifiedAt?: number;
 }
 
 export type GameSource = 'lichess' | 'chesscom';
@@ -86,6 +94,8 @@ export interface StoredGame {
   prepApplied?: boolean;
   /** Computer review (Stockfish eval of every position), once run. */
   review?: GameReview;
+  /** Set automatically on every write; the newer copy wins when devices sync. */
+  modifiedAt?: number;
 }
 
 export interface MoveStat {
@@ -153,4 +163,6 @@ export interface CoverageResult {
   coverage?: Record<string, number>;
   /** Version of the analysis that produced this result. */
   algo?: number;
+  /** Set automatically on every write; the newer copy wins when devices sync. */
+  modifiedAt?: number;
 }

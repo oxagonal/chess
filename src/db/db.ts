@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { CoverageResult, PositionStats, Repertoire, RepMove, ReviewCard, ReviewLogEntry, StoredGame } from '../lib/types';
+import { trackChanges } from './changes';
 
 export interface ExplorerCacheRow {
   key: string;
@@ -8,6 +9,14 @@ export interface ExplorerCacheRow {
 }
 
 export interface KvRow {
+  key: string;
+  value: unknown;
+  /** Set on every write (for sync). */
+  modifiedAt?: number;
+}
+
+/** This device's sync settings and bookkeeping. Never synced, never in backups. */
+export interface SyncStateRow {
   key: string;
   value: unknown;
 }
@@ -21,6 +30,7 @@ export type ChessDB = Dexie & {
   explorerCache: EntityTable<ExplorerCacheRow, 'key'>;
   coverage: EntityTable<CoverageResult, 'repId'>;
   kv: EntityTable<KvRow, 'key'>;
+  syncState: EntityTable<SyncStateRow, 'key'>;
 };
 
 export function openDb(name = 'chess-prep'): ChessDB {
@@ -35,6 +45,8 @@ export function openDb(name = 'chess-prep'): ChessDB {
     coverage: 'repId',
     kv: 'key',
   });
+  db.version(2).stores({ syncState: 'key' });
+  trackChanges(db);
   return db;
 }
 

@@ -26,8 +26,12 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   and difficulty, and slips in real games. Lines are shown as a tree (weakest first), plus a list of your
   trickiest moves; *Drill* practises any line or your weakest moves on demand.
 
-All data lives in your browser (IndexedDB). Nothing is uploaded anywhere; usernames are only sent to
-lichess.org / chess.com to download your games. Use **Settings → Export backup** to keep a copy.
+- **Sync between devices** — optional: keep your phone and computer in step through a secret gist in your
+  own GitHub account (see below).
+
+All data lives in your browser (IndexedDB). Nothing is uploaded anywhere unless you turn on sync, and then
+only to your own GitHub gist; usernames are only sent to lichess.org / chess.com to download your games.
+Use **Settings → Export backup** to keep a copy.
 
 ## Running it
 
@@ -56,8 +60,24 @@ On the phone, open the Render URL and install it:
 - **Android (Chrome):** ⋮ → *Install app* / *Add to Home screen*
 
 It then opens full-screen with its own icon and works offline for training (game sync, the explorer and
-coverage need a connection). **Each device keeps its own data** — move it with Settings → Export /
-Restore backup until cloud sync is added.
+coverage need a connection).
+
+### Syncing your phone and computer
+
+Each device has its own copy of your data; **Settings → Sync between devices** keeps them in step. There's
+no server to run — the data goes to a secret gist in your GitHub account:
+
+1. Create a GitHub token with only the **gist** permission (the link in Settings pre-fills it; choose *No
+   expiration*).
+2. Paste it into Settings → Sync between devices on your computer and press **Connect**.
+3. Do the same on your phone, with the same token (*Copy token for another device* helps).
+
+Repertoires, notes, training progress and history, games, coverage results and settings sync — your
+Lichess API token stays on each device. It syncs when the app opens, a few seconds after you change
+something, when you switch away from the app, and every minute while it's open if another device has
+synced. Changes merge record by record (the newer edit of each move/card wins; deletions carry over), so
+training on both devices between syncs loses nothing. With sync on, **Restore backup** and **Delete all
+data** apply to every device.
 
 ## Where the probabilities come from
 
@@ -86,8 +106,10 @@ src/
     insights.ts     mastery scores per move and per line
     mygames.ts      opening explorer built from your games
     importers/      Lichess NDJSON + Chess.com archive parsers/downloaders
-  db/             Dexie (IndexedDB) schema, settings, repertoire mutations
-  services/       network + persistence glue: explorer cache, game sync, coverage runner, backup
+    syncMerge.ts    merges two copies of the database row by row (device sync)
+  db/             Dexie (IndexedDB) schema, settings, repertoire mutations, change stamps for sync
+  services/       network + persistence glue: explorer cache, game sync, coverage runner, backup,
+                  device sync (cloudSync.ts) over a GitHub gist (gist.ts)
   components/     chessground Board, explorer panel, small UI pieces
   pages/          one component per tab
   App.tsx         tab registry + hash router

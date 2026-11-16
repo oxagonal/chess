@@ -5,12 +5,15 @@ import 'chessground/assets/chessground.brown.css';
 import 'chessground/assets/chessground.cburnett.css';
 import './styles.css';
 import { App } from './App';
+import { startAutoSync } from './services/cloudSync';
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
 }
 // Ask the browser not to evict our IndexedDB data when the device is low on space.
 navigator.storage?.persist?.().catch(() => {});
+// Sync with your other devices (if connected in Settings).
+void startAutoSync();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
