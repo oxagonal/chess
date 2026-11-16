@@ -19,7 +19,7 @@ import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { ColorPill, Empty, LineView, fmtPct } from '../components/ui';
 import { href, navigate } from '../router';
-import { playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
+import { formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
 import { oneIn } from '../lib/coverage';
 import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
 import type { AppSettings } from '../db/settings';
@@ -320,6 +320,28 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
     if (r) play(r.san);
   };
 
+  // The most common hole: an opponent reply you don't answer, or your move with nothing prepared.
+  const biggestGap = useMemo(() => {
+    if (!coverage) return undefined;
+    const g = coverage.gaps[0];
+    const u = coverage.unfinished[0];
+    const pick =
+      g && (!u || g.prob >= u.prob)
+        ? { sans: [...g.path, g.san], prob: g.prob }
+        : u
+          ? { sans: u.path, prob: u.prob }
+          : undefined;
+    if (!pick) return undefined;
+    return { ...pick, label: formatLine(pick.sans) || 'the starting position' };
+  }, [coverage]);
+
+  const jumpToBiggestGap = () => {
+    if (!biggestGap) return;
+    const l = lineFromSans(biggestGap.sans);
+    setLine(l);
+    setCursor(l.length);
+  };
+
   const addLineToRep = async () => {
     const { added } = await addEdges(repId, toEdges(line.slice(0, cursor)));
     setMessage(`Added ${added} move${added === 1 ? '' : 's'}.`);
@@ -425,6 +447,20 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
               </button>
             )}
             {message && <span className="badge good">{message}</span>}
+            <button
+              className="small"
+              disabled={!biggestGap}
+              onClick={jumpToBiggestGap}
+              title={
+                biggestGap
+                  ? `Most common position you have no answer for: ${biggestGap.label} (${fmtPct(biggestGap.prob)} of games)`
+                  : live.running || live.stale
+                    ? 'Calculating coverage…'
+                    : `No gaps at 1 in ${settings.oneInN} games`
+              }
+            >
+              Biggest gap{biggestGap ? ` · ${fmtPct(biggestGap.prob)}` : ''}
+            </button>
           </div>
           <LineView
             items={line.map((m, i) => ({ san: m.san, className: lineInRep[i] ? 'book' : 'out', title: lineInRep[i] ? 'In repertoire' : 'Not in repertoire' }))}
