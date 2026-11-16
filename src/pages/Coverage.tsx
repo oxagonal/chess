@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { PageProps } from '../App';
 import { updateSettings, useSettings } from '../db/settings';
 import { OneInNSlider } from '../components/OneInNSlider';
+import { repertoireDepth } from '../lib/depth';
 import { useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { runCoverage, sourceLabel, effectiveBands } from '../services/coverage';
 import { likelyPositions, oneIn, pct } from '../lib/coverage';
@@ -67,7 +68,8 @@ function CoverageView({ repId }: { repId: string }) {
   const paramsChanged = result && (result.paramsLabel !== sourceLabel(settings) || Math.abs(result.threshold - 1 / settings.oneInN) > 1e-12);
   const openLine = (sans: string[]) => navigate(`repertoire/${repId}`, { line: sans.join(' ') });
   const myPositions = positions.filter((p) => p.myTurn);
-  const linesDone = result ? graph.leaves().filter((k) => (result.probs[k] ?? 0) >= result.threshold).length : 0;
+  const mine = result ? repertoireDepth(graph, result) : undefined;
+  const linesDone = mine?.lines ?? 0;
 
   return (
     <>
@@ -141,6 +143,11 @@ function CoverageView({ repId }: { repId: string }) {
               value={`${linesDone} + ${result.gaps.length + result.unfinished.length}`}
               label="Lines done + open"
               hint="Done: your lines that end at a position reached at least 1 in N games. Open: gaps and unprepared positions — each becomes at least one more line once you prepare it."
+            />
+            <Stat
+              value={mine && mine.lines ? `${mine.avgMoves.toFixed(1)} moves` : '—'}
+              label="Your average line length"
+              hint={`Your finished lines (reached at least 1 in ${Math.round(1 / result.threshold)} games), weighted by how often you reach them. Longest: ${mine ? Math.ceil(mine.maxMoves) : 0} moves.`}
             />
             <Stat
               value={pct(result.coverage?.[graph.root] ?? 1 - result.gaps.reduce((a, g) => a + g.prob, 0) - result.unfinished.reduce((a, u) => a + u.prob, 0), 0)}

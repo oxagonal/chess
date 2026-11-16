@@ -92,3 +92,30 @@ describe('reach along a line', () => {
     expect(await reachAlongLine(line, 'black', async (k) => db[k])).toBe(0);
   });
 });
+
+describe('depth estimate', () => {
+  it('follows replies until they get rarer than 1 in N and averages line length', async () => {
+    const { estimateDepth } = await import('../lib/depth');
+    const { edgesForLine } = await import('../lib/lines');
+    const { START_KEY } = await import('../lib/chess');
+    const st = (moves: [string, string, number][]) => ({
+      total: moves.reduce((a, [, , n]) => a + n, 0), white: 0, draws: 0, black: 0,
+      moves: moves.map(([san, uci, n]) => ({ san, uci, white: n, draws: 0, black: 0 })),
+    });
+    const k = (l: string) => edgesForLine(l.split(' '))!.at(-1)!.toKey;
+    const data: Record<string, ReturnType<typeof st>> = {
+      [START_KEY]: st([['e4', 'e2e4', 70], ['d4', 'd2d4', 30]]),
+      [k('e4')]: st([['c5', 'c7c5', 50], ['e5', 'e7e5', 50]]),
+      [k('e4 c5')]: st([['Nf3', 'g1f3', 100]]),
+      [k('e4 e5')]: st([['Nf3', 'g1f3', 100]]),
+      [k('e4 c5 Nf3')]: st([['d6', 'd7d6', 90], ['a6', 'a7a6', 10]]),
+      [k('e4 e5 Nf3')]: st([['Nc6', 'b8c6', 100]]),
+    };
+    const r = await estimateDepth('white', async (key) => data[key], 4);
+    // As White we always play 1.e4 (top move). Lines: c5 Nf3 d6 (p .45), e5 Nf3 Nc6 (.5); a6 (.05) is below 1/4.
+    expect(r.lines).toBe(2);
+    expect(r.mass).toBeCloseTo(0.95);
+    expect(r.maxMoves).toBe(2); // 1.e4 c5 2.Nf3 d6 / 1.e4 e5 2.Nf3 Nc6
+    expect(r.avgMoves).toBeCloseTo(2);
+  });
+});

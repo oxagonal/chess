@@ -6,6 +6,7 @@ import { GameStatsIndex } from '../lib/mygames';
 import { bandsForRating, toLichessRating } from '../lib/ratings';
 import { moveGames, type CoverageResult, type PositionStats } from '../lib/types';
 import { turnOfKey, type Color } from '../lib/chess';
+import { estimateDepth, type DepthProfile } from '../lib/depth';
 import type { RepGraph } from '../lib/graph';
 import { fetchExplorer, paramsLabel, type ExplorerParams } from './explorer';
 
@@ -98,6 +99,25 @@ export async function reachAlongLine(
     if (p === 0) return 0;
   }
   return p;
+}
+
+const depthKey = (s: AppSettings, color: Color, n: number) => `depth|${sourceLabel(s)}|${color}|${n}`;
+
+export async function getDepthProfile(s: AppSettings, color: Color, n: number): Promise<DepthProfile | undefined> {
+  return (await db.kv.get(depthKey(s, color, n)))?.value as DepthProfile | undefined;
+}
+
+/** Measure (and remember) how deep lines go at 1 in N games for the current probability source. */
+export async function measureDepth(
+  color: Color,
+  n: number,
+  opts: { signal?: AbortSignal; onProgress?: (queried: number) => void } = {},
+): Promise<DepthProfile> {
+  const s = await getSettings();
+  const provider = await statsProvider(s, color, opts.signal);
+  const profile = await estimateDepth(color, provider, n, opts);
+  await db.kv.put({ key: depthKey(s, color, n), value: profile });
+  return profile;
 }
 
 /** Whether a stored result still matches the repertoire and the current settings. */

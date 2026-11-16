@@ -64,7 +64,7 @@ const KEY = 'settings';
 
 /** Range of the "study positions seen in at least 1 in N games" slider. */
 export const ONE_IN_N_MIN = 200;
-export const ONE_IN_N_MAX = 100_000;
+export const ONE_IN_N_MAX = 3000;
 
 export async function getSettings(): Promise<AppSettings> {
   const row = await db.kv.get(KEY);

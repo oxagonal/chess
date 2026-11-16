@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Lichess opening explorer client: IndexedDB cache + a single serial request queue that backs off
  * for a minute on HTTP 429, as Lichess's API guidelines ask.
  */
@@ -13,11 +13,11 @@ export interface ExplorerParams {
 }
 
 const MAX_AGE = 30 * 24 * 3600 * 1000;
-const SPACING_MS = 150;
+const SPACING_MS = 60;
 
 export function paramsLabel(p: ExplorerParams): string {
   if (p.db === 'masters') return 'Masters';
-  return `Lichess ${p.ratings.join('/')} · ${p.speeds.join(', ')}`;
+  return `Lichess ${p.ratings.join('/')} Â· ${p.speeds.join(', ')}`;
 }
 
 function cacheKey(p: ExplorerParams, key: string): string {
@@ -149,7 +149,7 @@ export async function fetchExplorer(p: ExplorerParams, key: string, signal?: Abo
       await db.explorerCache.put({ key: cacheKey(p, key), fetchedAt: Date.now(), data });
       return data;
     }
-    throw new Error('Opening explorer is rate limiting us — try again in a few minutes.');
+    throw new Error('Opening explorer is rate limiting us â€” try again in a few minutes.');
   });
 }
 

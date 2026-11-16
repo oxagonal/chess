@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react';
-import { ONE_IN_N_MAX, ONE_IN_N_MIN, updateSettings } from '../db/settings';
+import { useEffect, useRef, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { ONE_IN_N_MAX, ONE_IN_N_MIN, updateSettings, useSettings } from '../db/settings';
+import { getDepthProfile, measureDepth, sourceLabel } from '../services/coverage';
+import type { Color } from '../lib/chess';
 
 const STEPS = 1000;
 
@@ -13,18 +16,6 @@ function toT(n: number): number {
   return Math.round((STEPS * Math.log(n / ONE_IN_N_MIN)) / Math.log(ONE_IN_N_MAX / ONE_IN_N_MIN));
 }
 
-/**
- * Rough size of a complete repertoire at this depth. Every required line ends at a position reached
- * in ≥ 1/N of games and no two lines can occur in the same game, so there are at most N lines per
- * colour; in practice, with the mass lost to rare moves, about a quarter to a half of that.
- */
-export function linesEstimate(n: number): string {
-  const lo = Math.round(n / 4);
-  const hi = Math.round(n / 2);
-  const f = (x: number) => (x >= 1000 ? `${(x / 1000).toFixed(x >= 10000 ? 0 : 1)}k` : `${x}`);
-  return `≈ ${f(lo)}–${f(hi)} lines per colour`;
-}
-
 /** "1 in N games" slider; saves when you let go so coverage doesn't recompute on every pixel. */
 export function OneInNSlider({ value, label = 'Study positions seen in at least' }: { value: number; label?: string }) {
   const [t, setT] = useState(toT(value));
@@ -34,7 +25,7 @@ export function OneInNSlider({ value, label = 'Study positions seen in at least'
     if (n !== value) updateSettings({ oneInN: n });
   };
   return (
-    <label className="field" style={{ minWidth: 260, flex: 1 }}>
+    <div className="field" style={{ minWidth: 280, flex: 1 }}>
       <span>{label}</span>
       <div className="row" style={{ flexWrap: 'nowrap' }}>
         <input
@@ -42,6 +33,7 @@ export function OneInNSlider({ value, label = 'Study positions seen in at least'
           min={0}
           max={STEPS}
           value={t}
+          aria-label="1 in N games"
           onChange={(e) => setT(Number(e.target.value))}
           onPointerUp={commit}
           onKeyUp={commit}
@@ -50,9 +42,75 @@ export function OneInNSlider({ value, label = 'Study positions seen in at least'
         />
         <b style={{ color: 'var(--text)', minWidth: 120, textAlign: 'right' }}>1 in {n.toLocaleString()} games</b>
       </div>
-      <span className="small" style={{ textTransform: 'none', letterSpacing: 0 }}>
-        {linesEstimate(n)}
-      </span>
-    </label>
+      {n === value && <DepthReadout n={n} />}
+    </div>
+  );
+}
+
+/**
+ * Measured from the database at your rating: how long lines get before positions become rarer than
+ * 1 in N, and how many lines a repertoire needs, if you play the most popular move on your turns.
+ */
+function DepthReadout({ n }: { n: number }) {
+  const settings = useSettings();
+  const src = sourceLabel(settings);
+  const profiles = useLiveQuery(
+    async () => ({ white: await getDepthProfile(settings, 'white', n), black: await getDepthProfile(settings, 'black', n) }),
+    [n, src, settings.loaded],
+  );
+  const [busy, setBusy] = useState<{ color: Color; queried: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const ctrl = useRef<AbortController | null>(null);
+  useEffect(() => () => ctrl.current?.abort(), []);
+
+  const measure = async () => {
+    setError(null);
+    ctrl.current = new AbortController();
+    try {
+      for (const color of ['white', 'black'] as Color[]) {
+        setBusy({ color, queried: 0 });
+        await measureDepth(color, n, { signal: ctrl.current.signal, onProgress: (q) => setBusy({ color, queried: q }) });
+      }
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const fmt = (c: Color) => {
+    const p = profiles?.[c];
+    if (!p) return null;
+    return (
+      <div key={c}>
+        As {c}: lines average <b style={{ color: 'var(--text)' }}>{p.avgMoves.toFixed(1)} moves</b> (longest {Math.ceil(p.maxMoves)}),{' '}
+        <b style={{ color: 'var(--text)' }}>{p.lines.toLocaleString()} lines</b>
+      </div>
+    );
+  };
+
+  const have = profiles?.white && profiles?.black;
+  return (
+    <div className="small" style={{ textTransform: 'none', letterSpacing: 0, marginTop: 2 }}>
+      {fmt('white')}
+      {fmt('black')}
+      {have && <div>if you play the most popular move on your turns · {src}</div>}
+      {!have && !busy && (
+        <button className="small" style={{ marginTop: 4 }} onClick={measure} title="Walks the opening database to this depth. The first time can take a few minutes; results are saved.">
+          Measure depth at 1 in {n.toLocaleString()}
+        </button>
+      )}
+      {busy && (
+        <div className="row" style={{ marginTop: 4 }}>
+          <span>
+            Measuring as {busy.color}… {busy.queried} positions looked up
+          </span>
+          <button className="small" onClick={() => ctrl.current?.abort()}>
+            Stop
+          </button>
+        </div>
+      )}
+      {error && <div className="error">{error}</div>}
+    </div>
   );
 }
