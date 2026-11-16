@@ -89,7 +89,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   const [error, setError] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const [waitUntil, setWaitUntil] = useState<number | undefined>();
-  const games = useRecentGames();
+  const games = useRecentGames('opponentRange');
   const mine = useMemo(() => (games ? new GameStatsIndex(games, { color }) : undefined), [games, color]);
   const params: ExplorerParams | undefined = tab === 'lichess' ? lichessParams(settings) : tab === 'masters' ? MASTERS : undefined;
   const paramsKey = params ? paramsLabel(params) : 'mine';
@@ -155,7 +155,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
         <span className="muted small" style={{ alignSelf: 'center' }}>
           {tab === 'lichess' && params ? `${params.ratings.join('/')} · ${params.speeds.join(', ')}` : tab === 'mine' ? `as ${color}` : ''}
         </span>
-        {tab === 'mine' && <GameRangeSelect />}
+        {tab === 'mine' && <GameRangeSelect setting="opponentRange" />}
       </div>
       {waitUntil && <div className="note">Lichess rate limit — pausing about a minute before the next lookup.</div>}
       {error && <div className="error">{error}</div>}

@@ -37,6 +37,11 @@ export interface AppSettings {
   engineDepth: number;
   /** Which of your games count everywhere (Games, Insights, Home, "My games" explorer, coverage from your opponents). */
   gameRange: GameRange;
+  /**
+   * Which of your games count as opponent statistics (coverage from your own opponents, the "My
+   * games" explorer tab). Longer than gameRange by default: probabilities need lots of games.
+   */
+  opponentRange: GameRange;
 }
 
 function yearAgo(): string {
@@ -67,6 +72,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   engineEnabled: true,
   engineDepth: 18,
   gameRange: '1m',
+  opponentRange: '1y',
 };
 
 const KEY = 'settings';

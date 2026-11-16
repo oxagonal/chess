@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { PageProps } from '../App';
 import { updateSettings, useSettings } from '../db/settings';
 import { OneInNSlider } from '../components/OneInNSlider';
+import { GameRangeSelect } from '../components/GameRangeSelect';
 import { repertoireDepth } from '../lib/depth';
 import { useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { runCoverage, sourceLabel, effectiveBands } from '../services/coverage';
@@ -105,6 +106,12 @@ function CoverageView({ repId }: { repId: string }) {
                   change
                 </a>
               </div>
+            </div>
+          )}
+          {settings.probabilitySource === 'mygames' && (
+            <div className="field">
+              <span>Opponent games from</span>
+              <GameRangeSelect setting="opponentRange" />
             </div>
           )}
           <span className="spacer" />

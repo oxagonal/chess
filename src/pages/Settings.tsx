@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { updateSettings, useSettings, type AppSettings } from '../db/settings';
 import { OneInNSlider } from '../components/OneInNSlider';
+import { GameRangeSelect } from '../components/GameRangeSelect';
 import { db } from '../db/db';
 import { LICHESS_BANDS, POOL_LABEL, bandLabel, toLichessRating, type RatingPool } from '../lib/ratings';
 import { TIME_CLASSES } from '../lib/importers/common';
@@ -158,6 +159,12 @@ export function SettingsPage() {
               <option value="masters">Masters</option>
             </select>
           </label>
+          {s.probabilitySource === 'mygames' && (
+            <div className="field">
+              <span>Opponent games from</span>
+              <GameRangeSelect setting="opponentRange" />
+            </div>
+          )}
           <OneInNSlider value={s.oneInN} />
         </div>
       </div>

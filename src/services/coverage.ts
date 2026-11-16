@@ -29,7 +29,7 @@ export function sourceLabel(s: AppSettings): string {
     case 'masters':
       return 'Masters database';
     case 'mygames':
-      return `Your opponents (${rangeLabel(s.gameRange).toLowerCase()})`;
+      return `Your opponents (${rangeLabel(s.opponentRange).toLowerCase()})`;
   }
 }
 
@@ -69,7 +69,7 @@ export type StatsProvider = (key: string) => Promise<PositionStats | undefined>;
 export async function statsProvider(s: AppSettings, color: Color, signal?: AbortSignal, priority: Priority = 'high'): Promise<StatsProvider> {
   if (s.probabilitySource === 'mygames') {
     const games = await db.games.where('userColor').equals(color).toArray();
-    const idx = new GameStatsIndex(gamesInRange(games, s.gameRange));
+    const idx = new GameStatsIndex(gamesInRange(games, s.opponentRange));
     return async (key) => idx.get(key);
   }
   const params = s.probabilitySource === 'masters' ? MASTERS : lichessParams(s);

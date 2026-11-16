@@ -49,11 +49,12 @@ export function useGames() {
 }
 
 /** Your games within the shared date filter (Settings → gameRange), newest first. */
-export function useRecentGames() {
-  const { gameRange, loaded } = useSettings();
+export function useRecentGames(which: 'gameRange' | 'opponentRange' = 'gameRange') {
+  const s = useSettings();
+  const range = s[which];
   return useLiveQuery(
-    async () => (loaded ? db.games.where('playedAt').aboveOrEqual(rangeCutoff(gameRange)).reverse().sortBy('playedAt') : undefined),
-    [gameRange, loaded],
+    async () => (s.loaded ? db.games.where('playedAt').aboveOrEqual(rangeCutoff(range)).reverse().sortBy('playedAt') : undefined),
+    [range, s.loaded],
   );
 }
 
