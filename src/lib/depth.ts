@@ -19,6 +19,8 @@ export interface DepthProfile {
   maxMoves: number;
   /** Number of lines (end positions). */
   lines: number;
+  /** Your moves you'd have to memorise (positions where it's your turn). */
+  myMoves: number;
   /** Share of games covered by those lines (the rest leave via individually rare moves). */
   mass: number;
   queried: number;
@@ -33,6 +35,7 @@ export async function estimateDepth(
   const threshold = 1 / n;
   let queried = 0;
   let lines = 0;
+  let myMoves = 0;
   let mass = 0;
   let plySum = 0;
   let maxPly = 0;
@@ -56,6 +59,7 @@ export async function estimateDepth(
     if (!stats || stats.total <= 0 || !stats.moves.length || !pos) return leaf(p, ply);
 
     if (turnOfKey(key) === color) {
+      myMoves++;
       const top = [...stats.moves].sort((a, b) => moveGames(b) - moveGames(a))[0];
       const next = playUci(pos, top.uci);
       if (!next) return leaf(p, ply);
@@ -80,6 +84,7 @@ export async function estimateDepth(
     avgMoves: mass ? plySum / mass / 2 : 0,
     maxMoves: maxPly / 2,
     lines,
+    myMoves,
     mass,
     queried,
   };

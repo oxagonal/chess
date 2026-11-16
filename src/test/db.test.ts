@@ -114,6 +114,7 @@ describe('depth estimate', () => {
     const r = await estimateDepth('white', async (key) => data[key], 4);
     // As White we always play 1.e4 (top move). Lines: c5 Nf3 d6 (p .45), e5 Nf3 Nc6 (.5); a6 (.05) is below 1/4.
     expect(r.lines).toBe(2);
+    expect(r.myMoves).toBe(3); // 1.e4, then 2.Nf3 in each line
     expect(r.mass).toBeCloseTo(0.95);
     expect(r.maxMoves).toBe(2); // 1.e4 c5 2.Nf3 d6 / 1.e4 e5 2.Nf3 Nc6
     expect(r.avgMoves).toBeCloseTo(2);

@@ -83,13 +83,19 @@ function DepthReadout({ n }: { n: number }) {
     if (!p) return null;
     return (
       <div key={c}>
-        As {c}: lines average <b style={{ color: 'var(--text)' }}>{p.avgMoves.toFixed(1)} moves</b> (longest {Math.ceil(p.maxMoves)}),{' '}
-        <b style={{ color: 'var(--text)' }}>{p.lines.toLocaleString()} lines</b>
+        As {c}: <b style={{ color: 'var(--text)' }}>{p.lines.toLocaleString()} lines</b>
+        {p.myMoves !== undefined && (
+          <>
+            , <b style={{ color: 'var(--text)' }}>{p.myMoves.toLocaleString()} moves to learn</b>
+          </>
+        )}{' '}
+        · average {p.avgMoves.toFixed(1)} moves deep, longest {Math.ceil(p.maxMoves)}
       </div>
     );
   };
 
-  const have = profiles?.white && profiles?.black;
+  // Profiles saved before the move count existed lack it; offer to measure again.
+  const have = profiles?.white?.myMoves !== undefined && profiles?.black?.myMoves !== undefined;
   return (
     <div className="small" style={{ textTransform: 'none', letterSpacing: 0, marginTop: 2 }}>
       {fmt('white')}
