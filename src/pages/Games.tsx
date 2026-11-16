@@ -287,7 +287,7 @@ function GamesOverview() {
                             {(graphOf(f.repId)?.graph.childrenOf(f.key) ?? [])
                               .filter((m) => m.mine)
                               .map((m) => (
-                                <MoveNote key={m.id} id={m.id} san={m.san} compact autoFocus />
+                                <MoveNote key={m.id} id={m.id} san={m.san} compact autoFocus prompt />
                               ))}
                           </td>
                         </tr>
@@ -479,7 +479,7 @@ function GameViewer({ id }: { id: string }) {
         </div>
         {r.kind === 'you-deviated' &&
           r.key &&
-          graph?.childrenOf(r.key).filter((m) => m.mine).map((m) => <MoveNote key={m.id} id={m.id} san={m.san} label="(your prep)" />)}
+          graph?.childrenOf(r.key).filter((m) => m.mine).map((m) => <MoveNote key={m.id} id={m.id} san={m.san} label="(your prep)" prompt />)}
       </div>
       <div className="col">
         <div className="panel">

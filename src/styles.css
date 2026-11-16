@@ -289,3 +289,6 @@ table.data tr.selected td { background: #2a3624; }
 
 /* Chess moves inside all-caps headings keep their real case (Bd3, not BD3). */
 .keep-case { text-transform: none; letter-spacing: 0; }
+
+/* A note box asking you to write a note after a mistake */
+.movenote.prompt { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn), var(--shadow); }

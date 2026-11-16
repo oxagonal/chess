@@ -476,7 +476,7 @@ function Session({ setup }: { setup: SessionSetup }) {
     <div className="board-layout">
       <div className="board-col col">
         <Board pos={pos} orientation={rep?.color ?? 'white'} interactive={waiting} lastMove={lastMove} onMove={onMove} arrows={arrows} flash={flash} />
-        {noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" />}
+        {noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" prompt />}
       </div>
       <div className="col">
         <div className="panel">
