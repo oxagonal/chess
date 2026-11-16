@@ -293,6 +293,10 @@ export function SettingsPage() {
             : 'Your data lives only in this browser. Export a backup regularly, especially before clearing browser data — or turn on sync above.'}
         </p>
       </div>
+
+      <p className="muted small" style={{ textAlign: 'center' }}>
+        Version {__BUILD_COMMIT__} · built {new Date(__BUILD_TIME__).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+      </p>
     </div>
   );
 }

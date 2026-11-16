@@ -46,18 +46,24 @@ npm run build      # static site in dist/ — host anywhere (GitHub Pages, Netli
 
 ## Putting it online (and on your phone)
 
-It's a static site, hosted on **Cloudflare** (Workers static assets, free plan). One-time setup in the
-Cloudflare dashboard: **Workers & Pages → Create → Import a repository** → pick this repo, then
+It's a static site, hosted on **Cloudflare** (Workers static assets, free plan) at
+`https://chess.<your-subdomain>.workers.dev`. One-time setup in the Cloudflare dashboard:
+**Workers & Pages → Create → Import a repository** → pick this repo, then
 
+- **Project name:** `chess` (pre-filled from `wrangler.jsonc`; it becomes the first part of the address)
 - **Production branch:** `main`
 - **Build command:** `npm run build`
 - **Deploy command:** `npx wrangler deploy` (the default)
 
 `wrangler.jsonc` tells Cloudflare to serve `dist/`; `public/_headers` sets caching so a new deploy reaches
 phones right away. Node 22 is pinned in `.node-version`. Every push to `main` deploys automatically; other
-branches get their own preview URL. No rewrite rules are needed because the app uses `#/` URLs.
+branches get their own preview URL. No rewrite rules are needed because the app uses `#/` URLs. The bottom
+of Settings shows which version (commit) is live.
 
-On the phone, open the site's URL (`https://chess-prep.<your-subdomain>.workers.dev`) and install it:
+For a shorter address, change your account's `workers.dev` subdomain (Workers & Pages → *Account details*
+→ *Subdomain*); it's free.
+
+On the phone, open the site and install it:
 
 - **iPhone (Safari):** Share → *Add to Home Screen*
 - **Android (Chrome):** ⋮ → *Install app* / *Add to Home screen*
@@ -65,7 +71,7 @@ On the phone, open the site's URL (`https://chess-prep.<your-subdomain>.workers.
 It then opens full-screen with its own icon and works offline for training (game sync, the explorer and
 coverage need a connection).
 
-**Moving to a new address** (e.g. from the old Render site): browsers keep the data per website, so the new
+**Moving to a new address:** browsers keep the data per website, so the new
 site starts empty. Turn on sync (below) on the old site, then connect the new site with the same token — or
 use Settings → Export backup on the old site and Restore backup on the new one. Re-add the home-screen app
 from the new URL.

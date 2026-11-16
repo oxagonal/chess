@@ -2,7 +2,7 @@
 // `npx wrangler deploy` uploads it. Cloudflare's Git integration runs both on every push to `main`.
 // Hash-based routing (#/…) means no SPA fallback or redirects are needed.
 {
-  "name": "chess-prep",
+  "name": "chess",
   "compatibility_date": "2026-11-01",
   "assets": {
     "directory": "./dist"
