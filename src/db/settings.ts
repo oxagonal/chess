@@ -51,7 +51,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   manualBands: [1400, 1600],
   speeds: ['blitz', 'rapid', 'classical'],
   probabilitySource: 'lichess',
-  oneInN: 25,
+  oneInN: 200,
   newPerDay: 15,
   requestRetention: 0.9,
   maxIntervalDays: 365,
@@ -62,15 +62,22 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 const KEY = 'settings';
 
+/** Choices for "study positions seen in at least 1 in N games". */
+export const ONE_IN_N_OPTIONS = [200, 400, 600, 1000] as const;
+
 export async function getSettings(): Promise<AppSettings> {
   const row = await db.kv.get(KEY);
-  return { ...DEFAULT_SETTINGS, ...((row?.value as Partial<AppSettings>) ?? {}) };
+  const s = { ...DEFAULT_SETTINGS, ...((row?.value as Partial<AppSettings>) ?? {}) };
+  // 1 in 200 is the shallowest depth on offer.
+  s.oneInN = Math.max(ONE_IN_N_OPTIONS[0], s.oneInN);
+  return s;
 }
 
+/** Stores only what you changed, so improved defaults still reach settings you never touched. */
 export async function updateSettings(patch: Partial<AppSettings>): Promise<void> {
   await db.transaction('rw', db.kv, async () => {
-    const cur = await getSettings();
-    await db.kv.put({ key: KEY, value: { ...cur, ...patch } });
+    const row = await db.kv.get(KEY);
+    await db.kv.put({ key: KEY, value: { ...((row?.value as Partial<AppSettings>) ?? {}), ...patch } });
   });
 }
 

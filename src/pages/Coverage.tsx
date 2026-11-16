@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { PageProps } from '../App';
-import { updateSettings, useSettings } from '../db/settings';
+import { updateSettings, useSettings, ONE_IN_N_OPTIONS } from '../db/settings';
 import { useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { runCoverage, sourceLabel, effectiveBands } from '../services/coverage';
 import { likelyPositions, oneIn, pct } from '../lib/coverage';
@@ -83,7 +83,7 @@ function CoverageView({ repId }: { repId: string }) {
           <label className="field">
             <span>1 in N games</span>
             <select value={settings.oneInN} onChange={(e) => updateSettings({ oneInN: Number(e.target.value) })}>
-              {[5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200].map((n) => (
+              {ONE_IN_N_OPTIONS.map((n) => (
                 <option key={n} value={n}>
                   1 in {n}
                 </option>

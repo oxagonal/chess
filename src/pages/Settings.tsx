@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { updateSettings, useSettings, type AppSettings } from '../db/settings';
+import { updateSettings, useSettings, type AppSettings, ONE_IN_N_OPTIONS } from '../db/settings';
 import { db } from '../db/db';
 import { LICHESS_BANDS, POOL_LABEL, bandLabel, toLichessRating, type RatingPool } from '../lib/ratings';
 import { TIME_CLASSES } from '../lib/importers/common';
@@ -160,7 +160,7 @@ export function SettingsPage() {
           <label className="field">
             <span>Study positions seen in at least</span>
             <select value={s.oneInN} onChange={(e) => set({ oneInN: Number(e.target.value) })}>
-              {[5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200].map((n) => (
+              {ONE_IN_N_OPTIONS.map((n) => (
                 <option key={n} value={n}>
                   1 in {n} games
                 </option>
