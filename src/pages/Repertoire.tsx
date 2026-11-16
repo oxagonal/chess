@@ -39,13 +39,6 @@ export function RepertoirePage({ route }: PageProps) {
 function RepertoireList() {
   const reps = useRepertoires();
   const cards = useCards();
-  const moveCounts = useLiveQuery(async () => {
-    const out: Record<string, number> = {};
-    await db.moves.each((m) => {
-      out[m.repId] = (out[m.repId] ?? 0) + 1;
-    });
-    return out;
-  }, []);
   const [name, setName] = useState('');
   const [color, setColor] = useState<Color>('white');
   const [importing, setImporting] = useState<string | null>(null);
@@ -89,7 +82,6 @@ function RepertoireList() {
                 <th>Name</th>
                 <th>Side</th>
                 <th className="num">Moves</th>
-                <th className="num">Your moves</th>
                 <th className="num">Due</th>
                 <th className="num">New</th>
                 <th />
@@ -106,7 +98,6 @@ function RepertoireList() {
                     <td>
                       <ColorPill color={r.color} />
                     </td>
-                    <td className="num">{moveCounts?.[r.id] ?? 0}</td>
                     <td className="num">{rc.length}</td>
                     <td className="num">{rc.filter((c) => isDue(c, now)).length || ''}</td>
                     <td className="num">{rc.filter(isNew).length || ''}</td>
@@ -175,7 +166,7 @@ function ImportPanel({ repId, onClose }: { repId: string; onClose: () => void })
     setErrors([]);
     try {
       const r = await importPgn(repId, pgn);
-      setResult(`Imported ${r.games} game(s)/chapter(s): ${r.added} new moves (${r.mineAdded} of yours to learn).`);
+      setResult(`Imported ${r.games} game(s)/chapter(s): ${r.mineAdded} new move${r.mineAdded === 1 ? '' : 's'} to learn.`);
       setErrors(r.errors);
     } catch (e) {
       setErrors([(e as Error).message]);
@@ -427,7 +418,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
             </a>
           </div>
           <div className="muted small" style={{ marginTop: 4 }}>
-            {plural(graph.size, 'move')} · {graph.myMoves().length} of yours · {plural(graph.reachableKeys().size, 'position')}
+            {plural(graph.myMoves().length, 'move')} · {plural(graph.leaves().length, 'line')}
           </div>
         </div>
 
