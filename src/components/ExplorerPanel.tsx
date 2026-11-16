@@ -40,7 +40,14 @@ function useMoveEvals(key: string, moves: string[], enabled: boolean, depth: num
     const t = setTimeout(() => {
       stop = evaluateMoves(key, moves, depth, (e, s) => {
         setEvals(e);
-        setStatus(s.source === 'cloud' ? 'Lichess cloud eval' : s.done ? `Stockfish depth ${depth}` : `Stockfish thinking… depth ${s.depth}`);
+        const cloudDepth = Math.max(0, ...[...e.values()].filter((x) => x.source === 'cloud').map((x) => x.depth));
+        setStatus(
+          s.source === 'cloud'
+            ? `Lichess cloud · depth ${cloudDepth}`
+            : s.done
+              ? `Stockfish · depth ${depth}${cloudDepth ? ` (cloud depth ${cloudDepth} where deeper)` : ''}`
+              : `Stockfish thinking… depth ${s.depth}/${depth}`,
+        );
       });
     }, 200);
     return () => {
@@ -244,10 +251,16 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
           </tbody>
         </table>
       )}
-      {data && total > 0 && (
-        <div className="muted small" style={{ marginTop: 6 }}>
-          {total.toLocaleString()} games
-          {data.opening ? ` · ${data.opening.eco} ${data.opening.name}` : ''}
+      {((data && total > 0) || (settings.engineEnabled && status)) && (
+        <div className="row muted small" style={{ marginTop: 6 }}>
+          {data && total > 0 && (
+            <span>
+              {total.toLocaleString()} games
+              {data.opening ? ` · ${data.opening.eco} ${data.opening.name}` : ''}
+            </span>
+          )}
+          <span className="spacer" />
+          {settings.engineEnabled && status && <span title="Engine evaluation depth — change it in Settings → Engine">{status}</span>}
         </div>
       )}
     </div>
