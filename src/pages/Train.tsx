@@ -88,7 +88,7 @@ function TrainChooser() {
               <td className="num">{all.due}</td>
               <td className="num">{all.fresh}</td>
               <td>
-                <SessionButtons rep="all" due={all.due} fresh={Math.min(all.fresh, newLeft)} />
+                <SessionButtons rep="all" due={all.due} fresh={Math.min(all.fresh, newLeft)} unlearned={all.fresh} />
               </td>
             </tr>
             {reps.map((r) => {
@@ -102,7 +102,7 @@ function TrainChooser() {
                   <td className="num">{c.due}</td>
                   <td className="num">{c.fresh}</td>
                   <td>
-                    <SessionButtons rep={r.id} due={c.due} fresh={Math.min(c.fresh, newLeft)} />
+                    <SessionButtons rep={r.id} due={c.due} fresh={Math.min(c.fresh, newLeft)} unlearned={c.fresh} />
                   </td>
                 </tr>
               );
@@ -119,7 +119,9 @@ function TrainChooser() {
   );
 }
 
-function SessionButtons({ rep, due, fresh }: { rep: string; due: number; fresh: number }) {
+const EXTRA_BATCH = 10;
+
+function SessionButtons({ rep, due, fresh, unlearned }: { rep: string; due: number; fresh: number; unlearned: number }) {
   return (
     <div className="list-actions" style={{ justifyContent: 'flex-end' }}>
       <button className="primary small" disabled={!due} onClick={() => navigate('train', { rep, mode: 'review', t: String(Date.now()) })}>
@@ -128,6 +130,15 @@ function SessionButtons({ rep, due, fresh }: { rep: string; due: number; fresh: 
       <button className="blue small" disabled={!fresh} onClick={() => navigate('train', { rep, mode: 'learn', t: String(Date.now()) })}>
         Learn {fresh || ''}
       </button>
+      {!fresh && unlearned > 0 && (
+        <button
+          className="small"
+          title="Daily limit reached — learn more anyway"
+          onClick={() => navigate('train', { rep, mode: 'learn', extra: String(EXTRA_BATCH), t: String(Date.now()) })}
+        >
+          +{Math.min(EXTRA_BATCH, unlearned)} more
+        </button>
+      )}
     </div>
   );
 }
@@ -150,7 +161,7 @@ interface SessionSetup {
 
 const WEAK_DRILL_SIZE = 20;
 
-function SessionLoader({ mode, repParam, under }: { mode: SessionMode; repParam: string; under?: string }) {
+function SessionLoader({ mode, repParam, under, extra }: { mode: SessionMode; repParam: string; under?: string; extra?: number }) {
   const [setup, setSetup] = useState<SessionSetup | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -189,7 +200,8 @@ function SessionLoader({ mode, repParam, under }: { mode: SessionMode; repParam:
       }
       let finalQueue = queue;
       if (mode === 'learn') {
-        const left = Math.max(0, s.newPerDay - (await learnedTodayCount()));
+        // extra: a batch on top of the daily limit, when you ask for more.
+        const left = extra ?? Math.max(0, s.newPerDay - (await learnedTodayCount()));
         finalQueue = queue.slice(0, left);
       }
       if (!cancelled) setSetup({ mode, reps: new Map(reps.map((r) => [r.id, r])), graphs, queue: finalQueue, settings: s, notes });
@@ -197,7 +209,7 @@ function SessionLoader({ mode, repParam, under }: { mode: SessionMode; repParam:
     return () => {
       cancelled = true;
     };
-  }, [mode, repParam]);
+  }, [mode, repParam, extra]);
 
   if (!setup) return <div className="muted">Preparing session…</div>;
   if (!setup.queue.length)
@@ -409,6 +421,21 @@ function Session({ setup }: { setup: SessionSetup }) {
             <a className="btn primary" href={href('train')}>
               Back to Train
             </a>
+            {mode === 'learn' && (
+              <button
+                className="blue"
+                onClick={() =>
+                  navigate('train', {
+                    rep: setup.reps.size === 1 ? [...setup.reps.keys()][0] : 'all',
+                    mode: 'learn',
+                    extra: String(EXTRA_BATCH),
+                    t: String(Date.now()),
+                  })
+                }
+              >
+                Learn {EXTRA_BATCH} more
+              </button>
+            )}
             <a className="btn" href={href('')}>
               Home
             </a>
