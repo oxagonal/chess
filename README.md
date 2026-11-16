@@ -1,0 +1,86 @@
+# Chess Prep
+
+A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps:
+
+- **Repertoire builder** — build White and Black repertoires move by move on the board, with the Lichess
+  opening explorer (at *your* rating), the masters database and your own games alongside. Positions are
+  merged by FEN, so transpositions are handled automatically. Import PGN (with variations and comments),
+  `.pgn` files or public Lichess studies; export back to PGN.
+- **Spaced repetition** — every one of your moves is a card scheduled with [FSRS](https://github.com/open-spaced-repetition/ts-fsrs).
+  *Learn* shows new lines and then has you replay them from memory; *Review* plays each due position out
+  from the starting position (opponent moves and moves that aren't due are played for you) and asks only
+  for the due moves. A wrong move snaps back and you retry **right there** — the line never restarts. A
+  second miss shows the answer as an arrow.
+- **Coverage — "1 in N games"** — assuming you play your prep and opponents answer like players at your
+  rating, how often does each position appear? Lists the opponent moves you'll face at least once every
+  N games that your repertoire doesn't answer (*gaps*), positions where it's your move with nothing prepared,
+  and the positions worth knowing cold. Optionally restrict training to positions above the threshold.
+- **Games** — downloads your Lichess and Chess.com games (incrementally) and checks each one against your
+  repertoires: where *you* left your prep ("forgot prep"), where the *opponent* did (gaps), or where the
+  line simply ended. Forgotten moves can be sent straight back into review; opponent surprises open the
+  builder at that position so you can prepare an answer.
+- **Insights** — a 0–100 *mastery* score per move and per line, blending training accuracy, FSRS recall
+  and difficulty, and slips in real games. Lines are shown as a tree (weakest first), plus a list of your
+  trickiest moves; *Drill* practises any line or your weakest moves on demand.
+
+All data lives in your browser (IndexedDB). Nothing is uploaded anywhere; usernames are only sent to
+lichess.org / chess.com to download your games. Use **Settings → Export backup** to keep a copy.
+
+## Running it
+
+Requires Node 20+.
+
+```bash
+npm install
+npm run dev        # http://localhost:5173
+npm test           # unit tests (vitest)
+npm run build      # static site in dist/ — host anywhere (GitHub Pages, Netlify, a USB stick…)
+```
+
+## Where the probabilities come from
+
+| Source | Notes |
+| --- | --- |
+| **Lichess games at your rating** (default) | `explorer.lichess.ovh`, filtered by rating band(s) and time controls. Requests are serialised, cached for 30 days in IndexedDB, and back off for a minute on HTTP 429, per Lichess API etiquette. |
+| **Your own opponents** | Built from your imported Lichess + Chess.com games — what people actually play against *you*. Small samples are noisy, but it's very personal. |
+| **Masters** | Lichess masters database. |
+
+Chess.com doesn't publish an opening-explorer API, so Chess.com ratings are converted to the
+equivalent Lichess rating (approximate formula in `src/lib/ratings.ts`) to pick explorer bands. You can
+also pick bands manually in Settings, or use "your own opponents" as the source.
+
+## Project layout
+
+```
+src/
+  lib/            pure logic, unit-tested (no DOM, no DB)
+    chess.ts        position keys (FEN minus clocks, legal-ep only), SAN/UCI helpers on top of chessops
+    graph.ts        RepGraph: repertoire as a position graph (paths, topo order, orphans)
+    pgn.ts          PGN ⇄ repertoire edges (variations, comments)
+    srs.ts          FSRS wrapper, retrievability, difficulty labels
+    trainer.ts      plans each training line (what to auto-play, what to ask)
+    coverage.ts     "1 in N" reach-probability analysis
+    prep.ts         compares games with repertoires (forgot prep / opponent left book / end of prep)
+    insights.ts     mastery scores per move and per line
+    mygames.ts      opening explorer built from your games
+    importers/      Lichess NDJSON + Chess.com archive parsers/downloaders
+  db/             Dexie (IndexedDB) schema, settings, repertoire mutations
+  services/       network + persistence glue: explorer cache, game sync, coverage runner, backup
+  components/     chessground Board, explorer panel, small UI pieces
+  pages/          one component per tab
+  App.tsx         tab registry + hash router
+```
+
+### Adding a tab (e.g. engine-powered game review)
+
+Tabs are registered in the `TABS` array in `src/App.tsx`; add a page component under `src/pages` and an
+entry there. Games are stored with full move lists and, when available, clock times (`StoredGame.clocks`),
+and `GameViewer` in `src/pages/Games.tsx` already replays games on a board — a Stockfish (WASM) review
+would plug into that viewer or a new `review` tab.
+
+## Licensing note
+
+The board ([chessground](https://github.com/lichess-org/chessground)) and chess logic
+([chessops](https://github.com/niklasf/chessops)) are GPL-3.0-or-later, so if you distribute a built
+version of this app it must be under a GPL-compatible licence. Piece images are Colin M.L. Burnett's
+set (via chessground).

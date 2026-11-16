@@ -1,0 +1,140 @@
+import { createElement, useEffect, useMemo, useRef, useState } from 'react';
+import { Chessground } from 'chessground';
+import type { Api } from 'chessground/api';
+import type { DrawShape } from 'chessground/draw';
+import type { Key } from 'chessground/types';
+import type { Position } from 'chessops/chess';
+import { fenOf, isPromotion, legalDests, uciSquares, type Color } from '../lib/chess';
+
+export interface Arrow {
+  uci: string;
+  brush?: 'green' | 'red' | 'blue' | 'yellow' | 'paleBlue' | 'paleGreen' | 'paleGrey';
+}
+
+interface BoardProps {
+  pos: Position;
+  orientation: Color;
+  /** Allow the side to move to play (dests computed from `pos`). */
+  interactive?: boolean;
+  lastMove?: string;
+  arrows?: Arrow[];
+  /** Called with a UCI string (promotion suffix included). */
+  onMove?: (uci: string) => void;
+  /** Coloured flash around the board for training feedback. */
+  flash?: 'good' | 'bad' | 'hint' | null;
+  /** Square to mark (e.g. where you deviated). */
+  markSquare?: string;
+}
+
+/**
+ * Chessground board driven entirely by a chessops Position.
+ * After every user move we re-apply the props, so a move the parent rejects snaps back.
+ */
+export function Board({ pos, orientation, interactive = false, lastMove, arrows, onMove, flash, markSquare }: BoardProps) {
+  const el = useRef<HTMLDivElement>(null);
+  const api = useRef<Api | null>(null);
+  const onMoveRef = useRef(onMove);
+  onMoveRef.current = onMove;
+  const posRef = useRef(pos);
+  posRef.current = pos;
+  const [tick, setTick] = useState(0);
+  const [promo, setPromo] = useState<{ orig: string; dest: string } | null>(null);
+
+  const fen = useMemo(() => fenOf(pos), [pos]);
+  const turn = pos.turn;
+  const dests = useMemo(() => (interactive ? legalDests(pos) : new Map<string, string[]>()), [pos, interactive]);
+
+  useEffect(() => {
+    const node = el.current!;
+    api.current = Chessground(node, {
+      fen,
+      orientation,
+      coordinates: true,
+      animation: { enabled: true, duration: 180 },
+      highlight: { lastMove: true, check: true },
+      movable: {
+        free: false,
+        showDests: true,
+        events: {
+          after: (orig, dest) => {
+            if (isPromotion(posRef.current, orig, dest)) {
+              setPromo({ orig, dest });
+            } else {
+              onMoveRef.current?.(orig + dest);
+            }
+            setTick((t) => t + 1);
+          },
+        },
+      },
+      draggable: { showGhost: true },
+      drawable: { enabled: true, visible: true },
+    });
+    const ro = new ResizeObserver(() => api.current?.redrawAll());
+    ro.observe(node);
+    return () => {
+      ro.disconnect();
+      api.current?.destroy();
+      api.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const cg = api.current;
+    if (!cg) return;
+    const lm = lastMove ? (uciSquares(lastMove) as [Key, Key] | undefined) : undefined;
+    cg.set({
+      fen,
+      orientation,
+      turnColor: turn,
+      check: pos.isCheck() ? turn : false,
+      lastMove: lm,
+      movable: {
+        color: interactive ? turn : undefined,
+        dests: dests as Map<Key, Key[]>,
+      },
+    });
+  }, [fen, orientation, turn, interactive, dests, lastMove, tick, pos]);
+
+  // Arrows are compared by content so re-renders with a fresh array don't touch the board.
+  const shapesKey = JSON.stringify([arrows ?? [], markSquare ?? null]);
+  useEffect(() => {
+    const cg = api.current;
+    if (!cg) return;
+    const shapes: DrawShape[] = (arrows ?? []).flatMap((a) => {
+      const sq = uciSquares(a.uci);
+      return sq ? [{ orig: sq[0] as Key, dest: sq[1] as Key, brush: a.brush ?? 'green' }] : [];
+    });
+    if (markSquare) shapes.push({ orig: markSquare as Key, brush: 'red' });
+    cg.setAutoShapes(shapes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shapesKey, tick]);
+
+  const choose = (role: 'q' | 'r' | 'b' | 'n') => {
+    if (promo) onMoveRef.current?.(promo.orig + promo.dest + role);
+    setPromo(null);
+    setTick((t) => t + 1);
+  };
+
+  const pieceColor = turn;
+  return (
+    <div className={`board-wrap ${flash ? `flash-${flash}` : ''}`}>
+      <div ref={el} className="cg-wrap-host" />
+      {promo && (
+        <div className="promo-overlay" onClick={() => choose('q')}>
+          <div className="promo-box cg-wrap" onClick={(e) => e.stopPropagation()}>
+            {(['q', 'r', 'b', 'n'] as const).map((r) => (
+              <button key={r} className="promo-btn" onClick={() => choose(r)} title={`Promote to ${roleName(r)}`}>
+                {createElement('piece', { className: `${roleName(r)} ${pieceColor}` })}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function roleName(r: 'q' | 'r' | 'b' | 'n') {
+  return { q: 'queen', r: 'rook', b: 'bishop', n: 'knight' }[r];
+}
