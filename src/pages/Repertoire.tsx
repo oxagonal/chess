@@ -402,6 +402,15 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           <button onClick={() => setFlipped(!flipped)} title="Flip board (f)">
             ⇅
           </button>
+          <a
+            className="btn small"
+            href={`https://lichess.org/analysis/standard/${`${key} 0 1`.replace(/ /g, '_')}?color=${orientation}`}
+            target="_blank"
+            rel="noreferrer"
+            title="Open this position on the Lichess analysis board (new tab)"
+          >
+            Analyze on Lichess ↗
+          </a>
           <span className="spacer" />
           <label className="check small" title="Every move you play on the board is saved into the repertoire immediately">
             <input type="checkbox" checked={autoAdd} onChange={(e) => updateSettings({ builderAutoAdd: e.target.checked })} />
