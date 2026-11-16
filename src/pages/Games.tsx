@@ -477,6 +477,9 @@ function GameViewer({ id }: { id: string }) {
           <button onClick={() => setCursor(replay.positions.length - 1)}>⏭</button>
           {devPly !== undefined && <button onClick={() => setCursor(devPly)}>Jump to deviation</button>}
         </div>
+        {r.kind === 'you-deviated' &&
+          r.key &&
+          graph?.childrenOf(r.key).filter((m) => m.mine).map((m) => <MoveNote key={m.id} id={m.id} san={m.san} label="(your prep)" />)}
       </div>
       <div className="col">
         <div className="panel">
@@ -544,10 +547,6 @@ function GameViewer({ id }: { id: string }) {
             )}
           </div>
         </div>
-
-        {r.kind === 'you-deviated' &&
-          r.key &&
-          graph?.childrenOf(r.key).filter((m) => m.mine).map((m) => <MoveNote key={m.id} id={m.id} san={m.san} label="(your prep)" />)}
 
         <div className="panel">
           <h3>Moves</h3>

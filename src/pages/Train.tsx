@@ -474,8 +474,9 @@ function Session({ setup }: { setup: SessionSetup }) {
 
   return (
     <div className="board-layout">
-      <div className="board-col">
+      <div className="board-col col">
         <Board pos={pos} orientation={rep?.color ?? 'white'} interactive={waiting} lastMove={lastMove} onMove={onMove} arrows={arrows} flash={flash} />
+        {noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" />}
       </div>
       <div className="col">
         <div className="panel">
@@ -536,8 +537,6 @@ function Session({ setup }: { setup: SessionSetup }) {
             ✓ {stats.correct} · ✗ {stats.failed}
           </span>
         </div>
-
-        {noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" />}
       </div>
     </div>
   );

@@ -418,6 +418,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
             Auto-add moves
           </label>
         </div>
+        {currentEdge && <MoveNote key={currentEdge.id} id={currentEdge.id} san={currentEdge.san} />}
       </div>
 
       <div className="col">
@@ -560,8 +561,6 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           onOpening={setOpening}
           reachHere={reach.loading ? undefined : reach.prob}
         />
-
-        {currentEdge && <MoveNote key={currentEdge.id} id={currentEdge.id} san={currentEdge.san} />}
       </div>
     </div>
   );
