@@ -1,7 +1,7 @@
 import { db } from '../db/db';
 import { getSettings, type AppSettings } from '../db/settings';
 import { loadGraph } from '../db/repertoire';
-import { computeCoverage } from '../lib/coverage';
+import { computeCoverage, COVERAGE_ALGO } from '../lib/coverage';
 import { GameStatsIndex } from '../lib/mygames';
 import { bandsForRating, toLichessRating } from '../lib/ratings';
 import { moveGames, type CoverageResult, type PositionStats } from '../lib/types';
@@ -126,6 +126,7 @@ export function isCoverageFresh(result: CoverageResult | undefined, repUpdatedAt
   return (
     !!result &&
     !!result.coverage &&
+    result.algo === COVERAGE_ALGO &&
     result.computedAt >= repUpdatedAt &&
     result.paramsLabel === sourceLabel(s) &&
     Math.abs(result.threshold - 1 / s.oneInN) < 1e-12

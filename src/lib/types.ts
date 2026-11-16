@@ -148,4 +148,6 @@ export interface CoverageResult {
    * repertoire until positions rarer than the threshold (1 = fully covered). Missing on old results.
    */
   coverage?: Record<string, number>;
+  /** Version of the analysis that produced this result. */
+  algo?: number;
 }

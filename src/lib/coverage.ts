@@ -7,11 +7,14 @@
  * Positions reached in at least 1 of N games are the ones worth knowing cold; opponent moves that
  * show up that often but are missing from the repertoire are gaps.
  */
-import { posFromFen } from './chess';
+import { isPromotion, legalDests, playUci, posFromFen } from './chess';
 import type { RepGraph } from './graph';
 import { moveGames, type CoverageGap, type CoverageNode, type CoverageResult, type PositionStats, type ProbabilitySource } from './types';
 
-export type StatsProvider = (key: string) => Promise<PositionStats | undefined>;
+/** Bump when the analysis changes so stored results are recalculated. 2 = follows unsaved transpositions. */
+export const COVERAGE_ALGO = 2;
+
+export type StatsProvider =(key: string) => Promise<PositionStats | undefined>;
 
 export interface CoverageOptions {
   repId: string;
@@ -29,7 +32,7 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
   // Stamp with the start time: an edit made while this runs must make the result look stale.
   const startedAt = Date.now();
   const cutoff = opts.queryCutoff ?? threshold;
-  const back = graph.backEdges();
+  const { kidsOf, order } = withTranspositions(graph);
   const prob = new Map<string, number>([[graph.root, 1]]);
   const gaps: CoverageGap[] = [];
   const unfinished: CoverageNode[] = [];
@@ -39,13 +42,12 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
   const add = (key: string, p: number) => prob.set(key, (prob.get(key) ?? 0) + p);
   const pathSans = (key: string) => (graph.pathTo(key) ?? []).map((m) => m.san);
   const statsAt = new Map<string, PositionStats>();
-  const order = graph.topoOrder();
 
   for (const key of order) {
     if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const p = prob.get(key) ?? 0;
     if (p <= 0) continue;
-    const kids = graph.childrenOf(key).filter((m) => !back.has(m.id));
+    const kids = kidsOf(key);
 
     if (graph.isMyTurn(key)) {
       if (!kids.length) {
@@ -89,7 +91,7 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
       cover.set(key, 1); // too rare to require anything from here on
       continue;
     }
-    const kids = graph.childrenOf(key).filter((m) => !back.has(m.id));
+    const kids = kidsOf(key);
     const childCover = (k: string) => cover.get(k) ?? 1;
     if (graph.isMyTurn(key)) {
       if (!kids.length) cover.set(key, isGameOver(key) ? 1 : 0);
@@ -130,7 +132,67 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
     noData,
     queried,
     coverage: Object.fromEntries(cover),
+    algo: COVERAGE_ALGO,
   };
+}
+
+interface Edge {
+  san: string;
+  toKey: string;
+}
+
+/**
+ * The repertoire's moves plus "transposition edges": an opponent move you haven't saved that lands on
+ * a position you have. Coverage follows those too, so a position counts every way it can arise in your
+ * games and such moves aren't reported as gaps. (Your own unsaved moves aren't added — the app can't
+ * assume what you'd play outside your prep.) Returns each position's outgoing edges, minus any that
+ * would close a cycle, and a topological order to process positions in.
+ */
+export function withTranspositions(graph: RepGraph): { kidsOf: (key: string) => Edge[]; order: string[] } {
+  const reachable = graph.reachableKeys();
+  const extra = new Map<string, Edge[]>();
+  for (const key of reachable) {
+    if (graph.isMyTurn(key)) continue;
+    const pos = posFromFen(key);
+    if (!pos) continue;
+    const saved = new Set(graph.childrenOf(key).map((m) => m.san));
+    const seen = new Set<string>();
+    for (const [orig, dests] of legalDests(pos)) {
+      for (const dest of dests) {
+        const r = playUci(pos, orig + dest + (isPromotion(pos, orig, dest) ? 'q' : ''));
+        if (!r || saved.has(r.san) || seen.has(r.san) || !reachable.has(r.key)) continue;
+        seen.add(r.san);
+        const list = extra.get(key) ?? [];
+        list.push({ san: r.san, toKey: r.key });
+        extra.set(key, list);
+      }
+    }
+  }
+  const all = (key: string): Edge[] => [...graph.childrenOf(key), ...(extra.get(key) ?? [])];
+
+  // Iterative DFS: drop edges that point back onto the current path (cycles), record post-order.
+  const back = new Set<string>();
+  const state = new Map<string, 1 | 2>();
+  const post: string[] = [];
+  const stack: { key: string; kids: Edge[]; i: number }[] = [{ key: graph.root, kids: all(graph.root), i: 0 }];
+  state.set(graph.root, 1);
+  while (stack.length) {
+    const top = stack[stack.length - 1];
+    if (top.i < top.kids.length) {
+      const e = top.kids[top.i++];
+      const s = state.get(e.toKey);
+      if (s === 1) back.add(`${top.key}|${e.san}`);
+      else if (!s) {
+        state.set(e.toKey, 1);
+        stack.push({ key: e.toKey, kids: all(e.toKey), i: 0 });
+      }
+    } else {
+      state.set(top.key, 2);
+      post.push(top.key);
+      stack.pop();
+    }
+  }
+  return { kidsOf: (key) => all(key).filter((e) => !back.has(`${key}|${e.san}`)), order: post.reverse() };
 }
 
 function isGameOver(key: string): boolean {

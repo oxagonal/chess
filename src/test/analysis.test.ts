@@ -235,3 +235,27 @@ describe('per-position coverage score', () => {
     expect(res.coverage![keyAfter('e4 c5 Nc3 Nc6')]).toBe(1);
   });
 });
+
+describe('coverage follows unsaved opponent transpositions', () => {
+  it('counts an unsaved opponent move that lands in the repertoire, and not as a gap', async () => {
+    const { computeCoverage } = await import('../lib/coverage');
+    const { movesFromLines } = await import('../lib/lines');
+    const { RepGraph } = await import('../lib/graph');
+    const { edgesForLine } = await import('../lib/lines');
+    // White: 1.e4 e5 2.Nf3 Nc6 3.Bc4, and 1.e4 Nc6 2.Nf3 — where 2...e5 (not saved) transposes.
+    const g = new RepGraph('white', movesFromLines('w', 'white', ['e4 e5 Nf3 Nc6 Bc4', 'e4 Nc6 Nf3']));
+    const k = (l: string) => edgesForLine(l.split(' '))!.at(-1)!.toKey;
+    const st = (moves: [string, number][]) => ({
+      total: moves.reduce((a, [, n]) => a + n, 0), white: 0, draws: 0, black: 0,
+      moves: moves.map(([san, n]) => ({ san, uci: '', white: n, draws: 0, black: 0 })),
+    });
+    const db: Record<string, ReturnType<typeof st>> = {
+      [k('e4')]: st([['e5', 60], ['Nc6', 40]]),
+      [k('e4 e5 Nf3')]: st([['Nc6', 100]]),
+      [k('e4 Nc6 Nf3')]: st([['e5', 100]]),
+    };
+    const res = await computeCoverage(g, async (key) => db[key], { repId: 'w', threshold: 1 / 20, source: 'lichess', paramsLabel: 't' });
+    expect(res.probs[k('e4 e5 Nf3 Nc6')]).toBeCloseTo(1); // 0.6 directly + 0.4 via 1...Nc6 2.Nf3 e5
+    expect(res.gaps).toHaveLength(0);
+  });
+});
