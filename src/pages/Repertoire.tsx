@@ -17,7 +17,7 @@ import { useSettings, updateSettings } from '../db/settings';
 import { useCards, useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
-import { ColorPill, Empty, LineView, fmtPct } from '../components/ui';
+import { ColorPill, Empty, LineView } from '../components/ui';
 import { href, navigate } from '../router';
 import { formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
 import { oneIn } from '../lib/coverage';
@@ -453,13 +453,13 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
               onClick={jumpToBiggestGap}
               title={
                 biggestGap
-                  ? `Most common position you have no answer for: ${biggestGap.label} (${fmtPct(biggestGap.prob)} of games)`
+                  ? `Most common position you have no answer for: ${biggestGap.label} (${oneIn(biggestGap.prob)} games)`
                   : live.running || live.stale
                     ? 'Calculating coverage…'
                     : `No gaps at 1 in ${settings.oneInN} games`
               }
             >
-              Biggest gap{biggestGap ? ` · ${fmtPct(biggestGap.prob)}` : ''}
+              Biggest gap{biggestGap ? ` · ${oneIn(biggestGap.prob)}` : ''}
             </button>
           </div>
           <LineView
@@ -755,21 +755,21 @@ function ReachPanel({ reach, repProb, source, atStart }: { reach: LineReach; rep
       {reach.error && <div className="error" style={{ marginTop: 6 }}>{reach.error}</div>}
       {!reach.error && (
         <div className="row" style={{ marginTop: 6, alignItems: 'baseline', opacity: reach.loading ? 0.5 : 1 }}>
-          <b style={{ fontSize: 26 }}>{p === undefined ? '…' : fmtPct(p)}</b>
+          <b style={{ fontSize: 26 }}>{p === undefined ? '…' : p === 0 ? 'never' : oneIn(p)}</b>
           <span className="muted">
-            {atStart
-              ? 'of your games start here'
-              : p === undefined
-                ? ''
-                : p === 0
-                  ? 'of your games — this line never occurs in the database'
-                  : `of your games reach this position${p < 0.95 ? ` (${oneIn(p)})` : ''}`}
+            {p === undefined
+              ? ''
+              : p === 0
+                ? '— this line doesn\'t occur in the database'
+                : atStart || p >= 1 / 1.05
+                  ? '— you reach this position'
+                  : 'games reach this position'}
           </span>
         </div>
       )}
       {viaOthers !== undefined && (
         <div className="muted small" style={{ marginTop: 4 }}>
-          {fmtPct(viaOthers)} counting other move orders in your repertoire that transpose here.
+          {oneIn(viaOthers)} games counting other move orders in your repertoire that transpose here.
         </div>
       )}
     </div>

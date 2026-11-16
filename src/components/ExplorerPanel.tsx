@@ -6,7 +6,8 @@ import { GameStatsIndex } from '../lib/mygames';
 import { moveGames, type MoveStat, type PositionStats } from '../lib/types';
 import { turnOfKey, type Color } from '../lib/chess';
 import { useGames } from '../hooks';
-import { WdlBar, fmtPct } from './ui';
+import { WdlBar } from './ui';
+import { oneIn } from '../lib/coverage';
 
 type Tab = 'lichess' | 'masters' | 'mine';
 
@@ -140,7 +141,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   </td>
                   <td className="num">{stat ? n.toLocaleString() : '—'}</td>
                   <td className="num">{stat && total ? ((n / total) * 100).toFixed(1) : '—'}</td>
-                  {showReach && <td className="num">{stat && total ? <b>{fmtPct((reachHere! * n) / total)}</b> : '—'}</td>}
+                  {showReach && <td className="num">{stat && total ? <b>{n ? oneIn((reachHere! * n) / total) : 'never'}</b> : '—'}</td>}
                   <td>{stat ? <WdlBar white={stat.white} draws={stat.draws} black={stat.black} /> : <span className="muted small">not in database</span>}</td>
                   <td>
                     <div className="list-actions" style={{ justifyContent: 'flex-end', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
