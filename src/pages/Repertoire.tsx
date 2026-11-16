@@ -270,7 +270,9 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
   const live = useLiveCoverage(repId, rep, graph, settings, coverage);
   const [line, setLine] = useState<LineMove[]>(() => lineFromSans(initialLine.split(/\s+/).filter(Boolean)));
   const [cursor, setCursor] = useState(line.length);
-  const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings);
+  // Only trust a coverage run that matches the current repertoire and settings.
+  const freshCoverage = rep && settings.loaded && isCoverageFresh(coverage, rep.updatedAt, settings) ? coverage : undefined;
+  const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings, freshCoverage);
   const [flipped, setFlipped] = useState(false);
   const [opening, setOpening] = useState<string | undefined>();
   const [message, setMessage] = useState<string | null>(null);
@@ -322,9 +324,9 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
 
   // The most common hole: an opponent reply you don't answer, or your move with nothing prepared.
   const biggestGap = useMemo(() => {
-    if (!coverage) return undefined;
-    const g = coverage.gaps[0];
-    const u = coverage.unfinished[0];
+    if (!freshCoverage) return undefined;
+    const g = freshCoverage.gaps[0];
+    const u = freshCoverage.unfinished[0];
     const pick =
       g && (!u || g.prob >= u.prob)
         ? { sans: [...g.path, g.san], prob: g.prob }
@@ -333,7 +335,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           : undefined;
     if (!pick) return undefined;
     return { ...pick, label: formatLine(pick.sans) || 'the starting position' };
-  }, [coverage]);
+  }, [freshCoverage]);
 
   const jumpToBiggestGap = () => {
     if (!biggestGap) return;
@@ -378,7 +380,6 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
   const orientation: Color = flipped ? (rep.color === 'white' ? 'black' : 'white') : rep.color;
   const myMovesHere = children.filter((c) => c.mine);
   const prob = coverage?.probs[key];
-  const coverageFresh = isCoverageFresh(coverage, rep.updatedAt, settings);
   const dueCount = (cards ?? []).filter((c) => isDue(c)).length;
   const newCount = (cards ?? []).filter(isNew).length;
 
@@ -479,7 +480,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           {opening && <div className="muted small" style={{ marginTop: 6 }}>{opening}</div>}
         </div>
 
-        <ReachPanel reach={reach} repProb={inRep && coverageFresh ? prob : undefined} source={sourceLabel(settings)} atStart={cursor === 0} />
+        <ReachPanel reach={reach} source={sourceLabel(settings)} atStart={cursor === 0} />
 
         {inRep && (
           <CoverageStrip
@@ -706,6 +707,8 @@ interface LineReach {
   prob?: number;
   /** Explorer stats for the current position (to split the probability over replies). */
   here?: PositionStats;
+  /** True when the figure includes other move orders from your repertoire. */
+  viaRepertoire?: boolean;
   loading: boolean;
   error?: string;
 }
@@ -715,11 +718,13 @@ function useLineReach(
   color: Color | undefined,
   graph: RepGraph | undefined,
   settings: AppSettings & { loaded: boolean },
+  /** Repertoire-wide reach per position from an up-to-date coverage run (all move orders summed). */
+  known?: CoverageResult,
 ): LineReach {
   const [state, setState] = useState<LineReach>({ loading: true });
   const lineSig = path.map((m) => m.san).join(' ');
   const key = path.length ? path[path.length - 1].key : START_KEY;
-  const sig = `${lineSig}|${color}|${graph?.size}|${sourceLabel(settings)}`;
+  const sig = `${lineSig}|${color}|${graph?.size}|${sourceLabel(settings)}|${known?.computedAt ?? 0}`;
   useEffect(() => {
     if (!color || !settings.loaded) return;
     const ctrl = new AbortController();
@@ -733,9 +738,24 @@ function useLineReach(
           const mine = graph?.childrenOf(fromKey).filter((m) => m.mine) ?? [];
           return mine.some((m) => m.san === san) ? mine.length : 1;
         };
-        const prob = await reachAlongLine(path, color, provider, myOptions);
+        // Start from the deepest position on this line whose total reach the coverage run knows — that
+        // counts every move order in your repertoire, so transpositions add up and the figure matches
+        // the gap list — then follow the rest of the line move by move.
+        let start = 0;
+        let base = 1;
+        if (known) {
+          for (let i = path.length; i > 0; i--) {
+            const p = known.probs[path[i - 1].key];
+            if (p !== undefined && p > 0) {
+              start = i;
+              base = p;
+              break;
+            }
+          }
+        }
+        const prob = base * (await reachAlongLine(path.slice(start), color, provider, myOptions));
         const here = turnOfKey(key) !== color ? await provider(key) : undefined;
-        if (!ctrl.signal.aborted) setState({ prob, here, loading: false });
+        if (!ctrl.signal.aborted) setState({ prob, here, loading: false, viaRepertoire: start > 0 });
       } catch (e) {
         if ((e as Error).name !== 'AbortError') setState({ loading: false, error: (e as Error).message });
       }
@@ -750,10 +770,8 @@ function useLineReach(
 }
 
 
-function ReachPanel({ reach, repProb, source, atStart }: { reach: LineReach; repProb?: number; source: string; atStart: boolean }) {
+function ReachPanel({ reach, source, atStart }: { reach: LineReach; source: string; atStart: boolean }) {
   const p = reach.prob;
-  // With transpositions the same position can also arise via other move orders in your repertoire.
-  const viaOthers = repProb !== undefined && p !== undefined && repProb > p * 1.05 ? repProb : undefined;
   return (
     <div className="panel">
       <div className="row" style={{ alignItems: 'baseline' }}>
@@ -778,9 +796,9 @@ function ReachPanel({ reach, repProb, source, atStart }: { reach: LineReach; rep
           </span>
         </div>
       )}
-      {viaOthers !== undefined && (
+      {!reach.loading && reach.viaRepertoire && !atStart && (
         <div className="muted small" style={{ marginTop: 4 }}>
-          {oneIn(viaOthers)} games counting other move orders in your repertoire that transpose here.
+          Counts every move order in your repertoire that reaches this position.
         </div>
       )}
     </div>
