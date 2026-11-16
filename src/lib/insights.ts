@@ -202,6 +202,27 @@ function byWeakness(a: LineInsight, b: LineInsight): number {
   return ma - mb || b.moves - a.moves;
 }
 
+/**
+ * "Train this line": the moves on the way to `key` plus every move reachable from it.
+ * At the starting position that's the whole repertoire.
+ */
+export function movesForLine(graph: RepGraph, key: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of graph.pathTo(key) ?? []) out.add(m.id);
+  const seen = new Set<string>();
+  const stack = [key];
+  while (stack.length) {
+    const k = stack.pop()!;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    for (const m of graph.childrenOf(k)) {
+      out.add(m.id);
+      stack.push(m.toKey);
+    }
+  }
+  return out;
+}
+
 /** Ids of every move reachable below (and including) `moveId` — for "drill this line". */
 export function movesUnder(graph: RepGraph, moveId: string): Set<string> {
   const start = graph.byId.get(moveId);

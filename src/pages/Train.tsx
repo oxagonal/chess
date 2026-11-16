@@ -12,7 +12,7 @@ import { href, navigate } from '../router';
 import { formatLine, playUci, startPos } from '../lib/chess';
 import { RepGraph } from '../lib/graph';
 import { asQuiz, filterByProbability, orderCards, planLine, type PlannedStep } from '../lib/trainer';
-import { computeInsights, movesUnder } from '../lib/insights';
+import { computeInsights, movesForLine, movesUnder } from '../lib/insights';
 import { formatInterval, isDue, isNew, Rating } from '../lib/srs';
 import type { Repertoire, ReviewCard } from '../lib/types';
 
@@ -23,8 +23,18 @@ export function TrainPage({ route }: PageProps) {
   const mode = route.query.get('mode') as SessionMode | null;
   const rep = route.query.get('rep') ?? 'all';
   const under = route.query.get('under') ?? undefined;
+  const at = route.query.get('at') ?? undefined;
   if (mode === 'review' || mode === 'learn' || mode === 'drill')
-    return <SessionLoader key={`${mode}|${rep}|${under}|${route.query.get('t') ?? ''}`} mode={mode} repParam={rep} under={under} />;
+    return (
+      <SessionLoader
+        key={`${mode}|${rep}|${under}|${at}|${route.query.get('t') ?? ''}`}
+        mode={mode}
+        repParam={rep}
+        under={under}
+        at={at}
+        extra={Number(route.query.get('extra')) || undefined}
+      />
+    );
   return <TrainChooser />;
 }
 
@@ -161,7 +171,7 @@ interface SessionSetup {
 
 const WEAK_DRILL_SIZE = 20;
 
-function SessionLoader({ mode, repParam, under, extra }: { mode: SessionMode; repParam: string; under?: string; extra?: number }) {
+function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode; repParam: string; under?: string; at?: string; extra?: number }) {
   const [setup, setSetup] = useState<SessionSetup | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -177,10 +187,14 @@ function SessionLoader({ mode, repParam, under, extra }: { mode: SessionMode; re
         const graph = new RepGraph(rep.color, moves);
         graphs.set(rep.id, graph);
         const cards = await db.cards.where('repId').equals(rep.id).toArray();
-        let pool = cards.filter((c) => (mode === 'review' ? isDue(c, now) : mode === 'learn' ? isNew(c) : !isNew(c)));
+        // A line you picked yourself trains every move in it, learned or not.
+        let pool = cards.filter((c) => (mode === 'review' ? isDue(c, now) : mode === 'learn' ? isNew(c) : at ? true : !isNew(c)));
         const cov = await db.coverage.get(rep.id);
         if (mode === 'drill') {
-          if (under) {
+          if (at) {
+            const ids = movesForLine(graph, at);
+            pool = pool.filter((c) => ids.has(c.id));
+          } else if (under) {
             const ids = movesUnder(graph, under);
             pool = pool.filter((c) => ids.has(c.id));
           } else {
@@ -209,7 +223,7 @@ function SessionLoader({ mode, repParam, under, extra }: { mode: SessionMode; re
     return () => {
       cancelled = true;
     };
-  }, [mode, repParam, extra]);
+  }, [mode, repParam, under, at, extra]);
 
   if (!setup) return <div className="muted">Preparing session…</div>;
   if (!setup.queue.length)

@@ -458,6 +458,20 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
             )}
             {message && <span className="badge good">{message}</span>}
             <button
+              className="small blue"
+              disabled={!inRep || (cursor === 0 && graph.size === 0)}
+              onClick={() => navigate('train', { rep: rep.id, mode: 'drill', at: key, t: String(Date.now()) })}
+              title={
+                inRep
+                  ? cursor === 0
+                    ? 'Train your whole repertoire now (learned and new moves, ignoring due dates)'
+                    : 'Train this line and everything after it now (learned and new moves, ignoring due dates)'
+                  : 'Add this line to your repertoire first'
+              }
+            >
+              Train this line
+            </button>
+            <button
               className="small"
               disabled={!biggestGap}
               onClick={jumpToBiggestGap}
