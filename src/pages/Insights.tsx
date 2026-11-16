@@ -10,7 +10,7 @@ import { computeInsights, type LineInsight } from '../lib/insights';
 import { analyzeGame } from '../lib/prep';
 import { difficultyLabel, formatInterval } from '../lib/srs';
 import { formatLine } from '../lib/chess';
-import { ColorPill, Empty, Stat } from '../components/ui';
+import { ColorPill, Empty, Stat, TableWrap } from '../components/ui';
 import { href, navigate } from '../router';
 
 export function InsightsPage({ route }: PageProps) {
@@ -47,7 +47,7 @@ function MasteryBar({ value }: { value: number | undefined }) {
   if (value === undefined) return <span className="muted small">not learned</span>;
   return (
     <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
-      <span style={{ width: 60, height: 8, background: 'var(--bg2)', borderRadius: 4, overflow: 'hidden', display: 'inline-block' }}>
+      <span className="hide-sm" style={{ width: 60, height: 8, background: 'var(--bg2)', borderRadius: 4, overflow: 'hidden', display: 'inline-block' }}>
         <span style={{ display: 'block', height: '100%', width: `${value}%`, background: masteryColor(value) }} />
       </span>
       <b style={{ color: masteryColor(value), minWidth: 24 }}>{value}</b>
@@ -126,24 +126,26 @@ function InsightsView({ repId }: { repId: string }) {
       <div className="panel">
         <h2>Lines</h2>
         {!t.learned && <div className="note">Learn some moves first — mastery appears once you've trained them.</div>}
-        <table className="data">
-          <thead>
-            <tr>
-              <th>Line</th>
-              <th className="num">Learned</th>
-              <th className="num">Accuracy</th>
-              <th className="num">Recall</th>
-              <th className="num" title="Times you left prep here in real games">Slips</th>
-              <th>Mastery</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {insights.lines.map((l) => (
-              <LineRow key={l.id} line={l} depth={0} repId={repId} defaultOpen />
-            ))}
-          </tbody>
-        </table>
+        <TableWrap>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Line</th>
+                <th className="num hide-sm">Learned</th>
+                <th className="num hide-sm">Accuracy</th>
+                <th className="num hide-sm">Recall</th>
+                <th className="num hide-sm" title="Times you left prep here in real games">Slips</th>
+                <th>Mastery</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {insights.lines.map((l) => (
+                <LineRow key={l.id} line={l} depth={0} repId={repId} defaultOpen />
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
       </div>
 
       <div className="panel">
@@ -151,17 +153,18 @@ function InsightsView({ repId }: { repId: string }) {
         {learnedMoves.length === 0 ? (
           <Empty>Nothing learned yet.</Empty>
         ) : (
+          <TableWrap>
           <table className="data">
             <thead>
               <tr>
                 <th>Position</th>
-                <th>Your move</th>
-                <th>Difficulty</th>
-                <th className="num">Accuracy</th>
-                <th className="num">Recall</th>
-                <th className="num">Slips</th>
+                <th>Move</th>
+                <th className="hide-sm">Difficulty</th>
+                <th className="num hide-sm">Accuracy</th>
+                <th className="num hide-sm">Recall</th>
+                <th className="num hide-sm">Slips</th>
                 <th>Mastery</th>
-                <th>Next</th>
+                <th className="hide-sm">Next</th>
                 <th />
               </tr>
             </thead>
@@ -170,24 +173,24 @@ function InsightsView({ repId }: { repId: string }) {
                 const d = difficultyLabel(m.card);
                 return (
                   <tr key={m.move.id}>
-                    <td className="mono small">{formatLine(m.path) || 'Start'}</td>
+                    <td className="mono small line-cell">{formatLine(m.path) || 'Start'}</td>
                     <td>
                       <b style={{ color: 'var(--mine)' }}>{m.move.san}</b>
                     </td>
-                    <td>
+                    <td className="hide-sm">
                       <span className={`badge ${d === 'hard' ? 'bad' : d === 'medium' ? 'due' : 'good'}`} title={`FSRS difficulty ${m.card.difficulty.toFixed(1)} / 10`}>
                         {d}
                       </span>
                     </td>
-                    <td className="num" title={`${m.attempts - m.misses}/${m.attempts} right first time`}>
+                    <td className="num hide-sm" title={`${m.attempts - m.misses}/${m.attempts} right first time`}>
                       {pct(m.accuracy)}
                     </td>
-                    <td className="num">{pct(m.recall)}</td>
-                    <td className="num">{m.gameSlips || ''}</td>
+                    <td className="num hide-sm">{pct(m.recall)}</td>
+                    <td className="num hide-sm">{m.gameSlips || ''}</td>
                     <td>
                       <MasteryBar value={m.mastery} />
                     </td>
-                    <td className="small muted">{m.card.due <= Date.now() ? 'due' : formatInterval(m.card.due - Date.now())}</td>
+                    <td className="small muted hide-sm">{m.card.due <= Date.now() ? 'due' : formatInterval(m.card.due - Date.now())}</td>
                     <td>
                       <div className="list-actions">
                         <button className="small primary" onClick={() => navigate('train', { rep: repId, mode: 'drill', under: m.move.id, t: String(Date.now()) })}>
@@ -203,6 +206,7 @@ function InsightsView({ repId }: { repId: string }) {
               })}
             </tbody>
           </table>
+          </TableWrap>
         )}
       </div>
     </>
@@ -216,7 +220,7 @@ function LineRow({ line, depth, repId, defaultOpen = false }: { line: LineInsigh
   return (
     <>
       <tr>
-        <td style={{ paddingLeft: 8 + depth * 18 }}>
+        <td className="line-cell" style={{ paddingLeft: 4 + depth * 14 }}>
           <span className="row" style={{ gap: 4, flexWrap: 'nowrap' }}>
             <button className="ghost small" style={{ visibility: hasKids ? 'visible' : 'hidden', width: 22 }} onClick={() => setOpen(!open)}>
               {open ? '▾' : '▸'}
@@ -227,12 +231,12 @@ function LineRow({ line, depth, repId, defaultOpen = false }: { line: LineInsigh
             </span>
           </span>
         </td>
-        <td className="num">
+        <td className="num hide-sm">
           {line.learned}/{line.moves}
         </td>
-        <td className="num">{pct(line.accuracy)}</td>
-        <td className="num">{pct(line.recall)}</td>
-        <td className="num">{line.gameSlips || ''}</td>
+        <td className="num hide-sm">{pct(line.accuracy)}</td>
+        <td className="num hide-sm">{pct(line.recall)}</td>
+        <td className="num hide-sm">{line.gameSlips || ''}</td>
         <td>
           <MasteryBar value={line.mastery} />
         </td>

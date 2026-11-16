@@ -79,47 +79,31 @@ function TrainChooser() {
           Only training positions reached in at least 1 in {settings.oneInN} games (repertoires with a Coverage run). Change this in Settings.
         </div>
       )}
-      <div className="panel">
-        <table className="data">
-          <thead>
-            <tr>
-              <th>Repertoire</th>
-              <th>Side</th>
-              <th className="num">Due</th>
-              <th className="num">New</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>
-                <b>All repertoires</b>
-              </td>
-              <td />
-              <td className="num">{all.due}</td>
-              <td className="num">{all.fresh}</td>
-              <td>
-                <SessionButtons rep="all" due={all.due} fresh={Math.min(all.fresh, newLeft)} unlearned={all.fresh} />
-              </td>
-            </tr>
-            {reps.map((r) => {
-              const c = countsFor([r.id]);
-              return (
-                <tr key={r.id}>
-                  <td>{r.name}</td>
-                  <td>
-                    <ColorPill color={r.color} />
-                  </td>
-                  <td className="num">{c.due}</td>
-                  <td className="num">{c.fresh}</td>
-                  <td>
-                    <SessionButtons rep={r.id} due={c.due} fresh={Math.min(c.fresh, newLeft)} unlearned={c.fresh} />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="panel list">
+        <div className="list-item">
+          <div className="list-main">
+            <div className="list-head">
+              <span className="list-title">All repertoires</span>
+            </div>
+            <Counts due={all.due} fresh={all.fresh} />
+          </div>
+          <SessionButtons rep="all" due={all.due} fresh={Math.min(all.fresh, newLeft)} unlearned={all.fresh} />
+        </div>
+        {reps.map((r) => {
+          const c = countsFor([r.id]);
+          return (
+            <div key={r.id} className="list-item">
+              <div className="list-main">
+                <div className="list-head">
+                  <ColorPill color={r.color} />
+                  <span className="list-title">{r.name}</span>
+                </div>
+                <Counts due={c.due} fresh={c.fresh} />
+              </div>
+              <SessionButtons rep={r.id} due={c.due} fresh={Math.min(c.fresh, newLeft)} unlearned={c.fresh} />
+            </div>
+          );
+        })}
       </div>
       <p className="muted small">
         <b>Learn</b> shows you new moves of your repertoire line by line, then has you replay the line from memory. <b>Review</b> quizzes
@@ -132,9 +116,19 @@ function TrainChooser() {
 
 const EXTRA_BATCH = 10;
 
+function Counts({ due, fresh }: { due: number; fresh: number }) {
+  if (!due && !fresh) return <div className="list-meta">Nothing due, nothing new</div>;
+  return (
+    <div className="list-meta">
+      {due > 0 && <span className="badge due">{due} due</span>}
+      {fresh > 0 && <span className="badge new">{fresh} new</span>}
+    </div>
+  );
+}
+
 function SessionButtons({ rep, due, fresh, unlearned }: { rep: string; due: number; fresh: number; unlearned: number }) {
   return (
-    <div className="list-actions" style={{ justifyContent: 'flex-end' }}>
+    <div className="list-buttons">
       <button className="primary small" disabled={!due} onClick={() => navigate('train', { rep, mode: 'review', t: String(Date.now()) })}>
         Review {due || ''}
       </button>

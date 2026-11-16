@@ -7,7 +7,7 @@ import { moveGames, type MoveStat, type PositionStats } from '../lib/types';
 import { turnOfKey, type Color } from '../lib/chess';
 import { useRecentGames } from '../hooks';
 import { GameRangeSelect } from './GameRangeSelect';
-import { WdlBar } from './ui';
+import { TableWrap, WdlBar } from './ui';
 import { oneInNumber } from '../lib/coverage';
 import { evalScore, evaluateMoves, formatEval, type EvalMap } from '../services/engine';
 
@@ -170,6 +170,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
         <div className="muted">{tab === 'mine' ? 'You have not reached this position in your imported games.' : 'No games in this position.'}</div>
       )}
       {rows.length > 0 && (
+        <TableWrap>
         <table className="data">
           <thead>
             <tr>
@@ -258,6 +259,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
             })}
           </tbody>
         </table>
+        </TableWrap>
       )}
       {hiddenCount > 0 && (
         <button className="small ghost show-all" onClick={() => setShowAll(true)}>
