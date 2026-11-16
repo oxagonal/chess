@@ -5,6 +5,7 @@ import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { getSettings, useSettings, type AppSettings } from '../db/settings';
 import { gradeCard } from '../db/repertoire';
+import { MoveNote } from '../components/MoveNote';
 import { Board, type Arrow } from '../components/Board';
 import { ColorPill, Empty, ProgressBar, Stat } from '../components/ui';
 import { useCards, useRepertoires, startOfToday } from '../hooks';
@@ -346,6 +347,10 @@ function Session({ setup }: { setup: SessionSetup }) {
   const rep = line ? reps.get(line.repId) : undefined;
   const graph = line ? graphs.get(line.repId) : undefined;
 
+  // The move you last missed — its note opens for reading/editing once the answer is revealed.
+  const [noteMove, setNoteMove] = useState<{ id: string; san: string } | undefined>();
+  useEffect(() => setNoteMove(undefined), [line]);
+
   const onMove = async (uci: string) => {
     if (!line || !step || step.kind === 'auto') return;
     const r = playUci(pos, uci);
@@ -364,6 +369,7 @@ function Session({ setup }: { setup: SessionSetup }) {
         return;
       }
       const failed = wrong > 0 || hint;
+      if (failed) setNoteMove({ id: expected.id, san: expected.san });
       pendingRef.current.delete(expected.id);
       setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (failed ? 0 : 1), failed: s.failed + (failed ? 1 : 0) }));
       const body = (interval?: string) => (
@@ -394,12 +400,16 @@ function Session({ setup }: { setup: SessionSetup }) {
     }
     const w = wrong + 1;
     setWrong(w);
-    if (w >= 2) setHint(true);
+    if (w >= 2) {
+      setHint(true);
+      setNoteMove({ id: expected.id, san: expected.san });
+    }
     setFeedback({ kind: 'bad', text: <>✗ {r.san} is not your prep. {w >= 2 ? 'The arrow shows your move.' : 'Try again.'}</> });
   };
 
   const showAnswer = () => {
     setHint(true);
+    if (step && step.kind !== 'auto') setNoteMove({ id: step.move.id, san: step.move.san });
     setWrong((w) => Math.max(1, w));
   };
 
@@ -526,6 +536,8 @@ function Session({ setup }: { setup: SessionSetup }) {
             ✓ {stats.correct} · ✗ {stats.failed}
           </span>
         </div>
+
+        {noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} title={`Note on ${noteMove.san} (missed)`} />}
       </div>
     </div>
   );

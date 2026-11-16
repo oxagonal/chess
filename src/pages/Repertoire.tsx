@@ -11,12 +11,12 @@ import {
   fetchLichessStudy,
   importPgn,
   renameRepertoire,
-  setMoveComment,
 } from '../db/repertoire';
 import { useSettings, updateSettings } from '../db/settings';
 import { useCards, useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
+import { MoveNote } from '../components/MoveNote';
 import { ColorPill, Empty, LineView } from '../components/ui';
 import { href, navigate } from '../router';
 import { formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
@@ -561,7 +561,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           reachHere={reach.loading ? undefined : reach.prob}
         />
 
-        {currentEdge && <CommentEditor key={currentEdge.id} id={currentEdge.id} initial={currentEdge.comment ?? ''} san={currentEdge.san} />}
+        {currentEdge && <MoveNote key={currentEdge.id} id={currentEdge.id} san={currentEdge.san} />}
       </div>
     </div>
   );
@@ -572,22 +572,6 @@ function CardBadge({ state, due }: { state: number; due: number }) {
   if (due <= Date.now()) return <span className="badge due">due</span>;
   const days = Math.round((due - Date.now()) / 86_400_000);
   return <span className="badge" title={`Next review ${new Date(due).toLocaleString()}`}>{days < 1 ? '<1d' : `${days}d`}</span>;
-}
-
-function CommentEditor({ id, initial, san }: { id: string; initial: string; san: string }) {
-  const [text, setText] = useState(initial);
-  return (
-    <div className="panel">
-      <h3>Note on {san}</h3>
-      <textarea
-        rows={2}
-        value={text}
-        placeholder="Why this move? Plans, traps, ideas… (shown during training)"
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => text !== initial && setMoveComment(id, text)}
-      />
-    </div>
-  );
 }
 
 function countBelow(graph: RepGraph, moveId: string): number {

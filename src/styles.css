@@ -203,3 +203,8 @@ table.data tr.selected td { background: #2f3a2a; }
 .hero { padding: 24px; background: linear-gradient(135deg, #263022, #1f2730); border-radius: 12px; border: 1px solid var(--border); }
 .checklist li { margin: 4px 0; }
 .checklist li.done { color: var(--muted); text-decoration: line-through; }
+
+/* Inline note editor (games list) */
+.movenote.compact { padding: 4px 0 8px; }
+.movenote.compact h3 { font-size: 13px; }
+.movenote textarea { width: 100%; box-sizing: border-box; }

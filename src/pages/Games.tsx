@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { Chess } from 'chessops/chess';
 import type { PageProps } from '../App';
@@ -12,6 +12,7 @@ import { formatLine, playSan, startPos } from '../lib/chess';
 import type { GameSource, StoredGame } from '../lib/types';
 import type { ImportProgress } from '../lib/importers/common';
 import { Board, type Arrow } from '../components/Board';
+import { MoveNote } from '../components/MoveNote';
 import { ColorPill, Empty, LineView, Stat, fmtDate, timeAgo } from '../components/ui';
 import { href, navigate } from '../router';
 import { rangeCutoff } from '../lib/gameRange';
@@ -134,6 +135,7 @@ function GamesOverview() {
   const [kind, setKind] = useState<'all' | PrepKind>('all');
   const [limit, setLimit] = useState(100);
   const [applyMsg, setApplyMsg] = useState<string | null>(null);
+  const [openNote, setOpenNote] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!games) return [];
@@ -249,7 +251,8 @@ function GamesOverview() {
                   </thead>
                   <tbody>
                     {summary.forgotten.slice(0, 25).map((f) => (
-                      <tr key={f.repId + f.key}>
+                      <Fragment key={f.repId + f.key}>
+                      <tr>
                         <td className="mono small">{formatLine(pathOf(f.repId, f.key)) || 'Start'}</td>
                         <td>
                           <b style={{ color: 'var(--mine)' }}>{f.expected.join(', ')}</b>
@@ -265,12 +268,31 @@ function GamesOverview() {
                             <button className="small primary" onClick={() => drill(f.repId, f.key)}>
                               Drill
                             </button>
+                            <button
+                              className={`small ${openNote === f.repId + f.key ? 'blue' : ''}`}
+                              title="Read or edit the note on your prepared move"
+                              onClick={() => setOpenNote(openNote === f.repId + f.key ? null : f.repId + f.key)}
+                            >
+                              Note
+                            </button>
                             <a className="btn small" href={href(`games/${encodeURIComponent(f.gameIds[0])}`)}>
                               Game
                             </a>
                           </div>
                         </td>
                       </tr>
+                      {openNote === f.repId + f.key && (
+                        <tr>
+                          <td colSpan={5}>
+                            {(graphOf(f.repId)?.graph.childrenOf(f.key) ?? [])
+                              .filter((m) => m.mine)
+                              .map((m) => (
+                                <MoveNote key={m.id} id={m.id} san={m.san} compact autoFocus />
+                              ))}
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -522,6 +544,10 @@ function GameViewer({ id }: { id: string }) {
             )}
           </div>
         </div>
+
+        {r.kind === 'you-deviated' &&
+          r.key &&
+          graph?.childrenOf(r.key).filter((m) => m.mine).map((m) => <MoveNote key={m.id} id={m.id} san={m.san} title={`Note on ${m.san} (your prep)`} />)}
 
         <div className="panel">
           <h3>Moves</h3>
