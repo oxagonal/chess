@@ -190,11 +190,14 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   {showReach && <td className="num">{stat && total ? <b>{n ? oneIn((reachHere! * n) / total) : 'never'}</b> : '—'}</td>}
                   {settings.engineEnabled && (
                     <td
-                      className="num mono small"
-                      title={ev ? `${ev.source === 'cloud' ? 'Lichess cloud' : 'Stockfish'} depth ${ev.depth}` : 'Not evaluated'}
-                      style={{ color: !ev ? 'var(--muted)' : loss >= 100 ? 'var(--bad)' : loss >= 40 ? 'var(--warn)' : loss <= 0 ? 'var(--good)' : undefined, fontWeight: ev && loss <= 0 ? 700 : 400 }}
+                      className="num"
+                      title={ev ? `${ev.source === 'cloud' ? 'Lichess cloud' : 'Stockfish'} depth ${ev.depth}${loss <= 0 ? ' · best move' : ''}` : 'Not evaluated'}
                     >
-                      {ev ? formatEval(ev) : '…'}
+                      {ev ? (
+                        <span className={`evalbox ${evalScore(ev) < 0 ? 'black' : 'white'}${loss <= 0 ? ' best' : ''}`}>{formatEval(ev)}</span>
+                      ) : (
+                        <span className="muted">…</span>
+                      )}
                     </td>
                   )}
                   <td>{stat ? <WdlBar white={stat.white} draws={stat.draws} black={stat.black} /> : <span className="muted small">not in database</span>}</td>

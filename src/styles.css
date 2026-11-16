@@ -169,6 +169,20 @@ table.data tr.selected td { background: #2f3a2a; }
 
 .explorer table td { padding: 4px 6px; }
 .explorer tr.inrep td { background: rgba(255, 255, 255, 0.035); }
+/* Engine eval: white box when White is better or equal, black box when Black is better. */
+.evalbox {
+  display: inline-block;
+  min-width: 48px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  text-align: center;
+  border: 1px solid #888;
+}
+.evalbox.white { background: #fff; color: #000; }
+.evalbox.black { background: #000; color: #fff; }
+.evalbox.best { font-weight: 700; }
 .explorer tr.inrep.mine td:first-child { color: var(--mine); }
 .explorer tr.inrep.theirs td:first-child { color: var(--theirs); }
 .explorer .explorer-comment { font-weight: 400; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
