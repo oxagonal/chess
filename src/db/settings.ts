@@ -63,7 +63,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 const KEY = 'settings';
 
 /** Range of the "study positions seen in at least 1 in N games" slider. */
-export const ONE_IN_N_MIN = 150;
+export const ONE_IN_N_MIN = 100;
 export const ONE_IN_N_MAX = 1000;
 
 /** Named depths, matching the scale Chessbook uses. */
