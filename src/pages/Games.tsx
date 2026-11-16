@@ -14,6 +14,8 @@ import type { ImportProgress } from '../lib/importers/common';
 import { Board, type Arrow } from '../components/Board';
 import { ColorPill, Empty, LineView, Stat, fmtDate, timeAgo } from '../components/ui';
 import { href, navigate } from '../router';
+import { rangeCutoff } from '../lib/gameRange';
+import { GameRangeSelect } from '../components/GameRangeSelect';
 
 export function GamesPage({ route }: PageProps) {
   const id = route.path[1];
@@ -128,14 +130,14 @@ function GamesOverview() {
   const [source, setSource] = useState<'all' | GameSource>('all');
   const [color, setColor] = useState<'all' | 'white' | 'black'>('all');
   const [tc, setTc] = useState('all');
-  const [period, setPeriod] = useState('all');
+  const { gameRange } = useSettings();
   const [kind, setKind] = useState<'all' | PrepKind>('all');
   const [limit, setLimit] = useState(100);
   const [applyMsg, setApplyMsg] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!games) return [];
-    const cutoff = period === 'all' ? 0 : Date.now() - Number(period) * 86_400_000;
+    const cutoff = rangeCutoff(gameRange);
     return games.filter(
       (g) =>
         (source === 'all' || g.source === source) &&
@@ -143,7 +145,7 @@ function GamesOverview() {
         (tc === 'all' || g.timeClass === tc) &&
         g.playedAt >= cutoff,
     );
-  }, [games, source, color, tc, period]);
+  }, [games, source, color, tc, gameRange]);
   const summary = useMemo(() => summarize(filtered, results), [filtered, results]);
   const shown = filtered.filter((g) => kind === 'all' || results.get(g.id)?.kind === kind);
 
@@ -198,7 +200,7 @@ function GamesOverview() {
               <option value="chesscom">Chess.com</option>
             </select>
             <select value={color} onChange={(e) => setColor(e.target.value as never)}>
-              <option value="all">Both colours</option>
+              <option value="all">Both colors</option>
               <option value="white">As White</option>
               <option value="black">As Black</option>
             </select>
@@ -210,13 +212,7 @@ function GamesOverview() {
                 </option>
               ))}
             </select>
-            <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-              <option value="all">All time</option>
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
-              <option value="90">Last 90 days</option>
-              <option value="365">Last year</option>
-            </select>
+            <GameRangeSelect />
           </div>
 
           <div className="grid3">

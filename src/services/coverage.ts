@@ -7,6 +7,7 @@ import { bandsForRating, toLichessRating } from '../lib/ratings';
 import { moveGames, type CoverageResult, type PositionStats } from '../lib/types';
 import { turnOfKey, type Color } from '../lib/chess';
 import { estimateDepth, type DepthProfile } from '../lib/depth';
+import { gamesInRange, rangeLabel } from '../lib/gameRange';
 import type { RepGraph } from '../lib/graph';
 import { fetchExplorer, paramsLabel, type ExplorerParams, type Priority } from './explorer';
 
@@ -28,7 +29,7 @@ export function sourceLabel(s: AppSettings): string {
     case 'masters':
       return 'Masters database';
     case 'mygames':
-      return 'Your opponents (imported games)';
+      return `Your opponents (${rangeLabel(s.gameRange).toLowerCase()})`;
   }
 }
 
@@ -68,7 +69,7 @@ export type StatsProvider = (key: string) => Promise<PositionStats | undefined>;
 export async function statsProvider(s: AppSettings, color: Color, signal?: AbortSignal, priority: Priority = 'high'): Promise<StatsProvider> {
   if (s.probabilitySource === 'mygames') {
     const games = await db.games.where('userColor').equals(color).toArray();
-    const idx = new GameStatsIndex(games);
+    const idx = new GameStatsIndex(gamesInRange(games, s.gameRange));
     return async (key) => idx.get(key);
   }
   const params = s.probabilitySource === 'masters' ? MASTERS : lichessParams(s);

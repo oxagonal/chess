@@ -27,7 +27,7 @@ export function formatEval(e: MoveEval): string {
   return `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}`;
 }
 
-/** Better for the side that just moved = higher. Used to rank/colour evals. */
+/** Better for the side that just moved = higher. Used to rank/color evals. */
 export function evalScore(e: MoveEval): number {
   if (e.mate !== undefined) return e.mate > 0 ? 100000 - e.mate : -100000 - e.mate;
   return e.cp ?? 0;

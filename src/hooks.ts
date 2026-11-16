@@ -4,6 +4,8 @@ import { db } from './db/db';
 import { RepGraph } from './lib/graph';
 import type { Repertoire, RepMove } from './lib/types';
 import type { RepWithGraph } from './lib/prep';
+import { useSettings } from './db/settings';
+import { rangeCutoff } from './lib/gameRange';
 
 export function useRepertoires(): Repertoire[] | undefined {
   return useLiveQuery(() => db.repertoires.orderBy('color').toArray(), []);
@@ -44,6 +46,15 @@ export function useCoverage(repId: string | undefined) {
 
 export function useGames() {
   return useLiveQuery(() => db.games.orderBy('playedAt').reverse().toArray(), []);
+}
+
+/** Your games within the shared date filter (Settings → gameRange), newest first. */
+export function useRecentGames() {
+  const { gameRange, loaded } = useSettings();
+  return useLiveQuery(
+    async () => (loaded ? db.games.where('playedAt').aboveOrEqual(rangeCutoff(gameRange)).reverse().sortBy('playedAt') : undefined),
+    [gameRange, loaded],
+  );
 }
 
 export function startOfToday(): number {

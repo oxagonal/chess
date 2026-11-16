@@ -20,7 +20,7 @@ interface BoardProps {
   arrows?: Arrow[];
   /** Called with a UCI string (promotion suffix included). */
   onMove?: (uci: string) => void;
-  /** Coloured flash around the board for training feedback. */
+  /** Colored flash around the board for training feedback. */
   flash?: 'good' | 'bad' | 'hint' | null;
   /** Square to mark (e.g. where you deviated). */
   markSquare?: string;

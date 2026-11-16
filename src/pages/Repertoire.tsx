@@ -68,8 +68,8 @@ function RepertoireList() {
           </button>
         </div>
         <p className="muted small" style={{ marginTop: 8 }}>
-          Tip: keep one repertoire per colour, or split them (e.g. Black vs 1.e4 and Black vs 1.d4) — game analysis checks all repertoires
-          of the colour you played.
+          Tip: keep one repertoire per color, or split them (e.g. Black vs 1.e4 and Black vs 1.d4) — game analysis checks all repertoires
+          of the color you played.
         </p>
       </div>
 

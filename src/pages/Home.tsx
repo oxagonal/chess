@@ -2,7 +2,9 @@ import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { useSettings } from '../db/settings';
-import { useAllGraphs, useCards, useGames, useRepertoires, startOfToday } from '../hooks';
+import { useAllGraphs, useCards, useRecentGames, useRepertoires, startOfToday } from '../hooks';
+import { rangeLabel } from '../lib/gameRange';
+import { GameRangeSelect } from '../components/GameRangeSelect';
 import { analyzeGame, summarize } from '../lib/prep';
 import { isDue, isMature, isNew } from '../lib/srs';
 import { ColorPill, Stat } from '../components/ui';
@@ -11,7 +13,8 @@ import { href } from '../router';
 export function HomePage() {
   const reps = useRepertoires();
   const cards = useCards();
-  const games = useGames();
+  const games = useRecentGames();
+  const allGameCount = useLiveQuery(() => db.games.count(), []);
   const graphs = useAllGraphs();
   const settings = useSettings();
   const reviewsToday = useLiveQuery(() => db.reviewLog.where('reviewedAt').aboveOrEqual(startOfToday()).count(), []);
@@ -19,9 +22,8 @@ export function HomePage() {
 
   const recent = useMemo(() => {
     if (!games || !graphs) return undefined;
-    const last = games.slice(0, 30);
-    const results = new Map(last.map((g) => [g.id, analyzeGame(g, graphs)]));
-    return summarize(last, results);
+    const results = new Map(games.map((g) => [g.id, analyzeGame(g, graphs)]));
+    return summarize(games, results);
   }, [games, graphs]);
 
   if (!reps || !cards) return null;
@@ -36,7 +38,7 @@ export function HomePage() {
     { done: reps.length > 0, text: <>Create a repertoire and add lines — or import a PGN / Lichess study (<a href={href('repertoire')}>Repertoire</a>)</> },
     { done: learned > 0, text: <>Learn your first moves (<a href={href('train')}>Train</a>)</> },
     { done: (coverageCount ?? 0) > 0, text: <>Run <a href={href('coverage')}>Coverage</a> to find the positions you'll meet in 1 in {settings.oneInN} games</> },
-    { done: (games?.length ?? 0) > 0, text: <>Import your games to see where you forget your prep (<a href={href('games')}>Games</a>)</> },
+    { done: (allGameCount ?? 0) > 0, text: <>Import your games to see where you forget your prep (<a href={href('games')}>Games</a>)</> },
   ];
   const allDone = steps.every((s) => s.done);
 
@@ -64,7 +66,7 @@ export function HomePage() {
         <Stat value={learned} label="Moves learned" />
         <Stat value={mature} label="Mature (21d+)" hint="Moves whose review interval is three weeks or more" />
         <Stat value={reviewsToday ?? 0} label="Reviews today" />
-        {recent && <Stat value={recent.byKind['you-deviated']} label="Forgot prep (last 30 games)" />}
+        {recent && <Stat value={recent.byKind['you-deviated']} label={`Forgot prep (${rangeLabel(settings.gameRange).toLowerCase()})`} />}
       </div>
 
       {!allDone && (
@@ -106,13 +108,18 @@ export function HomePage() {
 
         <div className="panel">
           <h2>Recent games vs your prep</h2>
-          {!recent || recent.games === 0 ? (
+          {!allGameCount ? (
             <p className="muted">
               No games imported. <a href={href('games')}>Sync games</a>
             </p>
+          ) : !recent || recent.games === 0 ? (
+            <div className="row">
+              <p className="muted">No games in this period.</p>
+              <GameRangeSelect />
+            </div>
           ) : (
             <>
-              <p className="muted small">Last {recent.games} games</p>
+              <GameRangeSelect count={recent.games} />
               <div className="grid3">
                 <Stat value={recent.byKind['you-deviated']} label="Forgot prep" />
                 <Stat value={recent.byKind['opponent-deviated']} label="Opponent surprise" />

@@ -68,7 +68,7 @@ const KIND_RANK: Record<PrepKind, number> = {
   'no-repertoire': 0,
 };
 
-/** Analyse one game against every repertoire for the colour you played; the deepest match wins. */
+/** Analyse one game against every repertoire for the color you played; the deepest match wins. */
 export function analyzeGame(game: StoredGame, reps: RepWithGraph[]): PrepResult {
   const candidates = reps.filter((r) => r.rep.color === game.userColor && r.graph.size > 0);
   if (!candidates.length) return { gameId: game.id, kind: 'no-repertoire', bookPlies: 0 };

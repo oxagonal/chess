@@ -3,6 +3,7 @@ import { db } from './db';
 import type { ProbabilitySource } from '../lib/types';
 import type { RatingPool } from '../lib/ratings';
 import type { TimeClass } from '../lib/importers/common';
+import type { GameRange } from '../lib/gameRange';
 
 export interface AppSettings {
   lichessUsername: string;
@@ -34,6 +35,8 @@ export interface AppSettings {
   /** Show Stockfish evaluations next to each move in the builder. */
   engineEnabled: boolean;
   engineDepth: number;
+  /** Which of your games count everywhere (Games, Insights, Home, "My games" explorer, coverage from your opponents). */
+  gameRange: GameRange;
 }
 
 function yearAgo(): string {
@@ -63,6 +66,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,
+  gameRange: '1m',
 };
 
 const KEY = 'settings';

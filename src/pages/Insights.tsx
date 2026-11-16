@@ -2,10 +2,12 @@ import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
-import { useAllGraphs, useCards, useGames, useRepertoires, useRepGraph } from '../hooks';
+import { useAllGraphs, useCards, useRecentGames, useRepertoires, useRepGraph } from '../hooks';
+import { useSettings } from '../db/settings';
+import { rangeLabel } from '../lib/gameRange';
+import { GameRangeSelect } from '../components/GameRangeSelect';
 import { computeInsights, type LineInsight } from '../lib/insights';
 import { analyzeGame } from '../lib/prep';
-import type { StoredGame } from '../lib/types';
 import { difficultyLabel, formatInterval } from '../lib/srs';
 import { formatLine } from '../lib/chess';
 import { ColorPill, Empty, Stat } from '../components/ui';
@@ -59,11 +61,9 @@ function InsightsView({ repId }: { repId: string }) {
   const { rep, graph } = useRepGraph(repId);
   const cards = useCards(repId);
   const logs = useLiveQuery(() => db.reviewLog.where('repId').equals(repId).toArray(), [repId]);
-  const games = useGames();
+  const recentGames = useRecentGames();
   const allGraphs = useAllGraphs();
-
-  const [range, setRange] = useState<GameRange>('default');
-  const recentGames = useMemo(() => (games ? filterGames(games, range) : undefined), [games, range]);
+  const { gameRange } = useSettings();
 
   const fromGames = useMemo(() => {
     const slips = new Map<string, number>();
@@ -114,22 +114,13 @@ function InsightsView({ repId }: { repId: string }) {
         <Stat value={pct(insights.recentAccuracy)} label="Accuracy (30 days)" hint={`${insights.recentAttempts} training attempts in the last 30 days`} />
         <Stat value={pct(t.recall)} label="Recall now" hint="Average chance you'd remember each learned move today" />
         <Stat value={`${t.learned}/${t.moves}`} label="Moves learned" />
-        <Stat value={t.gameSlips} label="Slips in games" hint={`Times you left your prep in real games (${rangeSummary(range, recentGames)})`} />
-        <Stat value={t.surprises} label="Opponent surprises" hint={`Games where the opponent left your repertoire (${rangeSummary(range, recentGames)})`} />
+        <Stat value={t.gameSlips} label="Slips in games" hint={`Times you left your prep in real games (${rangeLabel(gameRange).toLowerCase()})`} />
+        <Stat value={t.surprises} label="Opponent surprises" hint={`Games where the opponent left your repertoire (${rangeLabel(gameRange).toLowerCase()})`} />
       </div>
 
       <div className="row small">
-        <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <span>Games counted for slips &amp; surprises</span>
-          <select value={range} onChange={(e) => setRange(e.target.value as GameRange)}>
-            <option value="default">Last month or last 500 games (whichever is more)</option>
-            <option value="7d">Last 7 days</option>
-            <option value="3m">Last 3 months</option>
-            <option value="1y">Last year</option>
-            <option value="all">All time</option>
-          </select>
-        </label>
-        <span className="muted">{rangeSummary(range, recentGames)} — older games may predate changes to your repertoire.</span>
+        <span>Games counted for slips &amp; surprises</span>
+        <GameRangeSelect count={recentGames?.length} />
       </div>
 
       <div className="panel">
@@ -266,38 +257,3 @@ function LineRow({ line, depth, repId, defaultOpen = false }: { line: LineInsigh
   );
 }
 
-/* ---------------------------------------------------------- game range */
-
-type GameRange = 'default' | '7d' | '3m' | '1y' | 'all';
-const DAY = 86_400_000;
-
-/**
- * Games to judge your prep by. Repertoires change, so old games can flag "slips" from lines you no
- * longer play. Default: the last month or the last 500 games, whichever covers more games.
- */
-function filterGames(games: StoredGame[], range: GameRange, now = Date.now()): StoredGame[] {
-  const byDate = (days: number) => games.filter((g) => g.playedAt >= now - days * DAY);
-  switch (range) {
-    case '7d':
-      return byDate(7);
-    case '3m':
-      return byDate(91);
-    case '1y':
-      return byDate(365);
-    case 'all':
-      return games;
-    case 'default': {
-      const month = byDate(31);
-      if (month.length >= 500) return month;
-      return [...games].sort((a, b) => b.playedAt - a.playedAt).slice(0, 500);
-    }
-  }
-}
-
-function rangeSummary(range: GameRange, games: StoredGame[] | undefined): string {
-  if (!games) return '';
-  const n = `${games.length} game${games.length === 1 ? '' : 's'}`;
-  if (range !== 'default' || !games.length) return n;
-  const oldest = Math.min(...games.map((g) => g.playedAt));
-  return `${n} since ${new Date(oldest).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
-}
