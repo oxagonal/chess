@@ -31,6 +31,9 @@ export interface AppSettings {
   autoPlayDelayMs: number;
   /** Builder: save every move played on the board straight into the repertoire. */
   builderAutoAdd: boolean;
+  /** Show Stockfish evaluations next to each move in the builder. */
+  engineEnabled: boolean;
+  engineDepth: number;
 }
 
 function yearAgo(): string {
@@ -58,6 +61,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   trainOnlyLikely: false,
   autoPlayDelayMs: 350,
   builderAutoAdd: false,
+  engineEnabled: true,
+  engineDepth: 18,
 };
 
 const KEY = 'settings';

@@ -8,6 +8,7 @@ import { turnOfKey, type Color } from '../lib/chess';
 import { useGames } from '../hooks';
 import { WdlBar } from './ui';
 import { oneIn } from '../lib/coverage';
+import { evalScore, evaluateMoves, formatEval, type EvalMap } from '../services/engine';
 
 type Tab = 'lichess' | 'masters' | 'mine';
 
@@ -17,8 +18,37 @@ export interface SavedMove {
   san: string;
   mine: boolean;
   comment?: string;
+  /** Standard UCI, used for engine evals of saved moves the database doesn't list. */
+  uci?: string;
   /** Extra badges shown in the row (review status, prep score…). */
   extras?: ReactNode;
+}
+
+const MAX_EVAL_MOVES = 10;
+
+function useMoveEvals(key: string, moves: string[], enabled: boolean, depth: number) {
+  const [evals, setEvals] = useState<EvalMap>(new Map());
+  const [status, setStatus] = useState('');
+  const sig = moves.join(',');
+  useEffect(() => {
+    setEvals(new Map());
+    setStatus('');
+    if (!enabled || !moves.length) return;
+    let stop: (() => void) | undefined;
+    // Small delay so stepping quickly through a line doesn't start (and abort) a search per move.
+    const t = setTimeout(() => {
+      stop = evaluateMoves(key, moves, depth, (e, s) => {
+        setEvals(e);
+        setStatus(s.source === 'cloud' ? 'Lichess cloud eval' : s.done ? `Stockfish depth ${depth}` : `Stockfish thinking… depth ${s.depth}`);
+      });
+    }, 200);
+    return () => {
+      clearTimeout(t);
+      stop?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, sig, enabled, depth]);
+  return { evals, status };
 }
 
 interface Props {
@@ -84,6 +114,12 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   const rows: { san: string; stat?: MoveStat; rep?: SavedMove }[] = (data?.moves ?? []).map((m) => ({ san: m.san, stat: m, rep: bySan.get(m.san) }));
   const listed = new Set(rows.map((r) => r.san));
   for (const s of saved) if (!listed.has(s.san)) rows.push({ san: s.san, rep: s });
+  const rowUci = (r: (typeof rows)[number]) => r.stat?.uci ?? r.rep?.uci;
+  // Evaluate the moves people actually play (top of the table) plus everything you've saved.
+  const evalMoves = [...new Set(rows.filter((r, i) => i < MAX_EVAL_MOVES || r.rep).map(rowUci).filter((u): u is string => !!u))];
+  const { evals, status } = useMoveEvals(fenKey, evalMoves, settings.loaded && settings.engineEnabled, settings.engineDepth);
+  const sideToMove: Color = turnOfKey(fenKey);
+  const best = Math.max(...[...evals.values()].map((e) => evalScore(e) * (sideToMove === 'white' ? 1 : -1)));
   return (
     <div className="panel explorer">
       {title && <h3>{title}</h3>}
@@ -121,13 +157,23 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   Reach
                 </th>
               )}
+              {settings.engineEnabled && (
+                <th className="num" title={`Stockfish evaluation after the move (White's point of view). ${status}`}>
+                  Eval
+                </th>
+              )}
               <th>Result</th>
               <th />
             </tr>
           </thead>
           <tbody style={{ opacity: loading ? 0.5 : 1 }}>
-            {rows.map(({ san, stat, rep }) => {
+            {rows.map((row) => {
+              const { san, stat, rep } = row;
               const n = stat ? moveGames(stat) : 0;
+              const uci = rowUci(row);
+              const ev = uci ? evals.get(uci) : undefined;
+              // Loss vs the best move, from the mover's side — highlights mistakes in red.
+              const loss = ev ? best - evalScore(ev) * (sideToMove === 'white' ? 1 : -1) : 0;
               return (
                 <tr key={san} className={`clickable ${rep ? `inrep ${rep.mine ? 'mine' : 'theirs'}` : ''}`} onClick={() => onPlay(san)}>
                   <td>
@@ -142,6 +188,15 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   <td className="num">{stat ? n.toLocaleString() : '—'}</td>
                   <td className="num">{stat && total ? ((n / total) * 100).toFixed(1) : '—'}</td>
                   {showReach && <td className="num">{stat && total ? <b>{n ? oneIn((reachHere! * n) / total) : 'never'}</b> : '—'}</td>}
+                  {settings.engineEnabled && (
+                    <td
+                      className="num mono small"
+                      title={ev ? `${ev.source === 'cloud' ? 'Lichess cloud' : 'Stockfish'} depth ${ev.depth}` : 'Not evaluated'}
+                      style={{ color: !ev ? 'var(--muted)' : loss >= 100 ? 'var(--bad)' : loss >= 40 ? 'var(--warn)' : loss <= 0 ? 'var(--good)' : undefined, fontWeight: ev && loss <= 0 ? 700 : 400 }}
+                    >
+                      {ev ? formatEval(ev) : '…'}
+                    </td>
+                  )}
                   <td>{stat ? <WdlBar white={stat.white} draws={stat.draws} black={stat.black} /> : <span className="muted small">not in database</span>}</td>
                   <td>
                     <div className="list-actions" style={{ justifyContent: 'flex-end', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>

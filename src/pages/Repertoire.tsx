@@ -496,6 +496,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
             return {
               id: c.id,
               san: c.san,
+              uci: c.uci,
               mine: c.mine,
               comment: c.comment,
               extras: (

@@ -202,6 +202,31 @@ export function SettingsPage() {
       </div>
 
       <div className="panel col">
+        <h2>Engine</h2>
+        <div className="row">
+          <label className="check">
+            <input type="checkbox" checked={s.engineEnabled} onChange={(e) => set({ engineEnabled: e.target.checked })} />
+            Show Stockfish evaluations in the builder
+          </label>
+          <label className="field">
+            <span>Search depth</span>
+            <select value={s.engineDepth} onChange={(e) => set({ engineDepth: Number(e.target.value) })}>
+              {[12, 15, 18, 21, 24].map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                  {d === 12 ? ' (fast, phones)' : d === 18 ? ' (default)' : d === 24 ? ' (slow, accurate)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="muted small">
+          Common positions show Lichess's cloud evaluations instantly; Stockfish 19 then runs in your browser (offline too) to evaluate every
+          move you see. Higher depth is more accurate but slower, especially on a phone.
+        </p>
+      </div>
+
+      <div className="panel col">
         <h2>Data</h2>
         <div className="row">
           <button
