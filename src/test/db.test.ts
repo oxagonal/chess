@@ -70,3 +70,25 @@ describe('repertoire persistence', () => {
     expect(await db.cards.count()).toBe(2);
   });
 });
+
+describe('reach along a line', () => {
+  it('multiplies opponent move frequencies and ignores your own moves', async () => {
+    const { reachAlongLine } = await import('../services/coverage');
+    const { edgesForLine } = await import('../lib/lines');
+    const line = edgesForLine(['e4', 'c5', 'Nf3', 'd6'])!;
+    const stats = (moves: [string, number][]) => ({
+      total: moves.reduce((a, [, n]) => a + n, 0), white: 0, draws: 0, black: 0,
+      moves: moves.map(([san, n]) => ({ san, uci: '', white: n, draws: 0, black: 0 })),
+    });
+    const db: Record<string, ReturnType<typeof stats>> = {
+      [line[0].toKey]: stats([['c5', 40], ['e5', 60]]),
+      [line[2].toKey]: stats([['d6', 50], ['Nc6', 50]]),
+    };
+    const p = await reachAlongLine(line, 'white', async (k) => db[k]);
+    expect(p).toBeCloseTo(0.4 * 0.5);
+    // two prepared moves on move 1 → split evenly
+    expect(await reachAlongLine(line, 'white', async (k) => db[k], (k) => (k === line[0].fromKey ? 2 : 1))).toBeCloseTo(0.1);
+    // as Black, White's 1.e4 has no data here → 0
+    expect(await reachAlongLine(line, 'black', async (k) => db[k])).toBe(0);
+  });
+});

@@ -4,7 +4,8 @@ import { loadGraph } from '../db/repertoire';
 import { computeCoverage } from '../lib/coverage';
 import { GameStatsIndex } from '../lib/mygames';
 import { bandsForRating, toLichessRating } from '../lib/ratings';
-import type { CoverageResult, PositionStats } from '../lib/types';
+import { moveGames, type CoverageResult, type PositionStats } from '../lib/types';
+import { turnOfKey, type Color } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
 import { fetchExplorer, paramsLabel, type ExplorerParams } from './explorer';
 
@@ -47,15 +48,7 @@ export async function runCoverageForGraph(
 ): Promise<CoverageResult> {
   const s = await getSettings();
   const n = opts.oneInN ?? s.oneInN;
-  let provider: (key: string) => Promise<PositionStats | undefined>;
-  if (s.probabilitySource === 'mygames') {
-    const games = await db.games.where('userColor').equals(graph.color).toArray();
-    const idx = new GameStatsIndex(games);
-    provider = async (key) => idx.get(key);
-  } else {
-    const params = s.probabilitySource === 'masters' ? MASTERS : lichessParams(s);
-    provider = (key) => fetchExplorer(params, key, opts.signal);
-  }
+  const provider = await statsProvider(s, graph.color, opts.signal);
   const result = await computeCoverage(graph, provider, {
     repId,
     threshold: 1 / n,
@@ -66,6 +59,45 @@ export async function runCoverageForGraph(
   });
   if (!opts.signal?.aborted) await db.coverage.put(result);
   return result;
+}
+
+export type StatsProvider = (key: string) => Promise<PositionStats | undefined>;
+
+/** Opponent-move statistics from the source chosen in Settings. */
+export async function statsProvider(s: AppSettings, color: Color, signal?: AbortSignal): Promise<StatsProvider> {
+  if (s.probabilitySource === 'mygames') {
+    const games = await db.games.where('userColor').equals(color).toArray();
+    const idx = new GameStatsIndex(games);
+    return async (key) => idx.get(key);
+  }
+  const params = s.probabilitySource === 'masters' ? MASTERS : lichessParams(s);
+  return (key) => fetchExplorer(params, key, signal);
+}
+
+/**
+ * Chance that a game reaches the end of `line`, if you always play your moves and opponents
+ * choose with database frequencies. Your own moves count as certain unless the repertoire offers
+ * several at that position (then they are split evenly, matching the coverage analysis).
+ */
+export async function reachAlongLine(
+  line: { fromKey: string; san: string }[],
+  color: Color,
+  provider: StatsProvider,
+  myOptions: (fromKey: string) => number = () => 1,
+): Promise<number> {
+  let p = 1;
+  for (const m of line) {
+    if (turnOfKey(m.fromKey) === color) {
+      p /= Math.max(1, myOptions(m.fromKey));
+      continue;
+    }
+    const stats = await provider(m.fromKey);
+    if (!stats || stats.total <= 0) return 0;
+    const ms = stats.moves.find((x) => x.san === m.san);
+    p *= ms ? moveGames(ms) / stats.total : 0;
+    if (p === 0) return 0;
+  }
+  return p;
 }
 
 /** Whether a stored result still matches the repertoire and the current settings. */

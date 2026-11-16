@@ -19,11 +19,11 @@ import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { ColorPill, Empty, LineView } from '../components/ui';
 import { href, navigate } from '../router';
-import { playSan, playUci, posFromFen, START_KEY, type Color } from '../lib/chess';
+import { playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
 import { oneIn } from '../lib/coverage';
-import { isCoverageFresh, runCoverageForGraph } from '../services/coverage';
+import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
 import type { AppSettings } from '../db/settings';
-import type { CoverageResult, Repertoire } from '../lib/types';
+import { moveGames, type CoverageResult, type PositionStats, type Repertoire } from '../lib/types';
 import { isDue, isNew } from '../lib/srs';
 import { download } from '../services/backup';
 import type { RepGraph } from '../lib/graph';
@@ -279,6 +279,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
   const live = useLiveCoverage(repId, rep, graph, settings, coverage);
   const [line, setLine] = useState<LineMove[]>(() => lineFromSans(initialLine.split(/\s+/).filter(Boolean)));
   const [cursor, setCursor] = useState(line.length);
+  const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings);
   const [flipped, setFlipped] = useState(false);
   const [opening, setOpening] = useState<string | undefined>();
   const [message, setMessage] = useState<string | null>(null);
@@ -365,6 +366,13 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
   const orientation: Color = flipped ? (rep.color === 'white' ? 'black' : 'white') : rep.color;
   const myMovesHere = children.filter((c) => c.mine);
   const prob = coverage?.probs[key];
+  const coverageFresh = isCoverageFresh(coverage, rep.updatedAt, settings);
+  const childReach = (c: { san: string; mine: boolean }) => {
+    if (reach.prob === undefined) return undefined;
+    if (myTurn) return reach.prob / Math.max(1, myMovesHere.length);
+    const ms = reach.here?.moves.find((m) => m.san === c.san);
+    return reach.here && reach.here.total > 0 ? (reach.prob * (ms ? moveGames(ms) : 0)) / reach.here.total : undefined;
+  };
   const dueCount = (cards ?? []).filter((c) => isDue(c)).length;
   const newCount = (cards ?? []).filter(isNew).length;
 
@@ -442,6 +450,8 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           {opening && <div className="muted small" style={{ marginTop: 6 }}>{opening}</div>}
         </div>
 
+        <ReachPanel reach={reach} repProb={inRep && coverageFresh ? prob : undefined} source={sourceLabel(settings)} atStart={cursor === 0} />
+
         {inRep && (
           <CoverageStrip
             atStart={cursor === 0}
@@ -486,7 +496,11 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
                   <span className="comment" title={c.comment}>
                     {c.comment ?? ''}
                   </span>
-                  {childProb !== undefined && <span className="small muted" title="How often this position is reached">{oneIn(childProb)}</span>}
+                  {childReach(c) !== undefined && (
+                    <span className="small" title="Share of your games that reach the position after this move">
+                      <b>{fmtPct(childReach(c)!)}</b>
+                    </span>
+                  )}
                   {coverage?.coverage?.[c.toKey] !== undefined && childProb !== undefined && childProb >= 1 / settings.oneInN && (
                     <span className="small" style={{ color: coverColor(coverage.coverage[c.toKey]) }} title="Coverage from the position after this move">
                       {Math.round(coverage.coverage[c.toKey] * 100)}%
@@ -623,23 +637,10 @@ function CoverageStrip({
     <div className="panel">
       <div className="row" style={{ alignItems: 'baseline' }}>
         <h3 style={{ margin: 0 }} title={explain}>
-          Coverage {atStart ? 'of the whole repertoire' : 'from here'}
+          Prepared {atStart ? 'overall' : 'from here'}
         </h3>
         <span className="spacer" />
         {running && <span className="muted small">updating… {queried ? `${queried} positions looked up` : ''}</span>}
-        {!running && prob !== undefined && (
-          <span className="small muted" title="Reach probability per game">
-            {prob >= 1 / 1.05 ? (
-              <>
-                reached in <b style={{ color: 'var(--text)' }}>every game</b>
-              </>
-            ) : (
-              <>
-                reached in <b style={{ color: 'var(--text)' }}>{oneIn(prob)}</b> games
-              </>
-            )}
-          </span>
-        )}
       </div>
       {error && <div className="error" style={{ marginTop: 6 }}>{error}</div>}
       {!error && score === undefined && (
@@ -665,6 +666,96 @@ function CoverageStrip({
       {rare && score !== undefined && (
         <div className="muted small" style={{ marginTop: 6 }}>
           This position is rarer than 1 in {oneInN} games, so nothing below it counts as required. Raise N in Settings to dig deeper.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------- how often you reach it */
+
+interface LineReach {
+  prob?: number;
+  /** Explorer stats for the current position (to split the probability over replies). */
+  here?: PositionStats;
+  loading: boolean;
+  error?: string;
+}
+
+function useLineReach(
+  path: { fromKey: string; san: string; key: string }[],
+  color: Color | undefined,
+  graph: RepGraph | undefined,
+  settings: AppSettings & { loaded: boolean },
+): LineReach {
+  const [state, setState] = useState<LineReach>({ loading: true });
+  const lineSig = path.map((m) => m.san).join(' ');
+  const key = path.length ? path[path.length - 1].key : START_KEY;
+  const sig = `${lineSig}|${color}|${graph?.size}|${sourceLabel(settings)}`;
+  useEffect(() => {
+    if (!color || !settings.loaded) return;
+    const ctrl = new AbortController();
+    setState((s) => ({ ...s, loading: true }));
+    const t = setTimeout(async () => {
+      try {
+        const provider = await statsProvider(settings, color, ctrl.signal);
+        const myOptions = (fromKey: string) => graph?.childrenOf(fromKey).filter((m) => m.mine).length || 1;
+        const prob = await reachAlongLine(path, color, provider, myOptions);
+        const here = turnOfKey(key) !== color ? await provider(key) : undefined;
+        if (!ctrl.signal.aborted) setState({ prob, here, loading: false });
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') setState({ loading: false, error: (e as Error).message });
+      }
+    }, 120);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig, settings.loaded]);
+  return state;
+}
+
+function fmtPct(p: number): string {
+  const x = p * 100;
+  if (x >= 99.95) return '100%';
+  if (x >= 10) return `${x.toFixed(1)}%`;
+  if (x >= 1) return `${x.toFixed(2)}%`;
+  if (x <= 0) return '0%';
+  return `${x.toPrecision(2)}%`;
+}
+
+function ReachPanel({ reach, repProb, source, atStart }: { reach: LineReach; repProb?: number; source: string; atStart: boolean }) {
+  const p = reach.prob;
+  // With transpositions the same position can also arise via other move orders in your repertoire.
+  const viaOthers = repProb !== undefined && p !== undefined && repProb > p * 1.05 ? repProb : undefined;
+  return (
+    <div className="panel">
+      <div className="row" style={{ alignItems: 'baseline' }}>
+        <h3 style={{ margin: 0 }} title="If you play your moves and opponents answer like the selected database, the share of your games in which this position appears on the board.">
+          Coverage
+        </h3>
+        <span className="spacer" />
+        <span className="muted small">{source}</span>
+      </div>
+      {reach.error && <div className="error" style={{ marginTop: 6 }}>{reach.error}</div>}
+      {!reach.error && (
+        <div className="row" style={{ marginTop: 6, alignItems: 'baseline', opacity: reach.loading ? 0.5 : 1 }}>
+          <b style={{ fontSize: 26 }}>{p === undefined ? '…' : fmtPct(p)}</b>
+          <span className="muted">
+            {atStart
+              ? 'of your games start here'
+              : p === undefined
+                ? ''
+                : p === 0
+                  ? 'of your games — this line never occurs in the database'
+                  : `of your games reach this position${p < 0.95 ? ` (${oneIn(p)})` : ''}`}
+          </span>
+        </div>
+      )}
+      {viaOthers !== undefined && (
+        <div className="muted small" style={{ marginTop: 4 }}>
+          {fmtPct(viaOthers)} counting other move orders in your repertoire that transpose here.
         </div>
       )}
     </div>
