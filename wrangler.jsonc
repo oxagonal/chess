@@ -1,0 +1,10 @@
+// Cloudflare (Workers static assets). The app is a static site: `npm run build` writes dist/, and
+// `npx wrangler deploy` uploads it. Cloudflare's Git integration runs both on every push to `main`.
+// Hash-based routing (#/…) means no SPA fallback or redirects are needed.
+{
+  "name": "chess-prep",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}

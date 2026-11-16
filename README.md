@@ -46,21 +46,29 @@ npm run build      # static site in dist/ — host anywhere (GitHub Pages, Netli
 
 ## Putting it online (and on your phone)
 
-It's a static site, so any static host works. On **Render**: New → Static Site → connect this repo, then
+It's a static site, hosted on **Cloudflare** (Workers static assets, free plan). One-time setup in the
+Cloudflare dashboard: **Workers & Pages → Create → Import a repository** → pick this repo, then
 
-- **Build command:** `npm ci && npm run build`
-- **Publish directory:** `dist`
+- **Production branch:** `main`
+- **Build command:** `npm run build`
+- **Deploy command:** `npx wrangler deploy` (the default)
 
-(or New → Blueprint, which reads `render.yaml`). Node 22 is pinned in `.node-version`. Every push
-redeploys. No rewrite rules are needed because the app uses `#/` URLs.
+`wrangler.jsonc` tells Cloudflare to serve `dist/`; `public/_headers` sets caching so a new deploy reaches
+phones right away. Node 22 is pinned in `.node-version`. Every push to `main` deploys automatically; other
+branches get their own preview URL. No rewrite rules are needed because the app uses `#/` URLs.
 
-On the phone, open the Render URL and install it:
+On the phone, open the site's URL (`https://chess-prep.<your-subdomain>.workers.dev`) and install it:
 
 - **iPhone (Safari):** Share → *Add to Home Screen*
 - **Android (Chrome):** ⋮ → *Install app* / *Add to Home screen*
 
 It then opens full-screen with its own icon and works offline for training (game sync, the explorer and
 coverage need a connection).
+
+**Moving to a new address** (e.g. from the old Render site): browsers keep the data per website, so the new
+site starts empty. Turn on sync (below) on the old site, then connect the new site with the same token — or
+use Settings → Export backup on the old site and Restore backup on the new one. Re-add the home-screen app
+from the new URL.
 
 ### Syncing your phone and computer
 

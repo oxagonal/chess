@@ -1,0 +1,11 @@
+# Cloudflare response headers (copied into dist/ by Vite).
+# Always revalidate the page and the service worker so a new deploy reaches every device promptly.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
+# Build assets have content hashes in their names, so they never change.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
