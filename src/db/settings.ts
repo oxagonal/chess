@@ -63,8 +63,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
 const KEY = 'settings';
 
 /** Range of the "study positions seen in at least 1 in N games" slider. */
-export const ONE_IN_N_MIN = 200;
-export const ONE_IN_N_MAX = 3000;
+export const ONE_IN_N_MIN = 150;
+export const ONE_IN_N_MAX = 1000;
+
+/** Named depths, matching the scale Chessbook uses. */
+export const ONE_IN_N_PRESETS: { n: number; label: string }[] = [
+  { n: 150, label: 'Standard' },
+  { n: 200, label: 'Advanced' },
+  { n: 300, label: 'Tournament ready' },
+  { n: 800, label: 'Overkill' },
+];
 
 export async function getSettings(): Promise<AppSettings> {
   const row = await db.kv.get(KEY);

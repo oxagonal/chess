@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ONE_IN_N_MAX, ONE_IN_N_MIN, updateSettings, useSettings } from '../db/settings';
+import { ONE_IN_N_MAX, ONE_IN_N_MIN, ONE_IN_N_PRESETS, updateSettings, useSettings } from '../db/settings';
 import { getDepthProfile, measureDepth, sourceLabel } from '../services/coverage';
 import type { Color } from '../lib/chess';
 
@@ -41,6 +41,21 @@ export function OneInNSlider({ value, label = 'Study positions seen in at least'
           style={{ flex: 1, padding: 0 }}
         />
         <b style={{ color: 'var(--text)', minWidth: 120, textAlign: 'right' }}>1 in {n.toLocaleString()} games</b>
+      </div>
+      <div className="row" style={{ gap: 4, textTransform: 'none', letterSpacing: 0 }}>
+        {ONE_IN_N_PRESETS.map((p) => (
+          <button
+            key={p.n}
+            type="button"
+            className={`small ${p.n === n ? 'primary' : 'ghost'}`}
+            onClick={() => {
+              setT(toT(p.n));
+              if (p.n !== value) updateSettings({ oneInN: p.n });
+            }}
+          >
+            {p.label} · {p.n}
+          </button>
+        ))}
       </div>
       {n === value && <DepthReadout n={n} />}
     </div>
