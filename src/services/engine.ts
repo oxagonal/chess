@@ -126,7 +126,7 @@ class Stockfish {
     w.postMessage('ucinewgame');
     w.postMessage(`setoption name MultiPV value ${Math.max(1, job.moves.length)}`);
     w.postMessage(`position fen ${job.fen}`);
-    w.postMessage(`go depth ${job.depth} searchmoves ${job.moves.join(' ')}`);
+    w.postMessage(job.moves.length ? `go depth ${job.depth} searchmoves ${job.moves.join(' ')}` : `go depth ${job.depth}`);
   }
 
   async analyse(job: Job) {
@@ -219,4 +219,41 @@ export function evaluateMoves(
     ctrl.abort();
     engine.stop();
   };
+}
+
+/* ------------------------------------------------------- game review */
+
+export interface PositionEval {
+  /** White's point of view. */
+  eval: MoveEval;
+  /** Engine's best move (standard UCI), if any. */
+  best?: string;
+}
+
+/**
+ * Evaluate one position (no move restriction). The engine reports a best line per depth; we keep the
+ * deepest one. Resolves `undefined` if the position is over (mate/stalemate) or the search was replaced.
+ */
+export function evaluatePosition(fen: string, depth: number): Promise<PositionEval | undefined> {
+  return new Promise((resolve) => {
+    let best: { uci: string; e: MoveEval } | undefined;
+    engine
+      .analyse({
+        fen,
+        moves: [],
+        depth,
+        onUpdate: (evals) => {
+          for (const [uci, e] of evals) if (!best || e.depth >= best.e.depth) best = { uci, e };
+        },
+        resolve: () => resolve(best ? { eval: best.e, best: best.uci } : undefined),
+      })
+      .catch(() => resolve(undefined));
+  });
+}
+
+/** Lichess's win-chance curve: 0–100 for White. Mates count as 0 or 100. */
+export function winChance(e: MoveEval): number {
+  if (e.mate !== undefined) return e.mate > 0 ? 100 : 0;
+  const cp = Math.max(-1000, Math.min(1000, e.cp ?? 0));
+  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
 }

@@ -1,3 +1,4 @@
+import type { GameReview } from './review';
 import type { Color } from './chess';
 
 export interface Repertoire {
@@ -83,6 +84,8 @@ export interface StoredGame {
   termination?: string;
   /** Set once forgotten-prep penalties from this game were applied to review cards. */
   prepApplied?: boolean;
+  /** Computer review (Stockfish eval of every position), once run. */
+  review?: GameReview;
 }
 
 export interface MoveStat {

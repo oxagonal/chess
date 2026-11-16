@@ -13,6 +13,8 @@ import type { GameSource, StoredGame } from '../lib/types';
 import type { ImportProgress } from '../lib/importers/common';
 import { Board, type Arrow } from '../components/Board';
 import { MoveNote } from '../components/MoveNote';
+import { GameReviewPanel } from '../components/GameReviewPanel';
+import { biggestSwings, JUDGEMENT_GLYPH, swings } from '../lib/review';
 import { ColorPill, Empty, LineView, Stat, fmtDate, timeAgo } from '../components/ui';
 import { href, navigate } from '../router';
 import { rangeCutoff } from '../lib/gameRange';
@@ -462,6 +464,15 @@ function GameViewer({ id }: { id: string }) {
     for (const m of graph.childrenOf(r.key)) arrows.push({ uci: m.uci, brush: m.mine ? 'green' : 'paleBlue' });
     if (r.playedUci) arrows.push({ uci: r.playedUci, brush: 'red' });
   }
+  // Computer review: glyphs for inaccuracies/mistakes/blunders, and at those positions the played
+  // move (red) vs the engine's choice (green).
+  const judged = new Map((game.review ? swings(game.review) : []).filter((s) => s.judgement).map((s) => [s.ply, s]));
+  const topPlies = new Set(game.review ? biggestSwings(game.review, 3).map((s) => s.ply) : []);
+  const swingHere = judged.get(cur) ?? (topPlies.has(cur) ? swings(game.review!).find((s) => s.ply === cur) : undefined);
+  if (swingHere && cur < replay.ucis.length && !(devPly !== undefined && cur === devPly)) {
+    arrows.push({ uci: replay.ucis[cur], brush: 'red' });
+    if (swingHere.best && swingHere.best !== replay.ucis[cur]) arrows.push({ uci: swingHere.best, brush: 'green' });
+  }
   const pathToDev = r.key && graph ? (graph.pathTo(r.key) ?? []).map((m) => m.san) : [];
   const moveNo = devPly !== undefined ? `${Math.floor(devPly / 2) + 1}${devPly % 2 ? '…' : '.'}` : '';
   const opp = game.userColor === 'white' ? game.black : game.white;
@@ -551,19 +562,31 @@ function GameViewer({ id }: { id: string }) {
         <div className="panel">
           <h3>Moves</h3>
           <LineView
-            items={game.sans.map((san, i) => ({
-              san,
-              className: i === devPly ? 'deviation' : i < r.bookPlies ? 'book' : '',
-              title: i < r.bookPlies ? 'In your repertoire' : undefined,
-            }))}
+            items={game.sans.map((san, i) => {
+              const j = judged.get(i)?.judgement;
+              return {
+                san: j ? `${san}${JUDGEMENT_GLYPH[j]}` : san,
+                className: [i === devPly ? 'deviation' : i < r.bookPlies ? 'book' : '', j ? `judged ${j}` : ''].join(' '),
+                title: i === devPly ? 'You left your prep here' : i < r.bookPlies ? 'In your repertoire' : j ? j : undefined,
+              };
+            })}
             current={cur}
             onSelect={setCursor}
           />
           <p className="muted small" style={{ marginTop: 8 }}>
-            Green moves were in your repertoire. Use ← → to step through.
+            Green moves were in your repertoire; the red outline is where you left it. Use ← → to step through.
           </p>
         </div>
-        <div className="note">Engine analysis of the rest of the game isn't built yet; it would go in a Review tab.</div>
+
+        <GameReviewPanel
+          game={game}
+          positions={replay.positions}
+          sans={game.sans}
+          cursor={cur}
+          onJump={setCursor}
+          userColor={game.userColor}
+          prepPly={devPly}
+        />
       </div>
     </div>
   );

@@ -255,7 +255,7 @@ type Feedback = { kind: 'good' | 'bad' | 'hint' | 'show' | 'info'; text: ReactNo
 
 /** Steps the app plays for you: opponent/earlier moves, and later known moves while a new line is being shown. */
 function playedForYou(step: PlannedStep, phase: 'show' | 'quiz'): boolean {
-  return step.kind === 'auto' || (step.kind === 'practice' && phase === 'show');
+  return step.kind === 'auto' || (step.kind === 'practice' && !step.leadIn && phase === 'show');
 }
 
 function Session({ setup }: { setup: SessionSetup }) {
@@ -272,6 +272,7 @@ function Session({ setup }: { setup: SessionSetup }) {
   const [stats, setStats] = useState({ done: 0, correct: 0, failed: 0, lines: 0 });
   const [finished, setFinished] = useState(false);
   const feedbackToken = useRef(0);
+  const startedLines = useRef(0);
 
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const flashFor = (f: 'good' | 'bad' | 'hint') => {
@@ -290,11 +291,13 @@ function Session({ setup }: { setup: SessionSetup }) {
         pending.delete(card.id);
         continue;
       }
-      const steps = planLine(graph, move, pending, mode === 'learn' ? 'learn' : 'review');
+      // The first line of a session starts you from move 1; later lines skip ahead to what's being trained.
+      const steps = planLine(graph, move, pending, mode === 'learn' ? 'learn' : 'review', !startedLines.current);
       if (!steps.some((s) => s.kind === 'quiz' || s.kind === 'show')) {
         pending.delete(card.id);
         continue;
       }
+      startedLines.current++;
       setLine({ repId: card.repId, steps, phase: mode === 'learn' ? 'show' : 'quiz' });
       setIdx(0);
       setPos(startPos());

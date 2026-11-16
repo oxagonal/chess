@@ -297,3 +297,24 @@ describe('play from memory', () => {
     expect(t?.path.map((m) => m.san)).toEqual(['e4', 'c5']);
   });
 });
+describe('game review swings', () => {
+  it('finds the moves that lost the most winning chances, from the mover\'s side', async () => {
+    const { biggestSwings, judge, winChanceOf } = await import('../lib/review');
+    // evals before each move (White POV): even, White blunders (+0.2 → −3), Black slips back (−3 → −1), mate for Black.
+    const review = {
+      depth: 12, analyzedAt: 0, best: ['e2e4', 'e7e5', 'g1f3', 'b8c6', null],
+      evals: [{ cp: 20 }, { cp: -300 }, { cp: -100 }, { cp: -120 }, { mate: -2 }],
+    };
+    const top = biggestSwings(review, 3);
+    expect(top.map((s) => s.ply)).not.toContain(3); // Black finding mate is a gain, not a swing against Black
+    expect(top.map((s) => s.ply)).toContain(0);
+    const white = top.find((s) => s.ply === 0)!;
+    expect(white.mover).toBe('white');
+    expect(white.judgement).toBe('blunder');
+    const black = top.find((s) => s.ply === 1)!; // −3 → −1 is a loss for Black
+    expect(black.mover).toBe('black');
+    expect(black.loss).toBeGreaterThan(5);
+    expect(judge(3)).toBeUndefined();
+    expect(winChanceOf({ mate: 3 })).toBe(100);
+  });
+});

@@ -142,6 +142,13 @@ describe('trainer planning', () => {
     expect(steps.map((s) => s.kind)).toEqual(['auto', 'auto', 'quiz', 'auto', 'practice']);
   });
 
+  it('with lead-in, asks your earlier moves from the starting position too', () => {
+    const d4 = byLine(['e4', 'c5', 'Nf3', 'd6', 'd4']);
+    const steps = planLine(g, d4, new Set([d4.id]), 'review', true);
+    expect(steps.map((s) => s.kind)).toEqual(['practice', 'auto', 'practice', 'auto', 'quiz']);
+    expect(steps.filter((s) => s.leadIn).map((s) => s.move.san)).toEqual(['e4', 'Nf3']);
+  });
+
   it('orders cards shallow-first, or by probability when known', () => {
     const cards = g.myMoves().map((m) => newCard({ id: m.id, repId: 'r', fromKey: m.fromKey, san: m.san }));
     const ordered = orderCards(cards, g);

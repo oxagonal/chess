@@ -10,6 +10,8 @@ export type StepKind = 'quiz' | 'show' | 'auto' | 'practice';
 export interface PlannedStep {
   move: RepMove;
   kind: StepKind;
+  /** A practice move leading up to the trained one (asked even while a new line is being shown). */
+  leadIn?: boolean;
 }
 
 export type TrainMode = 'review' | 'learn';
@@ -22,7 +24,14 @@ export type TrainMode = 'review' | 'learn';
  * cards. Your moves along the way are quizzed (review) / shown (learn) if pending, else auto-played.
  * This mirrors how a real game unfolds: you always see the position arise from the starting position.
  */
-export function planLine(graph: RepGraph, target: RepMove, pending: ReadonlySet<string>, mode: TrainMode): PlannedStep[] {
+export function planLine(
+  graph: RepGraph,
+  target: RepMove,
+  pending: ReadonlySet<string>,
+  mode: TrainMode,
+  /** Also have you play your moves before the trained one (the first line of a session). */
+  leadIn = false,
+): PlannedStep[] {
   const prefix = graph.pathTo(target.fromKey);
   if (!prefix) return [];
   const line: RepMove[] = [...prefix, target];
@@ -86,6 +95,8 @@ export function planLine(graph: RepGraph, target: RepMove, pending: ReadonlySet<
     }
     // Your moves after the one being trained: you play them, ungraded.
     if (move.mine && i > targetIndex) return { move, kind: 'practice' };
+    // First line of a session: you also play your moves from the starting position.
+    if (move.mine && leadIn && i < targetIndex) return { move, kind: 'practice', leadIn: true };
     return { move, kind: 'auto' };
   });
 }

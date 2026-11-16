@@ -295,3 +295,16 @@ table.data tr.selected td { background: #2a3624; }
 
 /* Play from memory status */
 .memory-panel { border-color: #2f4d6b; background: linear-gradient(180deg, rgba(74,144,217,0.08), transparent 60%), var(--panel); }
+
+/* ---------- game review ---------- */
+.evalgraph { width: 100%; height: 90px; margin-top: 10px; border-radius: 6px; cursor: pointer; display: block; }
+.swing { width: 100%; justify-content: flex-start; text-align: left; gap: 10px; padding: 8px 10px; white-space: normal; }
+.swing.active { border-color: var(--accent2); }
+.swing-glyph { font-weight: 800; min-width: 26px; text-align: center; border-radius: 6px; padding: 2px 4px; background: var(--panel3); }
+.swing-glyph.blunder { background: var(--bad); color: #fff; }
+.swing-glyph.mistake { background: var(--warn); color: #1a1205; }
+.swing-glyph.inaccuracy { background: #5a9ee3; color: #fff; }
+.mv.judged.blunder { color: #f08b87; }
+.mv.judged.mistake { color: var(--warn); }
+.mv.judged.inaccuracy { color: #8fb8ea; }
+.mv.judged.current { color: #fff; }
