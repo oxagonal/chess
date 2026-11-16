@@ -53,10 +53,10 @@ export function HomePage() {
             </p>
           </div>
           <span className="spacer" />
-          <a className="btn primary" href={href('train', { rep: 'all', mode: 'review' })} style={{ pointerEvents: due ? 'auto' : 'none', opacity: due ? 1 : 0.5 }}>
+          <a className={`btn primary ${due ? '' : 'disabled'}`} href={href('train', { rep: 'all', mode: 'review' })} aria-disabled={!due}>
             Review now
           </a>
-          <a className="btn blue" href={href('train', { rep: 'all', mode: 'learn' })} style={{ pointerEvents: fresh ? 'auto' : 'none', opacity: fresh ? 1 : 0.5 }}>
+          <a className={`btn blue ${fresh ? '' : 'disabled'}`} href={href('train', { rep: 'all', mode: 'learn' })} aria-disabled={!fresh}>
             Learn new
           </a>
         </div>

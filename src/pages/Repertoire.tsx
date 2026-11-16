@@ -495,20 +495,21 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           {opening && <div className="muted small" style={{ marginTop: 6 }}>{opening}</div>}
         </div>
 
-        <ReachPanel reach={reach} source={sourceLabel(settings)} atStart={cursor === 0} />
-
-        {inRep && (
-          <CoverageStrip
-            atStart={cursor === 0}
-            score={coverage?.coverage?.[key]}
-            prob={prob}
-            oneInN={settings.oneInN}
-            source={coverage?.paramsLabel}
-            running={live.running || live.stale}
-            queried={live.queried}
-            error={live.error}
-          />
-        )}
+        <div className={inRep ? 'metric-pair' : undefined}>
+          <ReachPanel reach={reach} source={sourceLabel(settings)} atStart={cursor === 0} />
+          {inRep && (
+            <CoverageStrip
+              atStart={cursor === 0}
+              score={coverage?.coverage?.[key]}
+              prob={prob}
+              oneInN={settings.oneInN}
+              source={coverage?.paramsLabel}
+              running={live.running || live.stale}
+              queried={live.queried}
+              error={live.error}
+            />
+          )}
+        </div>
 
         <ExplorerPanel
           fenKey={key}

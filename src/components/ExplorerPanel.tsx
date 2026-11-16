@@ -27,6 +27,7 @@ export interface SavedMove {
 
 const MAX_EVAL_MOVES = 10;
 const TIE_CP = 10;
+const TOP_ROWS = 12;
 
 function useMoveEvals(key: string, moves: string[], enabled: boolean, depth: number) {
   const [evals, setEvals] = useState<EvalMap>(new Map());
@@ -82,6 +83,8 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   const showReach = reachHere !== undefined && turnOfKey(fenKey) !== color;
   const settings = useSettings();
   const [tab, setTab] = useState<Tab>('lichess');
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => setShowAll(false), [fenKey]);
   const [data, setData] = useState<PositionStats | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
@@ -123,6 +126,9 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   const rows: { san: string; stat?: MoveStat; rep?: SavedMove }[] = (data?.moves ?? []).map((m) => ({ san: m.san, stat: m, rep: bySan.get(m.san) }));
   const listed = new Set(rows.map((r) => r.san));
   for (const s of saved) if (!listed.has(s.san)) rows.push({ san: s.san, rep: s });
+  // Most positions list dozens of rare moves; show the popular ones plus anything you've saved.
+  const visibleRows = showAll ? rows : rows.filter((r, i) => i < TOP_ROWS || r.rep);
+  const hiddenCount = rows.length - visibleRows.length;
   const rowUci = (r: (typeof rows)[number]) => r.stat?.uci ?? r.rep?.uci;
   // Evaluate the moves people actually play (top of the table) plus everything you've saved.
   const evalMoves = [...new Set(rows.filter((r, i) => i < MAX_EVAL_MOVES || r.rep).map(rowUci).filter((u): u is string => !!u))];
@@ -185,7 +191,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
             </tr>
           </thead>
           <tbody style={{ opacity: loading ? 0.5 : 1 }}>
-            {rows.map((row) => {
+            {visibleRows.map((row) => {
               const { san, stat, rep } = row;
               const n = stat ? moveGames(stat) : 0;
               const uci = rowUci(row);
@@ -252,6 +258,16 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
             })}
           </tbody>
         </table>
+      )}
+      {hiddenCount > 0 && (
+        <button className="small ghost show-all" onClick={() => setShowAll(true)}>
+          Show all {rows.length} moves
+        </button>
+      )}
+      {showAll && rows.length > TOP_ROWS && (
+        <button className="small ghost show-all" onClick={() => setShowAll(false)}>
+          Show fewer
+        </button>
       )}
       {((data && total > 0) || (settings.engineEnabled && status)) && (
         <div className="row muted small" style={{ marginTop: 6 }}>
