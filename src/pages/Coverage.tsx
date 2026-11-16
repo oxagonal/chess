@@ -70,6 +70,9 @@ function CoverageView({ repId }: { repId: string }) {
   const myPositions = positions.filter((p) => p.myTurn);
   const mine = result ? repertoireDepth(graph, result) : undefined;
   const linesDone = mine?.lines ?? 0;
+  const rootCoverage = result
+    ? (result.coverage?.[graph.root] ?? 1 - result.gaps.reduce((a, g) => a + g.prob, 0) - result.unfinished.reduce((a, u) => a + u.prob, 0))
+    : 0;
 
   return (
     <>
@@ -148,6 +151,11 @@ function CoverageView({ repId }: { repId: string }) {
               value={mine && mine.lines ? `${mine.avgMoves.toFixed(1)} moves` : '—'}
               label="Your average line length"
               hint={`Your finished lines (reached at least 1 in ${Math.round(1 / result.threshold)} games), weighted by how often you reach them. Longest: ${mine ? Math.ceil(mine.maxMoves) : 0} moves.`}
+            />
+            <Stat
+              value={rootCoverage > 0 ? `${(myPositions.length / (rootCoverage * 100)).toFixed(2)}` : '—'}
+              label="Moves per 1% covered"
+              hint={`Efficiency: your ${myPositions.length} moves at positions reached at least 1 in ${Math.round(1 / result.threshold)} games, divided by the ${pct(rootCoverage, 0)} of games they keep in your prep. Lower is better — choosing lines where opponents' replies are concentrated buys more coverage per move.`}
             />
             <Stat
               value={pct(result.coverage?.[graph.root] ?? 1 - result.gaps.reduce((a, g) => a + g.prob, 0) - result.unfinished.reduce((a, u) => a + u.prob, 0), 0)}
