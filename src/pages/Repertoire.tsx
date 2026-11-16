@@ -17,7 +17,7 @@ import { useSettings, updateSettings } from '../db/settings';
 import { useCards, useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
-import { ColorPill, Empty, LineView } from '../components/ui';
+import { ColorPill, Empty, LineView, fmtPct } from '../components/ui';
 import { href, navigate } from '../router';
 import { playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
 import { oneIn } from '../lib/coverage';
@@ -518,7 +518,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
 
         {currentEdge && <CommentEditor key={currentEdge.id} id={currentEdge.id} initial={currentEdge.comment ?? ''} san={currentEdge.san} />}
 
-        <ExplorerPanel fenKey={key} color={rep.color} repSans={repSans} onPlay={(san) => play(san)} onAdd={(san) => play(san, true)} onOpening={setOpening} />
+        <ExplorerPanel fenKey={key} color={rep.color} repSans={repSans} onPlay={(san) => play(san)} onAdd={(san) => play(san, true)} onOpening={setOpening} reachHere={reach.loading ? undefined : reach.prob} />
       </div>
     </div>
   );
@@ -699,7 +699,11 @@ function useLineReach(
     const t = setTimeout(async () => {
       try {
         const provider = await statsProvider(settings, color, ctrl.signal);
-        const myOptions = (fromKey: string) => graph?.childrenOf(fromKey).filter((m) => m.mine).length || 1;
+        // Split only between your saved choices; an unsaved move you're trying out counts as always played.
+        const myOptions = (fromKey: string, san: string) => {
+          const mine = graph?.childrenOf(fromKey).filter((m) => m.mine) ?? [];
+          return mine.some((m) => m.san === san) ? mine.length : 1;
+        };
         const prob = await reachAlongLine(path, color, provider, myOptions);
         const here = turnOfKey(key) !== color ? await provider(key) : undefined;
         if (!ctrl.signal.aborted) setState({ prob, here, loading: false });
@@ -716,14 +720,6 @@ function useLineReach(
   return state;
 }
 
-function fmtPct(p: number): string {
-  const x = p * 100;
-  if (x >= 99.95) return '100%';
-  if (x >= 10) return `${x.toFixed(1)}%`;
-  if (x >= 1) return `${x.toFixed(2)}%`;
-  if (x <= 0) return '0%';
-  return `${x.toPrecision(2)}%`;
-}
 
 function ReachPanel({ reach, repProb, source, atStart }: { reach: LineReach; repProb?: number; source: string; atStart: boolean }) {
   const p = reach.prob;

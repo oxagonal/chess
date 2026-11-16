@@ -4,9 +4,9 @@ import { fetchExplorer, onExplorerStatus, paramsLabel, type ExplorerParams } fro
 import { lichessParams, MASTERS } from '../services/coverage';
 import { GameStatsIndex } from '../lib/mygames';
 import { moveGames, type PositionStats } from '../lib/types';
-import type { Color } from '../lib/chess';
+import { turnOfKey, type Color } from '../lib/chess';
 import { useGames } from '../hooks';
-import { WdlBar } from './ui';
+import { WdlBar, fmtPct } from './ui';
 
 type Tab = 'lichess' | 'masters' | 'mine';
 
@@ -19,9 +19,13 @@ interface Props {
   onPlay: (san: string) => void;
   onAdd?: (san: string) => void;
   onOpening?: (name: string | undefined) => void;
+  /** Share of your games that reach this position — enables the per-move Reach column on the opponent's turn. */
+  reachHere?: number;
 }
 
-export function ExplorerPanel({ fenKey, color, repSans, onPlay, onAdd, onOpening }: Props) {
+export function ExplorerPanel({ fenKey, color, repSans, onPlay, onAdd, onOpening, reachHere }: Props) {
+  // On your own turn every move you choose is reached as often as the position itself, so it's only useful for replies.
+  const showReach = reachHere !== undefined && turnOfKey(fenKey) !== color;
   const settings = useSettings();
   const [tab, setTab] = useState<Tab>('lichess');
   const [data, setData] = useState<PositionStats | undefined>();
@@ -89,6 +93,11 @@ export function ExplorerPanel({ fenKey, color, repSans, onPlay, onAdd, onOpening
               <th>Move</th>
               <th className="num">Games</th>
               <th className="num">%</th>
+              {showReach && (
+                <th className="num" title="Share of all your games that reach the position after this move (saved in your repertoire or not)">
+                  Reach
+                </th>
+              )}
               <th>Result</th>
               <th />
             </tr>
@@ -105,6 +114,7 @@ export function ExplorerPanel({ fenKey, color, repSans, onPlay, onAdd, onOpening
                   </td>
                   <td className="num">{n.toLocaleString()}</td>
                   <td className="num">{total ? ((n / total) * 100).toFixed(1) : '–'}</td>
+                  {showReach && <td className="num">{total ? <b>{fmtPct((reachHere! * n) / total)}</b> : '–'}</td>}
                   <td>
                     <WdlBar white={m.white} draws={m.draws} black={m.black} />
                   </td>

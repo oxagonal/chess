@@ -84,12 +84,12 @@ export async function reachAlongLine(
   line: { fromKey: string; san: string }[],
   color: Color,
   provider: StatsProvider,
-  myOptions: (fromKey: string) => number = () => 1,
+  myOptions: (fromKey: string, san: string) => number = () => 1,
 ): Promise<number> {
   let p = 1;
   for (const m of line) {
     if (turnOfKey(m.fromKey) === color) {
-      p /= Math.max(1, myOptions(m.fromKey));
+      p /= Math.max(1, myOptions(m.fromKey, m.san));
       continue;
     }
     const stats = await provider(m.fromKey);

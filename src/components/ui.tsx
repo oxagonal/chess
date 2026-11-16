@@ -71,6 +71,16 @@ export function LineView({
   );
 }
 
+/** Percentage with more precision for small values: 40.0%, 4.25%, 0.43%. */
+export function fmtPct(p: number): string {
+  const x = p * 100;
+  if (x >= 99.95) return '100%';
+  if (x >= 10) return `${x.toFixed(1)}%`;
+  if (x >= 1) return `${x.toFixed(2)}%`;
+  if (x <= 0) return '0%';
+  return `${x.toPrecision(2)}%`;
+}
+
 export function fmtDate(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
