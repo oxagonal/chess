@@ -307,10 +307,21 @@ function Session({ setup }: { setup: SessionSetup }) {
     nextLine();
   }, [nextLine]);
 
+  // The move you last missed — its note opens for reading/editing once the answer is revealed.
+  const [noteMove, setNoteMove] = useState<{ id: string; san: string } | undefined>();
+  useEffect(() => setNoteMove(undefined), [line]);
+  // A line with a missed move waits at the end (note still open) until you press Continue.
+  const holdAtEnd = !!line && line.phase === 'quiz' && idx >= line.steps.length && !!noteMove;
+  const continueAfterLine = () => {
+    setStats((s) => ({ ...s, lines: s.lines + 1 }));
+    nextLine();
+  };
+
   // Auto-play opponent moves and moves that are not being tested; handle end of line.
   useEffect(() => {
     if (!line || finished) return;
     if (idx >= line.steps.length) {
+      if (holdAtEnd) return;
       const t = setTimeout(() => {
         if (line.phase === 'show') {
           setLine({ ...line, steps: asQuiz(line.steps), phase: 'quiz' });
@@ -340,16 +351,12 @@ function Session({ setup }: { setup: SessionSetup }) {
       setIdx(idx + 1);
     }, delay);
     return () => clearTimeout(t);
-  }, [line, idx, pos, finished, nextLine, settings.autoPlayDelayMs]);
+  }, [line, idx, pos, finished, nextLine, settings.autoPlayDelayMs, holdAtEnd]);
 
   const step = line && idx < line.steps.length ? line.steps[idx] : undefined;
   const waiting = !!step && step.kind !== 'auto';
   const rep = line ? reps.get(line.repId) : undefined;
   const graph = line ? graphs.get(line.repId) : undefined;
-
-  // The move you last missed — its note opens for reading/editing once the answer is revealed.
-  const [noteMove, setNoteMove] = useState<{ id: string; san: string } | undefined>();
-  useEffect(() => setNoteMove(undefined), [line]);
 
   const onMove = async (uci: string) => {
     if (!line || !step || step.kind === 'auto') return;
@@ -523,15 +530,28 @@ function Session({ setup }: { setup: SessionSetup }) {
             </div>
           )}
           {!waiting && !feedback && <span className="muted">…</span>}
+          {holdAtEnd && (
+            <div className="muted small" style={{ marginTop: 6 }}>
+              Line finished. Write or edit the note under the board, then press Continue.
+            </div>
+          )}
         </div>
 
         <div className="row">
-          {line?.phase === 'quiz' && (
-            <button onClick={showAnswer} disabled={!waiting || hint}>
-              Show move
+          {holdAtEnd ? (
+            <button className="primary" onClick={continueAfterLine} autoFocus={false}>
+              Continue →
             </button>
+          ) : (
+            <>
+              {line?.phase === 'quiz' && (
+                <button onClick={showAnswer} disabled={!waiting || hint}>
+                  Show move
+                </button>
+              )}
+              <button onClick={skipLine}>Skip line</button>
+            </>
           )}
-          <button onClick={skipLine}>Skip line</button>
           <span className="spacer" />
           <span className="muted small">
             ✓ {stats.correct} · ✗ {stats.failed}
