@@ -259,3 +259,41 @@ describe('coverage follows unsaved opponent transpositions', () => {
     expect(res.gaps).toHaveLength(0);
   });
 });
+describe('play from memory', () => {
+  it('asks for your move at the most popular unanswered position first, depth-first', async () => {
+    const { nextMemoryTarget } = await import('../lib/fromMemory');
+    const { movesFromLines, edgesForLine } = await import('../lib/lines');
+    const { RepGraph } = await import('../lib/graph');
+    const { START_KEY } = await import('../lib/chess');
+    const k = (l: string) => edgesForLine(l.split(' '))!.at(-1)!.toKey;
+    const st = (moves: [string, string, number][]) => ({
+      total: moves.reduce((a, [, , n]) => a + n, 0), white: 0, draws: 0, black: 0,
+      moves: moves.map(([san, uci, n]) => ({ san, uci, white: n, draws: 0, black: 0 })),
+    });
+    const db: Record<string, ReturnType<typeof st>> = {
+      [k('e4')]: st([['c5', 'c7c5', 40], ['e5', 'e7e5', 50], ['a6', 'a7a6', 10]]),
+      [k('e4 e5 Nf3')]: st([['Nc6', 'b8c6', 100]]),
+    };
+    const provider = async (key: string) => db[key];
+    const base = { color: 'white' as const, startKey: START_KEY, startPath: [], startProb: 1, threshold: 1 / 5, provider, skip: new Set<string>() };
+
+    // Empty repertoire: you're asked for your first move.
+    let t = await nextMemoryTarget({ ...base, graph: new RepGraph('white', []) });
+    expect(t?.path).toEqual([]);
+
+    // 1.e4 saved: the most popular reply (1...e5) comes first.
+    let g = new RepGraph('white', movesFromLines('r', 'white', ['e4']));
+    t = await nextMemoryTarget({ ...base, graph: g });
+    expect(t?.path.map((m) => m.san)).toEqual(['e4', 'e5']);
+    expect(t?.prob).toBeCloseTo(0.5);
+
+    // After 1...e5 2.Nf3, it continues down that line (2...Nc6) before switching to 1...c5.
+    g = new RepGraph('white', movesFromLines('r', 'white', ['e4 e5 Nf3']));
+    t = await nextMemoryTarget({ ...base, graph: g });
+    expect(t?.path.map((m) => m.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6']);
+
+    // Skipping that position moves on to 1...c5; 1...a6 is rarer than 1 in 5 so it's never asked.
+    t = await nextMemoryTarget({ ...base, graph: g, skip: new Set([k('e4 e5 Nf3 Nc6')]) });
+    expect(t?.path.map((m) => m.san)).toEqual(['e4', 'c5']);
+  });
+});

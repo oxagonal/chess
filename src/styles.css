@@ -292,3 +292,6 @@ table.data tr.selected td { background: #2a3624; }
 
 /* A note box asking you to write a note after a mistake */
 .movenote.prompt { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn), var(--shadow); }
+
+/* Play from memory status */
+.memory-panel { border-color: #2f4d6b; background: linear-gradient(180deg, rgba(74,144,217,0.08), transparent 60%), var(--panel); }

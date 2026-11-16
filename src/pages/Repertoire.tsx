@@ -19,6 +19,7 @@ import { ExplorerPanel } from '../components/ExplorerPanel';
 import { MoveNote } from '../components/MoveNote';
 import { ColorPill, Empty, LineView } from '../components/ui';
 import { href, navigate } from '../router';
+import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
 import { formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
 import { oneIn } from '../lib/coverage';
 import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
@@ -317,9 +318,92 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
     }
   };
 
-  const onBoardMove = (uci: string) => {
+  /* ---- Play from memory: it plays popular opponent moves, you answer, your moves save as known ---- */
+  const [memory, setMemory] = useState<{ startKey: string; startPath: MemoryStep[]; startProb: number } | null>(null);
+  const [memSkip, setMemSkip] = useState<Set<string>>(new Set());
+  const [memState, setMemState] = useState<{ status: 'searching' | 'waiting' | 'done' | 'error'; targetKey?: string; prob?: number; error?: string }>({
+    status: 'searching',
+  });
+  const [memAdded, setMemAdded] = useState(0);
+  const memStats = useRef(new Map<string, PositionStats | undefined>());
+  const graphRef = useRef(graph);
+  graphRef.current = graph;
+
+  useEffect(() => {
+    if (!memory || !rep || !settings.loaded) return;
+    const ctrl = new AbortController();
+    setMemState({ status: 'searching' });
+    let animate: ReturnType<typeof setTimeout> | undefined;
+    (async () => {
+      try {
+        const base = await statsProvider(settings, rep.color, ctrl.signal);
+        const provider = async (k: string) => {
+          if (memStats.current.has(k)) return memStats.current.get(k);
+          const s = await base(k);
+          memStats.current.set(k, s);
+          return s;
+        };
+        const g = graphRef.current;
+        if (!g) return;
+        const target = await nextMemoryTarget({
+          graph: g,
+          color: rep.color,
+          startKey: memory.startKey,
+          startPath: memory.startPath,
+          startProb: memory.startProb,
+          threshold: 1 / settings.oneInN,
+          provider,
+          skip: memSkip,
+          signal: ctrl.signal,
+        });
+        if (ctrl.signal.aborted) return;
+        if (!target) {
+          setMemState({ status: 'done' });
+          return;
+        }
+        const l = target.path as LineMove[];
+        setLine(l);
+        // Show the opponent's move being played, then wait for yours.
+        if (l.length > memory.startPath.length) {
+          setCursor(l.length - 1);
+          animate = setTimeout(() => setCursor(l.length), 350);
+        } else setCursor(l.length);
+        setMemState({ status: 'waiting', targetKey: l.length ? l[l.length - 1].key : START_KEY, prob: target.prob });
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') setMemState({ status: 'error', error: (e as Error).message });
+      }
+    })();
+    return () => {
+      ctrl.abort();
+      clearTimeout(animate);
+    };
+    // Re-run when the repertoire changes (your answer was saved), when you skip, or settings change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memory, rep?.updatedAt, memSkip, settings.loaded, settings.oneInN, sourceLabel(settings)]);
+
+  const startMemory = () => {
+    memStats.current = new Map();
+    setMemSkip(new Set());
+    setMemAdded(0);
+    setMemory({ startKey: key, startPath: line.slice(0, cursor), startProb: cursor === 0 ? 1 : (reach.prob ?? 1) });
+  };
+  const stopMemory = () => setMemory(null);
+  const skipMemory = () => memState.targetKey && setMemSkip((s) => new Set([...s, memState.targetKey!]));
+
+  const onBoardMove = async (uci: string) => {
     const r = playUci(pos, uci);
-    if (r) play(r.san);
+    if (!r) return;
+    if (memory && memState.status === 'waiting' && key === memState.targetKey && cursor === line.length) {
+      const item: LineMove = { san: r.san, uci: r.uci, fromKey: key, key: r.key };
+      const path = [...line.slice(0, cursor), item];
+      setLine(path);
+      setCursor(path.length);
+      setMemState({ status: 'searching' });
+      const { mineAdded } = await addEdges(repId, toEdges(path), { known: true });
+      setMemAdded((n) => n + mineAdded);
+      return;
+    }
+    play(r.san);
   };
 
   // The most common hole: an opponent reply you don't answer, or your move with nothing prepared.
@@ -448,11 +532,62 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           </div>
         </div>
 
+        {memory ? (
+          <div className="panel memory-panel">
+            <div className="row">
+              <h3 style={{ margin: 0 }}>Play from memory</h3>
+              <span className="spacer" />
+              {memAdded > 0 && <span className="badge good">{plural(memAdded, 'move')} added</span>}
+              {memState.status === 'waiting' && (
+                <button className="small" onClick={skipMemory} title="Skip this position for now">
+                  I don't know this
+                </button>
+              )}
+              <button className="small" onClick={stopMemory}>
+                Stop
+              </button>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              {memState.status === 'searching' && <span className="muted">Finding the next position…</span>}
+              {memState.status === 'waiting' && (
+                <>
+                  <b>Your move.</b>{' '}
+                  <span className="muted">
+                    {myTurn ? '' : 'Go to the end of the line to answer. '}
+                    {memState.prob === undefined || memState.prob >= 1 / 1.05
+                      ? 'This position comes up in every game.'
+                      : `This position comes up in ${oneIn(memState.prob)} games.`}{' '}
+                    It saves as known — no need to learn it.
+                  </span>
+                </>
+              )}
+              {memState.status === 'done' && (
+                <span>
+                  <b>All done.</b> <span className="muted">Everything from here is filled in down to 1 in {settings.oneInN} games{memSkip.size ? ` (except ${plural(memSkip.size, 'position')} you skipped)` : ''}.</span>
+                </span>
+              )}
+              {memState.status === 'error' && <div className="error">{memState.error}</div>}
+            </div>
+          </div>
+        ) : (
+          <div className="row">
+            <button
+              className="primary"
+              onClick={startMemory}
+              disabled={reach.loading && cursor > 0}
+              title="It plays your opponents' most popular moves and you answer. Your moves are saved as already known (no need to learn them), until everything from here is filled in down to your 1-in-N goal."
+            >
+              ▶ Play from memory{cursor > 0 ? ' from here' : ''}
+            </button>
+            <span className="muted small">Quickly enter lines you already know.</span>
+          </div>
+        )}
+
         <div className="panel">
           <div className="row" style={{ marginBottom: 6 }}>
             <h3 style={{ margin: 0 }}>Line</h3>
             <span className="spacer" />
-            {missingUpToCursor && (
+            {missingUpToCursor && !memory && (
               <button className="primary small" onClick={addLineToRep}>
                 + Add line to repertoire
               </button>
@@ -539,7 +674,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           })}
           notes={
             <>
-              {!inRep && (
+              {!inRep && !memory && (
                 <div className="note" style={{ marginBottom: 6 }}>
                   Not in your repertoire yet. Use <b>Add line</b> to save the line up to here{autoAdd ? '' : ' (or turn on Auto-add)'}.
                 </div>

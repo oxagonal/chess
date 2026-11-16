@@ -40,7 +40,11 @@ export async function loadGraph(repId: string): Promise<{ rep: Repertoire; graph
  * Add edges to a repertoire (existing ones are kept; empty comments get filled in).
  * Every new move of yours gets a fresh spaced-repetition card.
  */
-export async function addEdges(repId: string, edges: ImportedEdge[]): Promise<{ added: number; mineAdded: number }> {
+/**
+ * `known`: you already know these moves (Play from memory) — your cards start as learned (graded
+ * Easy now), so they skip Learn and go straight into normal reviews.
+ */
+export async function addEdges(repId: string, edges: ImportedEdge[], opts: { known?: boolean } = {}): Promise<{ added: number; mineAdded: number }> {
   const rep = await db.repertoires.get(repId);
   if (!rep) throw new Error('Repertoire not found');
   const now = Date.now();
@@ -62,7 +66,10 @@ export async function addEdges(repId: string, edges: ImportedEdge[]): Promise<{ 
       if (seen.has(m.id)) continue;
       seen.add(m.id);
       toAdd.push(m);
-      if (m.mine) cards.push(newCard({ id: m.id, repId, fromKey: m.fromKey, san: m.san }, now));
+      if (m.mine) {
+        const c = newCard({ id: m.id, repId, fromKey: m.fromKey, san: m.san }, now);
+        cards.push(opts.known ? grade(c, Rating.Easy, undefined, now) : c);
+      }
     }
     await db.moves.bulkAdd(toAdd);
     await db.cards.bulkPut(cards);
