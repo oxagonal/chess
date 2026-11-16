@@ -1,0 +1,16 @@
+# Render Blueprint (optional — creating a Static Site in the dashboard with the same
+# build command and publish directory works too). Hash-based routing means no rewrites are needed.
+services:
+  - type: web
+    name: chess-prep
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    headers:
+      # Always fetch the newest service worker / page so updates roll out promptly.
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache

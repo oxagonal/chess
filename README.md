@@ -40,6 +40,25 @@ npm test           # unit tests (vitest)
 npm run build      # static site in dist/ — host anywhere (GitHub Pages, Netlify, a USB stick…)
 ```
 
+## Putting it online (and on your phone)
+
+It's a static site, so any static host works. On **Render**: New → Static Site → connect this repo, then
+
+- **Build command:** `npm ci && npm run build`
+- **Publish directory:** `dist`
+
+(or New → Blueprint, which reads `render.yaml`). Node 22 is pinned in `.node-version`. Every push
+redeploys. No rewrite rules are needed because the app uses `#/` URLs.
+
+On the phone, open the Render URL and install it:
+
+- **iPhone (Safari):** Share → *Add to Home Screen*
+- **Android (Chrome):** ⋮ → *Install app* / *Add to Home screen*
+
+It then opens full-screen with its own icon and works offline for training (game sync, the explorer and
+coverage need a connection). **Each device keeps its own data** — move it with Settings → Export /
+Restore backup until cloud sync is added.
+
 ## Where the probabilities come from
 
 | Source | Notes |
@@ -81,9 +100,8 @@ entry there. Games are stored with full move lists and, when available, clock ti
 and `GameViewer` in `src/pages/Games.tsx` already replays games on a board — a Stockfish (WASM) review
 would plug into that viewer or a new `review` tab.
 
-## Licensing note
+## Credits
 
-The board ([chessground](https://github.com/lichess-org/chessground)) and chess logic
-([chessops](https://github.com/niklasf/chessops)) are GPL-3.0-or-later, so if you distribute a built
-version of this app it must be under a GPL-compatible licence. Piece images are Colin M.L. Burnett's
-set (via chessground).
+Board: [chessground](https://github.com/lichess-org/chessground); chess logic:
+[chessops](https://github.com/niklasf/chessops) (both GPL-3.0-or-later — fine for personal use; a
+publicly distributed build would need a GPL-compatible licence). Piece images: Colin M.L. Burnett.
