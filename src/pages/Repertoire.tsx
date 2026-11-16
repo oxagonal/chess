@@ -21,6 +21,9 @@ import { ColorPill, Empty, LineView } from '../components/ui';
 import { href, navigate } from '../router';
 import { playSan, playUci, posFromFen, START_KEY, type Color } from '../lib/chess';
 import { oneIn } from '../lib/coverage';
+import { isCoverageFresh, runCoverageForGraph } from '../services/coverage';
+import type { AppSettings } from '../db/settings';
+import type { CoverageResult, Repertoire } from '../lib/types';
 import { isDue, isNew } from '../lib/srs';
 import { download } from '../services/backup';
 import type { RepGraph } from '../lib/graph';
@@ -273,6 +276,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
   const cards = useCards(repId);
   const coverage = useCoverage(repId);
   const settings = useSettings();
+  const live = useLiveCoverage(repId, rep, graph, settings, coverage);
   const [line, setLine] = useState<LineMove[]>(() => lineFromSans(initialLine.split(/\s+/).filter(Boolean)));
   const [cursor, setCursor] = useState(line.length);
   const [flipped, setFlipped] = useState(false);
@@ -435,16 +439,21 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
             current={cursor}
             onSelect={setCursor}
           />
-          <div className="row small" style={{ marginTop: 8 }}>
-            <span className="muted">{opening ?? ''}</span>
-            <span className="spacer" />
-            {prob !== undefined && (
-              <span title={`Reach probability per game (${coverage?.paramsLabel})`}>
-                Reached in <b>{oneIn(prob)}</b> games
-              </span>
-            )}
-          </div>
+          {opening && <div className="muted small" style={{ marginTop: 6 }}>{opening}</div>}
         </div>
+
+        {inRep && (
+          <CoverageStrip
+            atStart={cursor === 0}
+            score={coverage?.coverage?.[key]}
+            prob={prob}
+            oneInN={settings.oneInN}
+            source={coverage?.paramsLabel}
+            running={live.running || live.stale}
+            queried={live.queried}
+            error={live.error}
+          />
+        )}
 
         <div className="panel">
           <h3>{myTurn ? 'Your move' : "Opponent's replies"} in repertoire</h3>
@@ -477,7 +486,12 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
                   <span className="comment" title={c.comment}>
                     {c.comment ?? ''}
                   </span>
-                  {childProb !== undefined && <span className="small muted">{oneIn(childProb)}</span>}
+                  {childProb !== undefined && <span className="small muted" title="How often this position is reached">{oneIn(childProb)}</span>}
+                  {coverage?.coverage?.[c.toKey] !== undefined && childProb !== undefined && childProb >= 1 / settings.oneInN && (
+                    <span className="small" style={{ color: coverColor(coverage.coverage[c.toKey]) }} title="Coverage from the position after this move">
+                      {Math.round(coverage.coverage[c.toKey] * 100)}%
+                    </span>
+                  )}
                   {card && <CardBadge state={card.state} due={card.due} />}
                   <button className="ghost small danger" title="Delete this move (and what follows)" onClick={() => removeMove(c.id, c.san)}>
                     🗑
@@ -541,4 +555,118 @@ function countBelow(graph: RepGraph, moveId: string): number {
 
 function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/* ---------------------------------------------------- live coverage score */
+
+function useLiveCoverage(
+  repId: string,
+  rep: Repertoire | undefined,
+  graph: RepGraph | undefined,
+  settings: AppSettings & { loaded: boolean },
+  stored: CoverageResult | undefined,
+) {
+  const [state, setState] = useState<{ running: boolean; queried: number; error?: string }>({ running: false, queried: 0 });
+  const fresh = !!rep && isCoverageFresh(stored, rep.updatedAt, settings);
+  const sig = `${rep?.updatedAt}|${graph?.size}|${settings.oneInN}|${settings.probabilitySource}|${settings.speeds.join()}|${settings.rating}|${settings.ratingPool}|${settings.bandsMode}|${settings.manualBands.join()}`;
+  useEffect(() => {
+    if (!rep || !graph || !graph.size || !settings.loaded || fresh) return;
+    const ctrl = new AbortController();
+    // Debounce so a burst of edits triggers one recalculation; explorer lookups are cached.
+    const t = setTimeout(async () => {
+      setState({ running: true, queried: 0 });
+      try {
+        await runCoverageForGraph(repId, graph, { signal: ctrl.signal, onProgress: (q) => setState({ running: true, queried: q }) });
+        setState({ running: false, queried: 0 });
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') setState({ running: false, queried: 0, error: (e as Error).message });
+      }
+    }, 600);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+      setState((s) => (s.running ? { running: false, queried: 0 } : s));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig, fresh, settings.loaded]);
+  return { ...state, stale: !fresh && !!graph?.size && !state.error };
+}
+
+function coverColor(c: number): string {
+  if (c >= 0.9) return 'var(--good)';
+  if (c >= 0.7) return 'var(--warn)';
+  return 'var(--bad)';
+}
+
+function CoverageStrip({
+  atStart,
+  score,
+  prob,
+  oneInN,
+  source,
+  running,
+  queried,
+  error,
+}: {
+  atStart: boolean;
+  score?: number;
+  prob?: number;
+  oneInN: number;
+  source?: string;
+  running: boolean;
+  queried: number;
+  error?: string;
+}) {
+  const rare = prob === undefined || prob < 1 / oneInN;
+  const explain = `Of the games that reach this position, the share that stays inside your repertoire until positions get rarer than 1 in ${oneInN} games${source ? ` (opponent moves: ${source})` : ''}.`;
+  return (
+    <div className="panel">
+      <div className="row" style={{ alignItems: 'baseline' }}>
+        <h3 style={{ margin: 0 }} title={explain}>
+          Coverage {atStart ? 'of the whole repertoire' : 'from here'}
+        </h3>
+        <span className="spacer" />
+        {running && <span className="muted small">updating… {queried ? `${queried} positions looked up` : ''}</span>}
+        {!running && prob !== undefined && (
+          <span className="small muted" title="Reach probability per game">
+            {prob >= 1 / 1.05 ? (
+              <>
+                reached in <b style={{ color: 'var(--text)' }}>every game</b>
+              </>
+            ) : (
+              <>
+                reached in <b style={{ color: 'var(--text)' }}>{oneIn(prob)}</b> games
+              </>
+            )}
+          </span>
+        )}
+      </div>
+      {error && <div className="error" style={{ marginTop: 6 }}>{error}</div>}
+      {!error && score === undefined && (
+        <div className="muted small" style={{ marginTop: 6 }}>
+          {running ? 'Calculating…' : 'Not calculated yet.'}
+        </div>
+      )}
+      {score !== undefined && !rare && (
+        <div className="row" style={{ marginTop: 8, flexWrap: 'nowrap', opacity: running ? 0.5 : 1 }} title={explain}>
+          <div className="progress" style={{ flex: 1, height: 10 }}>
+            <div style={{ width: `${score * 100}%`, background: coverColor(score) }} />
+          </div>
+          <b style={{ fontSize: 20, color: coverColor(score), minWidth: 52, textAlign: 'right' }}>{Math.round(score * 100)}%</b>
+        </div>
+      )}
+      {score !== undefined && !rare && (
+        <div className="muted small" style={{ marginTop: 4 }}>
+          {score >= 0.999
+            ? `Fully prepared down to 1-in-${oneInN} positions.`
+            : `${Math.round((1 - score) * 100)}% of games from here leave your prep while still common — see the gaps on the Coverage tab.`}
+        </div>
+      )}
+      {rare && score !== undefined && (
+        <div className="muted small" style={{ marginTop: 6 }}>
+          This position is rarer than 1 in {oneInN} games, so nothing below it counts as required. Raise N in Settings to dig deeper.
+        </div>
+      )}
+    </div>
+  );
 }

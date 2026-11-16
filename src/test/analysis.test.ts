@@ -211,3 +211,27 @@ describe('my-games explorer + ratings', () => {
     expect(toLichessRating(1500, 'chesscom-blitz')).toBe(1775);
   });
 });
+
+describe('per-position coverage score', () => {
+  const moves = movesFromLines('b', 'black', ['e4 c5 Nf3 d6', 'e4 c5 Nc3 Nc6', 'd4 Nf6']);
+  const g = new RepGraph('black', moves);
+  const keyAfter = (line: string) => keysAlong(line.split(' ')).keys.at(-1)!;
+  const db: Record<string, PositionStats> = {
+    [START_KEY]: stat([['e4', 'e2e4', 50], ['d4', 'd2d4', 30], ['c4', 'c2c4', 10], ['Nf3', 'g1f3', 10]]),
+    [keyAfter('e4 c5')]: stat([['Nf3', 'g1f3', 60], ['Nc3', 'b1c3', 20], ['c3', 'c2c3', 20]]),
+    [keyAfter('d4 Nf6')]: stat([['c4', 'c2c4', 100]]),
+  };
+
+  it('scores each position and agrees with the gap total at the root', async () => {
+    const res = await computeCoverage(g, async (k) => db[k], { repId: 'b', threshold: 1 / 20, source: 'lichess', paramsLabel: 't' });
+    const leak = res.gaps.reduce((a, x) => a + x.prob, 0) + res.unfinished.reduce((a, x) => a + x.prob, 0);
+    expect(res.coverage![START_KEY]).toBeCloseTo(1 - leak);
+    // After 1.e4 c5 white plays Nf3 (60%, covered), Nc3 (20%, covered) or c3 (20%, gap)
+    expect(res.coverage![keyAfter('e4 c5')]).toBeCloseTo(0.8);
+    expect(res.coverage![keyAfter('e4')]).toBeCloseTo(0.8); // our only move c5
+    // After 1.d4 Nf6 everyone plays 2.c4, which we don't answer
+    expect(res.coverage![keyAfter('d4 Nf6')]).toBeCloseTo(0);
+    // Positions below the threshold require nothing
+    expect(res.coverage![keyAfter('e4 c5 Nc3 Nc6')]).toBe(1);
+  });
+});

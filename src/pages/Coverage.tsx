@@ -145,9 +145,9 @@ function CoverageView({ repId }: { repId: string }) {
             <Stat value={result.unfinished.length} label="Unprepared positions" hint="Your turn, common position, no move prepared" />
             <Stat value={myPositions.length} label="Your moves to know" hint="Your-turn positions reached at least 1 in N games" />
             <Stat
-              value={pct(result.gaps.reduce((a, g) => a + g.prob, 0) + result.unfinished.reduce((a, u) => a + u.prob, 0), 0)}
-              label="Games leaving prep early"
-              hint="Share of games that hit one of the gaps/unprepared positions above (they are mutually exclusive)"
+              value={pct(result.coverage?.[graph.root] ?? 1 - result.gaps.reduce((a, g) => a + g.prob, 0) - result.unfinished.reduce((a, u) => a + u.prob, 0), 0)}
+              label="Coverage"
+              hint={`Share of your games that stay inside your repertoire until positions get rarer than 1 in ${Math.round(1 / result.threshold)} games`}
             />
           </div>
           <div className="muted small">
@@ -244,6 +244,7 @@ function CoverageView({ repId }: { repId: string }) {
                     <tr>
                       <th>Your move after</th>
                       <th className="num">How often</th>
+                      <th className="num" title="Coverage from this position">Covered</th>
                       <th />
                     </tr>
                   </thead>
@@ -252,6 +253,7 @@ function CoverageView({ repId }: { repId: string }) {
                       <tr key={p.key}>
                         <td className="mono small">{p.path.length ? formatLine(p.path) : 'Start'}</td>
                         <td className="num">{oneIn(p.prob)}</td>
+                        <td className="num">{result.coverage?.[p.key] !== undefined ? pct(result.coverage[p.key], 0) : '—'}</td>
                         <td>
                           <button className="small" onClick={() => openLine(p.path)}>
                             Open

@@ -4,7 +4,10 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
 
 - **Repertoire builder** — build White and Black repertoires move by move on the board, with the Lichess
   opening explorer (at *your* rating), the masters database and your own games alongside. Positions are
-  merged by FEN, so transpositions are handled automatically. Import PGN (with variations and comments),
+  merged by FEN, so transpositions are handled automatically. A live **coverage score** shows, for the
+  position you're on (the start position or any move you click), the share of games reaching it that stay
+  inside your prep until positions get rarer than 1 in N games — with a score per reply, recalculated as
+  you edit. Import PGN (with variations and comments),
   `.pgn` files or public Lichess studies; export back to PGN.
 - **Spaced repetition** — every one of your moves is a card scheduled with [FSRS](https://github.com/open-spaced-repetition/ts-fsrs).
   *Learn* shows new lines and then has you replay them from memory; *Review* plays each due position out

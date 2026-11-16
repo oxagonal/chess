@@ -143,4 +143,9 @@ export interface CoverageResult {
   /** Positions where the database had no data. */
   noData: string[];
   queried: number;
+  /**
+   * For each repertoire position: of the games that reach it, the share that stays inside your
+   * repertoire until positions rarer than the threshold (1 = fully covered). Missing on old results.
+   */
+  coverage?: Record<string, number>;
 }
