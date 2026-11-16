@@ -3,18 +3,18 @@ import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-/** Commit being built (Cloudflare sets WORKERS_CI_COMMIT_SHA), shown in Settings to tell which version is live. */
+/** Commit being built, shown in Settings to tell which version is live. */
 function buildCommit(): string {
-  const fromCi = process.env.WORKERS_CI_COMMIT_SHA;
-  if (fromCi) return fromCi.slice(0, 7);
+  // Cloudflare's builds set WORKERS_CI_COMMIT_SHA, but it isn't always a hash (a manual deploy gave "main").
+  const fromCi = process.env.WORKERS_CI_COMMIT_SHA ?? '';
+  if (/^[0-9a-f]{7,40}$/i.test(fromCi)) return fromCi.slice(0, 7);
   try {
     return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
-    return 'dev';
+    return fromCi || 'dev';
   }
 }
 
-// `base: './'` keeps the build portable (GitHub Pages, any static host, or file server).
 export default defineConfig({
   base: './',
   plugins: [react()],

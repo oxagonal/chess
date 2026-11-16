@@ -15,7 +15,7 @@ import { Board, type Arrow } from '../components/Board';
 import { MoveNote } from '../components/MoveNote';
 import { GameReviewPanel } from '../components/GameReviewPanel';
 import { biggestSwings, JUDGEMENT_GLYPH, swings } from '../lib/review';
-import { ColorPill, Empty, LineView, Stat, fmtDate, timeAgo } from '../components/ui';
+import { ColorPill, Empty, LineView, Stat, TableWrap, fmtDate, timeAgo } from '../components/ui';
 import { href, navigate } from '../router';
 import { rangeCutoff } from '../lib/gameRange';
 import { GameRangeSelect } from '../components/GameRangeSelect';
@@ -241,13 +241,14 @@ function GamesOverview() {
               {summary.forgotten.length === 0 ? (
                 <Empty>No forgotten prep in these games. 💪</Empty>
               ) : (
+                <TableWrap>
                 <table className="data" style={{ marginTop: 6 }}>
                   <thead>
                     <tr>
                       <th>Position</th>
                       <th>Prep</th>
                       <th>You played</th>
-                      <th className="num">×</th>
+                      <th className="num hide-sm">×</th>
                       <th />
                     </tr>
                   </thead>
@@ -255,7 +256,7 @@ function GamesOverview() {
                     {summary.forgotten.slice(0, 25).map((f) => (
                       <Fragment key={f.repId + f.key}>
                       <tr>
-                        <td className="mono small">{formatLine(pathOf(f.repId, f.key)) || 'Start'}</td>
+                        <td className="mono small line-cell">{formatLine(pathOf(f.repId, f.key)) || 'Start'}</td>
                         <td>
                           <b style={{ color: 'var(--mine)' }}>{f.expected.join(', ')}</b>
                         </td>
@@ -264,7 +265,7 @@ function GamesOverview() {
                             .map(([san, n]) => (n > 1 ? `${san} ×${n}` : san))
                             .join(', ')}
                         </td>
-                        <td className="num">{f.count}</td>
+                        <td className="num hide-sm">{f.count}</td>
                         <td>
                           <div className="list-actions">
                             <button className="small primary" onClick={() => drill(f.repId, f.key)}>
@@ -298,6 +299,7 @@ function GamesOverview() {
                     ))}
                   </tbody>
                 </table>
+                </TableWrap>
               )}
             </div>
 
@@ -306,13 +308,14 @@ function GamesOverview() {
               {summary.surprises.length === 0 ? (
                 <Empty>Your opponents stayed inside your repertoire.</Empty>
               ) : (
+                <TableWrap>
                 <table className="data" style={{ marginTop: 6 }}>
                   <thead>
                     <tr>
                       <th>After</th>
                       <th>They played</th>
-                      <th className="num">×</th>
-                      <th className="num">Your score</th>
+                      <th className="num hide-sm">×</th>
+                      <th className="num">Score</th>
                       <th />
                     </tr>
                   </thead>
@@ -321,11 +324,11 @@ function GamesOverview() {
                       const path = pathOf(s.repId, s.key);
                       return (
                         <tr key={s.repId + s.key + s.san}>
-                          <td className="mono small">{formatLine(path) || 'Start'}</td>
+                          <td className="mono small line-cell">{formatLine(path) || 'Start'}</td>
                           <td>
                             <b>{s.san}</b>
                           </td>
-                          <td className="num">{s.count}</td>
+                          <td className="num hide-sm">{s.count}</td>
                           <td className="num">{Math.round(s.score * 100)}%</td>
                           <td>
                             <button className="small primary" onClick={() => navigate(`repertoire/${s.repId}`, { line: [...path, s.san].join(' ') })}>
@@ -337,6 +340,7 @@ function GamesOverview() {
                     })}
                   </tbody>
                 </table>
+                </TableWrap>
               )}
             </div>
           </div>
@@ -354,15 +358,16 @@ function GamesOverview() {
                 ))}
               </select>
             </div>
+            <TableWrap>
             <table className="data" style={{ marginTop: 8 }}>
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th />
+                  <th className="hide-sm" />
                   <th>Opponent</th>
                   <th>Result</th>
-                  <th>Type</th>
-                  <th>Opening</th>
+                  <th className="hide-sm">Type</th>
+                  <th className="hide-sm">Opening</th>
                   <th>Prep</th>
                 </tr>
               </thead>
@@ -373,8 +378,11 @@ function GamesOverview() {
                   const oppElo = g.userColor === 'white' ? g.blackElo : g.whiteElo;
                   return (
                     <tr key={g.id} className="clickable" onClick={() => navigate(`games/${encodeURIComponent(g.id)}`)}>
-                      <td className="small">{fmtDate(g.playedAt)}</td>
-                      <td>
+                      <td className="small nowrap">
+                        <span className="hide-sm">{fmtDate(g.playedAt)}</span>
+                        <span className="show-sm">{shortDate(g.playedAt)}</span>
+                      </td>
+                      <td className="hide-sm">
                         <ColorPill color={g.userColor} />
                       </td>
                       <td>
@@ -385,13 +393,13 @@ function GamesOverview() {
                           {g.userScore === 1 ? 'Won' : g.userScore === 0 ? 'Lost' : g.userScore === 0.5 ? 'Draw' : '—'}
                         </span>
                       </td>
-                      <td className="small muted">
+                      <td className="small muted hide-sm">
                         {g.source === 'lichess' ? 'Lichess' : 'Chess.com'} · {g.timeClass}
                       </td>
-                      <td className="small">{g.opening ?? ''}</td>
+                      <td className="small hide-sm">{g.opening ?? ''}</td>
                       <td>
                         {r && (
-                          <span className={`badge ${KIND_BADGE[r.kind]}`} title={r.ply !== undefined ? `Move ${Math.floor(r.ply / 2) + 1}` : ''}>
+                          <span className={`badge wrap ${KIND_BADGE[r.kind]}`} title={r.ply !== undefined ? `Move ${Math.floor(r.ply / 2) + 1}` : ''}>
                             {PREP_LABEL[r.kind]}
                             {r.ply !== undefined && r.kind !== 'other-opening' ? ` · m${Math.floor(r.ply / 2) + 1}` : ''}
                           </span>
@@ -402,6 +410,7 @@ function GamesOverview() {
                 })}
               </tbody>
             </table>
+            </TableWrap>
             {shown.length > limit && (
               <div style={{ textAlign: 'center', marginTop: 8 }}>
                 <button onClick={() => setLimit(limit + 200)}>Show more ({shown.length - limit} left)</button>
@@ -590,4 +599,11 @@ function GameViewer({ id }: { id: string }) {
       </div>
     </div>
   );
+}
+
+/** "Nov 16" this year, "Nov 16, 2025" before. */
+function shortDate(ts: number): string {
+  const d = new Date(ts);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(undefined, sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: '2-digit' });
 }

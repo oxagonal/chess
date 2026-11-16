@@ -8,7 +8,7 @@ import { useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { runCoverage, sourceLabel, effectiveBands } from '../services/coverage';
 import { likelyPositions, oneIn, pct } from '../lib/coverage';
 import { formatLine } from '../lib/chess';
-import { ColorPill, Empty, Stat, fmtDate } from '../components/ui';
+import { ColorPill, Empty, Stat, TableWrap, fmtDate } from '../components/ui';
 import { href, navigate } from '../router';
 import type { ProbabilitySource } from '../lib/types';
 import { bandLabel } from '../lib/ratings';
@@ -190,42 +190,45 @@ function CoverageView({ repId }: { repId: string }) {
 
             {tab === 'gaps' &&
               (result.gaps.length ? (
+                <TableWrap>
                 <table className="data">
                   <thead>
                     <tr>
                       <th>After</th>
                       <th>Opponent plays</th>
                       <th className="num">How often</th>
-                      <th className="num">Of games there</th>
+                      <th className="num hide-sm">Of games there</th>
                       <th />
                     </tr>
                   </thead>
                   <tbody>
                     {result.gaps.map((g) => (
                       <tr key={g.fromKey + g.san}>
-                        <td className="mono small">{g.path.length ? formatLine(g.path) : 'Start'}</td>
+                        <td className="mono small line-cell">{g.path.length ? formatLine(g.path) : 'Start'}</td>
                         <td>
                           <b>{g.san}</b>
                         </td>
                         <td className="num">
                           <b>{oneIn(g.prob)}</b>
                         </td>
-                        <td className="num">{pct(g.freq)}</td>
+                        <td className="num hide-sm">{pct(g.freq)}</td>
                         <td>
                           <button className="small primary" onClick={() => openLine([...g.path, g.san])}>
-                            Prepare answer
+                            Prepare<span className="hide-sm">&nbsp;answer</span>
                           </button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                </TableWrap>
               ) : (
                 <Empty>No gaps at this threshold. Try a larger N to dig deeper.</Empty>
               ))}
 
             {tab === 'unfinished' &&
               (result.unfinished.length ? (
+                <TableWrap>
                 <table className="data">
                   <thead>
                     <tr>
@@ -237,7 +240,7 @@ function CoverageView({ repId }: { repId: string }) {
                   <tbody>
                     {result.unfinished.map((u) => (
                       <tr key={u.key}>
-                        <td className="mono small">{formatLine(u.path)}</td>
+                        <td className="mono small line-cell">{formatLine(u.path)}</td>
                         <td className="num">
                           <b>{oneIn(u.prob)}</b>
                         </td>
@@ -250,6 +253,7 @@ function CoverageView({ repId }: { repId: string }) {
                     ))}
                   </tbody>
                 </table>
+                </TableWrap>
               ) : (
                 <Empty>Every common position where it's your move has a prepared answer.</Empty>
               ))}
@@ -259,6 +263,7 @@ function CoverageView({ repId }: { repId: string }) {
                 <p className="muted small">
                   Train only these by enabling “Only train likely positions” in Settings — Review and Learn will then skip rarer lines.
                 </p>
+                <TableWrap>
                 <table className="data">
                   <thead>
                     <tr>
@@ -271,7 +276,7 @@ function CoverageView({ repId }: { repId: string }) {
                   <tbody>
                     {myPositions.map((p) => (
                       <tr key={p.key}>
-                        <td className="mono small">{p.path.length ? formatLine(p.path) : 'Start'}</td>
+                        <td className="mono small line-cell">{p.path.length ? formatLine(p.path) : 'Start'}</td>
                         <td className="num">{oneIn(p.prob)}</td>
                         <td className="num">{result.coverage?.[p.key] !== undefined ? pct(result.coverage[p.key], 0) : '—'}</td>
                         <td>
@@ -283,6 +288,7 @@ function CoverageView({ repId }: { repId: string }) {
                     ))}
                   </tbody>
                 </table>
+                </TableWrap>
               </>
             )}
           </div>

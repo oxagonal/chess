@@ -17,7 +17,7 @@ import { useCards, useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { MoveNote } from '../components/MoveNote';
-import { ColorPill, Empty, LineView } from '../components/ui';
+import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
 import { href, navigate } from '../router';
 import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
 import { formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
@@ -76,76 +76,64 @@ function RepertoireList() {
 
       {reps && reps.length === 0 && <Empty>No repertoires yet — create one above.</Empty>}
       {reps && reps.length > 0 && (
-        <div className="panel">
-          <table className="data">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Side</th>
-                <th className="num">Moves</th>
-                <th className="num">Due</th>
-                <th className="num">New</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {reps.map((r) => {
-                const rc = cards?.filter((c) => c.repId === r.id) ?? [];
-                return (
-                  <tr key={r.id}>
-                    <td>
-                      <a href={href(`repertoire/${r.id}`)}>{r.name}</a>
-                    </td>
-                    <td>
-                      <ColorPill color={r.color} />
-                    </td>
-                    <td className="num">{rc.length}</td>
-                    <td className="num">{rc.filter((c) => isDue(c, now)).length || ''}</td>
-                    <td className="num">{rc.filter(isNew).length || ''}</td>
-                    <td>
-                      <div className="list-actions" style={{ justifyContent: 'flex-end' }}>
-                        <a className="btn small" href={href(`repertoire/${r.id}`)}>
-                          Edit
-                        </a>
-                        <a className="btn small" href={href('train', { rep: r.id, mode: 'review' })}>
-                          Train
-                        </a>
-                        <a className="btn small" href={href(`coverage/${r.id}`)}>
-                          Coverage
-                        </a>
-                        <button className="small" onClick={() => setImporting(importing === r.id ? null : r.id)}>
-                          Import
-                        </button>
-                        <button
-                          className="small"
-                          onClick={async () => download(`${r.name.replace(/[^\w-]+/g, '_')}.pgn`, await exportPgn(r.id), 'application/x-chess-pgn')}
-                        >
-                          Export PGN
-                        </button>
-                        <button
-                          className="small"
-                          onClick={() => {
-                            const n = prompt('Rename repertoire', r.name);
-                            if (n) renameRepertoire(r.id, n);
-                          }}
-                        >
-                          Rename
-                        </button>
-                        <button
-                          className="small danger"
-                          onClick={() => {
-                            if (confirm(`Delete “${r.name}” and all its training progress?`)) deleteRepertoire(r.id);
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="panel list">
+          {reps.map((r) => {
+            const rc = cards?.filter((c) => c.repId === r.id) ?? [];
+            const due = rc.filter((c) => isDue(c, now)).length;
+            const fresh = rc.filter(isNew).length;
+            return (
+              <div key={r.id} className="list-item">
+                <div className="list-main">
+                  <div className="list-head">
+                    <ColorPill color={r.color} />
+                    <a className="list-title" href={href(`repertoire/${r.id}`)}>
+                      {r.name}
+                    </a>
+                  </div>
+                  <div className="list-meta">
+                    <span>
+                      {rc.length} move{rc.length === 1 ? '' : 's'} to know
+                    </span>
+                    {due > 0 && <span className="badge due">{due} due</span>}
+                    {fresh > 0 && <span className="badge new">{fresh} new</span>}
+                  </div>
+                </div>
+                <div className="list-buttons">
+                  <a className="btn small" href={href(`repertoire/${r.id}`)}>
+                    Edit
+                  </a>
+                  <a className="btn small" href={href('train', { rep: r.id, mode: 'review' })}>
+                    Train
+                  </a>
+                  <a className="btn small" href={href(`coverage/${r.id}`)}>
+                    Coverage
+                  </a>
+                  <MoreMenu>
+                    <button onClick={() => setImporting(importing === r.id ? null : r.id)}>Import PGN or study…</button>
+                    <button onClick={async () => download(`${r.name.replace(/[^\w-]+/g, '_')}.pgn`, await exportPgn(r.id), 'application/x-chess-pgn')}>
+                      Export PGN
+                    </button>
+                    <button
+                      onClick={() => {
+                        const n = prompt('Rename repertoire', r.name);
+                        if (n) renameRepertoire(r.id, n);
+                      }}
+                    >
+                      Rename…
+                    </button>
+                    <button
+                      className="danger"
+                      onClick={() => {
+                        if (confirm(`Delete “${r.name}” and all its training progress?`)) deleteRepertoire(r.id);
+                      }}
+                    >
+                      Delete…
+                    </button>
+                  </MoreMenu>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
       {importing && <ImportPanel repId={importing} onClose={() => setImporting(null)} />}
@@ -155,6 +143,10 @@ function RepertoireList() {
 
 function ImportPanel({ repId, onClose }: { repId: string; onClose: () => void }) {
   const rep = useLiveQuery(() => db.repertoires.get(repId), [repId]);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [repId]);
   const [text, setText] = useState('');
   const [study, setStudy] = useState('');
   const [busy, setBusy] = useState(false);
@@ -177,7 +169,7 @@ function ImportPanel({ repId, onClose }: { repId: string; onClose: () => void })
   };
 
   return (
-    <div className="panel">
+    <div className="panel" ref={panelRef} style={{ scrollMarginTop: 12 }}>
       <div className="row">
         <h2>Import into “{rep?.name}”</h2>
         <span className="spacer" />

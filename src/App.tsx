@@ -10,6 +10,7 @@ import { InsightsPage } from './pages/Insights';
 import { GamesPage } from './pages/Games';
 import { SettingsPage } from './pages/Settings';
 import { SyncIndicator } from './components/SyncPanel';
+import { NAV_ICONS } from './components/icons';
 
 export interface PageProps {
   route: Route;
@@ -63,8 +64,9 @@ export function App() {
         </a>
         <nav className="nav row" style={{ flexWrap: 'nowrap' }}>
           {TABS.map((t) => (
-            <a key={t.path} href={href(t.path)} className={t === tab ? 'active' : ''}>
-              {t.label}
+            <a key={t.path} href={href(t.path)} className={t === tab ? 'active' : ''} aria-current={t === tab ? 'page' : undefined}>
+              <span className="nav-icon">{NAV_ICONS[t.path]}</span>
+              <span className="nav-label">{t.label}</span>
               {t.path === 'train' && !!due && <span className="badge due">{due}</span>}
             </a>
           ))}
