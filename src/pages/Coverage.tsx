@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { PageProps } from '../App';
-import { updateSettings, useSettings, ONE_IN_N_OPTIONS } from '../db/settings';
+import { updateSettings, useSettings } from '../db/settings';
+import { OneInNSlider } from '../components/OneInNSlider';
 import { useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { runCoverage, sourceLabel, effectiveBands } from '../services/coverage';
 import { likelyPositions, oneIn, pct } from '../lib/coverage';
@@ -66,6 +67,7 @@ function CoverageView({ repId }: { repId: string }) {
   const paramsChanged = result && (result.paramsLabel !== sourceLabel(settings) || Math.abs(result.threshold - 1 / settings.oneInN) > 1e-12);
   const openLine = (sans: string[]) => navigate(`repertoire/${repId}`, { line: sans.join(' ') });
   const myPositions = positions.filter((p) => p.myTurn);
+  const linesDone = result ? graph.leaves().filter((k) => (result.probs[k] ?? 0) >= result.threshold).length : 0;
 
   return (
     <>
@@ -80,16 +82,7 @@ function CoverageView({ repId }: { repId: string }) {
           repertoire doesn't answer are <b>gaps</b>.
         </p>
         <div className="row" style={{ marginTop: 8 }}>
-          <label className="field">
-            <span>1 in N games</span>
-            <select value={settings.oneInN} onChange={(e) => updateSettings({ oneInN: Number(e.target.value) })}>
-              {ONE_IN_N_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  1 in {n}
-                </option>
-              ))}
-            </select>
-          </label>
+          <OneInNSlider value={settings.oneInN} label="Depth" />
           <label className="field">
             <span>Opponent moves from</span>
             <select value={settings.probabilitySource} onChange={(e) => updateSettings({ probabilitySource: e.target.value as ProbabilitySource })}>
@@ -144,6 +137,11 @@ function CoverageView({ repId }: { repId: string }) {
             <Stat value={result.gaps.length} label={`Gaps ≥ 1 in ${Math.round(1 / result.threshold)}`} hint="Common opponent moves you have no answer for" />
             <Stat value={result.unfinished.length} label="Unprepared positions" hint="Your turn, common position, no move prepared" />
             <Stat value={myPositions.length} label="Your moves to know" hint="Your-turn positions reached at least 1 in N games" />
+            <Stat
+              value={`${linesDone} + ${result.gaps.length + result.unfinished.length}`}
+              label="Lines done + open"
+              hint="Done: your lines that end at a position reached at least 1 in N games. Open: gaps and unprepared positions — each becomes at least one more line once you prepare it."
+            />
             <Stat
               value={pct(result.coverage?.[graph.root] ?? 1 - result.gaps.reduce((a, g) => a + g.prob, 0) - result.unfinished.reduce((a, u) => a + u.prob, 0), 0)}
               label="Coverage"

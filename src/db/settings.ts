@@ -62,14 +62,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 const KEY = 'settings';
 
-/** Choices for "study positions seen in at least 1 in N games". */
-export const ONE_IN_N_OPTIONS = [200, 400, 600, 1000] as const;
+/** Range of the "study positions seen in at least 1 in N games" slider. */
+export const ONE_IN_N_MIN = 200;
+export const ONE_IN_N_MAX = 100_000;
 
 export async function getSettings(): Promise<AppSettings> {
   const row = await db.kv.get(KEY);
   const s = { ...DEFAULT_SETTINGS, ...((row?.value as Partial<AppSettings>) ?? {}) };
   // 1 in 200 is the shallowest depth on offer.
-  s.oneInN = Math.max(ONE_IN_N_OPTIONS[0], s.oneInN);
+  s.oneInN = Math.min(ONE_IN_N_MAX, Math.max(ONE_IN_N_MIN, s.oneInN));
   return s;
 }
 

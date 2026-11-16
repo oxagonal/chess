@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { updateSettings, useSettings, type AppSettings, ONE_IN_N_OPTIONS } from '../db/settings';
+import { updateSettings, useSettings, type AppSettings } from '../db/settings';
+import { OneInNSlider } from '../components/OneInNSlider';
 import { db } from '../db/db';
 import { LICHESS_BANDS, POOL_LABEL, bandLabel, toLichessRating, type RatingPool } from '../lib/ratings';
 import { TIME_CLASSES } from '../lib/importers/common';
@@ -157,16 +158,7 @@ export function SettingsPage() {
               <option value="masters">Masters</option>
             </select>
           </label>
-          <label className="field">
-            <span>Study positions seen in at least</span>
-            <select value={s.oneInN} onChange={(e) => set({ oneInN: Number(e.target.value) })}>
-              {ONE_IN_N_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  1 in {n} games
-                </option>
-              ))}
-            </select>
-          </label>
+          <OneInNSlider value={s.oneInN} />
         </div>
       </div>
 
