@@ -23,7 +23,7 @@ import { playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '
 import { oneIn } from '../lib/coverage';
 import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
 import type { AppSettings } from '../db/settings';
-import { moveGames, type CoverageResult, type PositionStats, type Repertoire } from '../lib/types';
+import { type CoverageResult, type PositionStats, type Repertoire } from '../lib/types';
 import { isDue, isNew } from '../lib/srs';
 import { download } from '../services/backup';
 import type { RepGraph } from '../lib/graph';
@@ -294,7 +294,6 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
   const children = graph?.childrenOf(key) ?? [];
   const inRep = graph?.has(key) ?? false;
   const myTurn = rep ? pos.turn === rep.color : false;
-  const repSans = useMemo(() => new Set(children.map((c) => c.san)), [children]);
   const cardById = useMemo(() => new Map((cards ?? []).map((c) => [c.id, c])), [cards]);
   const lineInRep = line.map((m) => !!graph?.edge(m.fromKey, m.san));
   const missingUpToCursor = line.slice(0, cursor).some((_, i) => !lineInRep[i]);
@@ -358,12 +357,6 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
   const myMovesHere = children.filter((c) => c.mine);
   const prob = coverage?.probs[key];
   const coverageFresh = isCoverageFresh(coverage, rep.updatedAt, settings);
-  const childReach = (c: { san: string; mine: boolean }) => {
-    if (reach.prob === undefined) return undefined;
-    if (myTurn) return reach.prob / Math.max(1, myMovesHere.length);
-    const ms = reach.here?.moves.find((m) => m.san === c.san);
-    return reach.here && reach.here.total > 0 ? (reach.prob * (ms ? moveGames(ms) : 0)) / reach.here.total : undefined;
-  };
   const dueCount = (cards ?? []).filter((c) => isDue(c)).length;
   const newCount = (cards ?? []).filter(isNew).length;
 
@@ -456,60 +449,58 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           />
         )}
 
-        <div className="panel">
-          <h3>{myTurn ? 'Your move' : "Opponent's replies"} in repertoire</h3>
-          {!inRep && (
-            <div className="note">
-              This position is not in the repertoire. Use <b>Add line</b> to save the line up to here{autoAdd ? '' : ' (or enable Auto-add)'}.
-            </div>
-          )}
-          {inRep && children.length === 0 && (
-            <div className="note">
-              {myTurn
-                ? 'No move prepared here yet — play one on the board or pick one from the explorer below (+ adds it).'
-                : 'End of line. Add the replies you expect (the explorer shows what is popular at your level).'}
-            </div>
-          )}
-          {myTurn && myMovesHere.length > 1 && (
-            <div className="note" style={{ marginBottom: 6 }}>
-              You have {myMovesHere.length} prepared moves here. That's fine (all are trained), but most players keep one.
-            </div>
-          )}
-          <div className="movelist">
-            {children.map((c) => {
-              const card = cardById.get(c.id);
-              const childProb = coverage?.probs[c.toKey];
-              return (
-                <div key={c.id} className={`moverow ${c.mine ? 'mine' : 'theirs'}`}>
-                  <span className="san" onClick={() => play(c.san)}>
-                    {c.san}
-                  </span>
-                  <span className="comment" title={c.comment}>
-                    {c.comment ?? ''}
-                  </span>
-                  {childReach(c) !== undefined && (
-                    <span className="small" title="Share of your games that reach the position after this move">
-                      <b>{fmtPct(childReach(c)!)}</b>
-                    </span>
-                  )}
-                  {coverage?.coverage?.[c.toKey] !== undefined && childProb !== undefined && childProb >= 1 / settings.oneInN && (
-                    <span className="small" style={{ color: coverColor(coverage.coverage[c.toKey]) }} title="Coverage from the position after this move">
-                      {Math.round(coverage.coverage[c.toKey] * 100)}%
+        <ExplorerPanel
+          fenKey={key}
+          color={rep.color}
+          title={myTurn ? 'Your move' : "Opponent's replies"}
+          saved={children.map((c) => {
+            const card = cardById.get(c.id);
+            const childProb = coverage?.probs[c.toKey];
+            const prepared = coverage?.coverage?.[c.toKey];
+            return {
+              id: c.id,
+              san: c.san,
+              mine: c.mine,
+              comment: c.comment,
+              extras: (
+                <>
+                  {prepared !== undefined && childProb !== undefined && childProb >= 1 / settings.oneInN && (
+                    <span className="small" style={{ color: coverColor(prepared) }} title="Prepared from the position after this move">
+                      {Math.round(prepared * 100)}%
                     </span>
                   )}
                   {card && <CardBadge state={card.state} due={card.due} />}
-                  <button className="ghost small danger" title="Delete this move (and what follows)" onClick={() => removeMove(c.id, c.san)}>
-                    🗑
-                  </button>
+                </>
+              ),
+            };
+          })}
+          notes={
+            <>
+              {!inRep && (
+                <div className="note" style={{ marginBottom: 6 }}>
+                  Not in your repertoire yet. Use <b>Add line</b> to save the line up to here{autoAdd ? '' : ' (or turn on Auto-add)'}.
                 </div>
-              );
-            })}
-          </div>
-        </div>
+              )}
+              {inRep && children.length === 0 && (
+                <div className="note" style={{ marginBottom: 6 }}>
+                  {myTurn ? 'No move prepared here yet — play one on the board or press + on a move below.' : 'End of line — press + on the replies you expect.'}
+                </div>
+              )}
+              {myTurn && myMovesHere.length > 1 && (
+                <div className="note" style={{ marginBottom: 6 }}>
+                  You have {myMovesHere.length} prepared moves here. That's fine (all are trained), but most players keep one.
+                </div>
+              )}
+            </>
+          }
+          onPlay={(san) => play(san)}
+          onAdd={(san) => play(san, true)}
+          onDelete={(id, san) => removeMove(id, san)}
+          onOpening={setOpening}
+          reachHere={reach.loading ? undefined : reach.prob}
+        />
 
         {currentEdge && <CommentEditor key={currentEdge.id} id={currentEdge.id} initial={currentEdge.comment ?? ''} san={currentEdge.san} />}
-
-        <ExplorerPanel fenKey={key} color={rep.color} repSans={repSans} onPlay={(san) => play(san)} onAdd={(san) => play(san, true)} onOpening={setOpening} reachHere={reach.loading ? undefined : reach.prob} />
       </div>
     </div>
   );

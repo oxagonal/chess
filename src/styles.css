@@ -168,7 +168,10 @@ table.data tr.selected td { background: #2f3a2a; }
 .wdl .b { background: #3b3936; color: #ddd; }
 
 .explorer table td { padding: 4px 6px; }
-.explorer tr.inrep td:first-child { color: var(--mine); font-weight: 700; }
+.explorer tr.inrep td { background: rgba(255, 255, 255, 0.035); }
+.explorer tr.inrep.mine td:first-child { color: var(--mine); }
+.explorer tr.inrep.theirs td:first-child { color: var(--theirs); }
+.explorer .explorer-comment { font-weight: 400; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 
 .feedback { min-height: 48px; padding: 10px 12px; border-radius: 6px; background: var(--panel2); }
 .feedback.good { background: #263a20; border: 1px solid #3d5f31; }
