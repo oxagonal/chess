@@ -1,7 +1,7 @@
 # Working on this repo
 
 Chess Prep: a local-first opening trainer (React + Vite + Dexie/IndexedDB), deployed as a static site on
-Cloudflare. See README.md for features and the project layout.
+Cloudflare at https://chess.oxagon.workers.dev. See README.md for features and the project layout.
 
 ## Saving work — do it automatically, don't ask
 
@@ -13,6 +13,8 @@ branch: Cloudflare deploys every push to it.
    session branch **and** `main` (`git push origin HEAD:main`). Never force-push `main`; if the push is
    rejected, merge `origin/main` and push again.
 3. Don't open pull requests unless asked. If tests or the build fail, fix them rather than pushing.
+4. To confirm a deploy went live, the bottom of Settings shows the commit it was built from ("Version
+   abc1234"); the same string is in the site's main JS bundle.
 
 ## Checks
 

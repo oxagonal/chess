@@ -47,7 +47,7 @@ npm run build      # static site in dist/ — host anywhere (GitHub Pages, Netli
 ## Putting it online (and on your phone)
 
 It's a static site, hosted on **Cloudflare** (Workers static assets, free plan) at
-`https://chess.<your-subdomain>.workers.dev`. One-time setup in the Cloudflare dashboard:
+**https://chess.oxagon.workers.dev**. One-time setup in the Cloudflare dashboard:
 **Workers & Pages → Create → Import a repository** → pick this repo, then
 
 - **Project name:** `chess` (pre-filled from `wrangler.jsonc`; it becomes the first part of the address)
