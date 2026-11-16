@@ -78,12 +78,12 @@ from the new URL.
 
 ### Syncing your phone and computer
 
-Each device has its own copy of your data; **Settings → Sync between devices** keeps them in step. There's
+Each device has its own copy of your data; **Settings → Connections → Sync between devices** keeps them in step. There's
 no server to run — the data goes to a secret gist in your GitHub account:
 
 1. Create a GitHub token with only the **gist** permission (the link in Settings pre-fills it; choose *No
    expiration*).
-2. Paste it into Settings → Sync between devices on your computer and press **Connect**.
+2. Paste it into Settings → Connections → Sync between devices on your computer and press **Connect**.
 3. Do the same on your phone, with the same token (*Copy token for another device* helps).
 
 Repertoires, notes, training progress and history, games, coverage results and settings sync — your
@@ -97,7 +97,7 @@ data** apply to every device.
 
 | Source | Notes |
 | --- | --- |
-| **Lichess games at your rating** (default) | `explorer.lichess.ovh`, filtered by rating band(s) and time controls. Requests are serialised, cached for 30 days in IndexedDB, and back off for a minute on HTTP 429, per Lichess API etiquette. |
+| **Lichess games at your rating** (default) | `explorer.lichess.org` — needs **Settings → Connections → Connect Lichess** (Lichess requires a login for the explorer since 2026; no permissions are requested). Filtered by rating band(s) and time controls. Requests are serialised, cached for 30 days in IndexedDB, and back off for a minute on HTTP 429, per Lichess API etiquette. |
 | **Your own opponents** | Built from your imported Lichess + Chess.com games — what people actually play against *you*. Small samples are noisy, but it's very personal. |
 | **Masters** | Lichess masters database. |
 

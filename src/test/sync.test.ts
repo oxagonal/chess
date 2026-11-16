@@ -200,16 +200,18 @@ describe('sync between two devices', () => {
     for (const t of ['repertoires', 'moves', 'cards', 'reviewLog'] as SyncTable[]) expect(await phone.table(t).count()).toBe(0);
   });
 
-  it('keeps this device’s Lichess token out of the synced copy', async () => {
-    await updateSettings({ lichessToken: 'lip_secret', newPerDay: 7 });
-    await phone.kv.put({ key: 'settings', value: { lichessToken: 'lip_phone' } });
+  it('keeps this device’s Lichess connection out of the synced copy', async () => {
+    await updateSettings({ lichessToken: 'lip_secret', lichessAccount: 'desk_account', newPerDay: 7 });
+    await phone.kv.put({ key: 'settings', value: { lichessToken: 'lip_phone', lichessAccount: 'phone_account' } });
     tick();
     await sync(db);
     expect(remote.json).not.toContain('lip_secret');
+    expect(remote.json).not.toContain('desk_account');
     await sync(phone);
     const s = (await phone.kv.get('settings'))!.value as Record<string, unknown>;
     expect(s.newPerDay).toBe(7);
     expect(s.lichessToken).toBe('lip_phone');
+    expect(s.lichessAccount).toBe('phone_account');
   });
 
   it('a restored backup replaces the data on every device', async () => {

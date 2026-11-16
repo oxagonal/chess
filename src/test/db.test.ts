@@ -69,6 +69,32 @@ describe('repertoire persistence', () => {
     expect(await db.moves.count()).toBe(3);
     expect(await db.cards.count()).toBe(2);
   });
+
+  it('keeps the Lichess login out of backups and on this device across a restore', async () => {
+    const { getSettings, updateSettings } = await import('../db/settings');
+    await updateSettings({ lichessToken: 'lio_old', lichessAccount: 'me', rating: 1700 });
+    const json = await exportBackup();
+    expect(json).not.toContain('lio_old');
+
+    await updateSettings({ lichessToken: 'lio_new', lichessAccount: 'me2', rating: 1200 });
+    await importBackup(json);
+    const s = await getSettings();
+    expect(s.rating).toBe(1700); // restored from the backup
+    expect(s.lichessToken).toBe('lio_new'); // this device's login survives
+    expect(s.lichessAccount).toBe('me2');
+  });
+});
+
+describe('Lichess login', () => {
+  it('derives the PKCE S256 challenge as unpadded base64url(SHA-256(verifier))', async () => {
+    const { codeChallenge } = await import('../services/lichessAuth');
+    const { createHash } = await import('node:crypto');
+    for (const verifier of ['dBjftJeZ4CVP-mJ92K9qtjMqk3jMvnDm1cF0EJ1nmwE', 'a'.repeat(43), 'x-_~.Zz09'.repeat(9)]) {
+      const challenge = await codeChallenge(verifier);
+      expect(challenge).toBe(createHash('sha256').update(verifier).digest('base64url'));
+      expect(challenge).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    }
+  });
 });
 
 describe('reach along a line', () => {

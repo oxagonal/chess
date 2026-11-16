@@ -5,6 +5,8 @@
 import { db } from '../db/db';
 import { playUci, posFromFen } from '../lib/chess';
 import type { MoveStat, PositionStats } from '../lib/types';
+import { getSettings } from '../db/settings';
+import { LichessLoginRequired } from './lichessAuth';
 
 export interface ExplorerParams {
   db: 'lichess' | 'masters';
@@ -126,11 +128,15 @@ export async function fetchExplorer(p: ExplorerParams, key: string, signal?: Abo
     // Another caller may have filled the cache while we waited in the queue.
     const again = await getCachedExplorer(p, key);
     if (again) return again;
+    // Since 2026 the explorer refuses anonymous requests; any Lichess token (no scopes) works.
+    const { lichessToken } = await getSettings();
+    if (!lichessToken) throw new LichessLoginRequired();
+    const headers = { Authorization: `Bearer ${lichessToken}` };
     const fen = `${key} 0 1`;
     const url =
       p.db === 'masters'
-        ? `https://explorer.lichess.ovh/masters?${new URLSearchParams({ fen, moves: '40', topGames: '0' })}`
-        : `https://explorer.lichess.ovh/lichess?${new URLSearchParams({
+        ? `https://explorer.lichess.org/masters?${new URLSearchParams({ fen, moves: '40', topGames: '0' })}`
+        : `https://explorer.lichess.org/lichess?${new URLSearchParams({
             variant: 'standard',
             fen,
             speeds: p.speeds.join(','),
@@ -145,7 +151,7 @@ export async function fetchExplorer(p: ExplorerParams, key: string, signal?: Abo
       emit();
       let res: Response;
       try {
-        res = await fetch(url, { signal });
+        res = await fetch(url, { signal, headers });
       } finally {
         inFlight--;
         emit();
@@ -159,9 +165,7 @@ export async function fetchExplorer(p: ExplorerParams, key: string, signal?: Abo
         });
         continue;
       }
-      if (res.status === 401 || res.status === 403) {
-        throw new Error('The Lichess opening explorer refused the request (it may now require you to be logged in to lichess.org in this browser).');
-      }
+      if (res.status === 401 || res.status === 403) throw new LichessLoginRequired(true);
       if (!res.ok) throw new Error(`Opening explorer returned HTTP ${res.status}`);
       const data = normalize(key, (await res.json()) as RawResponse);
       await db.explorerCache.put({ key: cacheKey(p, key), fetchedAt: Date.now(), data });

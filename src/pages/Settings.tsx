@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { updateSettings, useSettings, type AppSettings } from '../db/settings';
 import { OneInNSlider } from '../components/OneInNSlider';
+import { LichessAccount } from '../components/LichessConnect';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { db } from '../db/db';
 import { LICHESS_BANDS, POOL_LABEL, bandLabel, toLichessRating, type RatingPool } from '../lib/ratings';
@@ -64,16 +65,25 @@ export function SettingsPage() {
       {msg && <div className="note">{msg}</div>}
 
       <div className="panel col">
-        <h2>Accounts & game import</h2>
+        <h2>Connections</h2>
+        <h3>Lichess</h3>
+        <LichessAccount />
+        <h3>Chess.com</h3>
+        <label className="field">
+          <span>Chess.com username (game import)</span>
+          <input defaultValue={s.chesscomUsername} onBlur={(e) => set({ chesscomUsername: e.target.value.trim() })} />
+        </label>
+        <SyncPanel embedded />
+        <p className="muted small">
+          {synced ? 'Everything is stored in this browser and synced through your GitHub gist.' : 'Everything is stored in this browser only (IndexedDB).'}{' '}
+          Usernames are only sent to lichess.org / chess.com to download your games. The Lichess connection stays on this device (never synced
+          or in backups) and is only sent to lichess.org.
+        </p>
+      </div>
+
+      <div className="panel col">
+        <h2>Game import</h2>
         <div className="row">
-          <label className="field">
-            <span>Lichess username</span>
-            <input defaultValue={s.lichessUsername} onBlur={(e) => set({ lichessUsername: e.target.value.trim() })} />
-          </label>
-          <label className="field">
-            <span>Chess.com username</span>
-            <input defaultValue={s.chesscomUsername} onBlur={(e) => set({ chesscomUsername: e.target.value.trim() })} />
-          </label>
           <label className="field">
             <span>Import games since</span>
             <input type="date" value={s.importSince} onChange={(e) => set({ importSince: e.target.value })} />
@@ -88,22 +98,7 @@ export function SettingsPage() {
             </label>
           ))}
         </div>
-        <label className="field">
-          <span>Lichess API token (optional)</span>
-          <input
-            type="password"
-            defaultValue={s.lichessToken}
-            placeholder="lip_…  — only needed for faster downloads of very large histories"
-            onBlur={(e) => set({ lichessToken: e.target.value.trim() })}
-          />
-        </label>
-        <p className="muted small">
-          {synced ? 'Everything is stored in this browser and synced through your GitHub gist.' : 'Everything is stored in this browser only (IndexedDB).'}{' '}
-          Usernames are only sent to lichess.org / chess.com to download your games.
-        </p>
       </div>
-
-      <SyncPanel />
 
       <div className="panel col">
         <h2>Your rating & move probabilities</h2>

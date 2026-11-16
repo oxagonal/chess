@@ -21,7 +21,8 @@ export function SyncIndicator() {
   );
 }
 
-export function SyncPanel() {
+/** `embedded`: drawn inside another panel (Settings → Connections) with a smaller heading. */
+export function SyncPanel({ embedded = false }: { embedded?: boolean }) {
   const st = useSyncStatus();
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
@@ -69,10 +70,13 @@ export function SyncPanel() {
     }
   };
 
+  const box = embedded ? 'col' : 'panel col';
+  const heading = embedded ? <h3>Sync between devices (GitHub)</h3> : <h2>Sync between devices</h2>;
+
   if (st.connected) {
     return (
-      <div className="panel col">
-        <h2>Sync between devices</h2>
+      <div className={box}>
+        {heading}
         <div className="row">
           <span className={`sync-dot ${st.state}`} />
           <span>{statusText(st)}</span>
@@ -98,15 +102,15 @@ export function SyncPanel() {
         <p className="muted small">
           Connected to GitHub as <b>{st.login}</b>. Repertoires, notes, training progress, games and settings sync automatically when you open
           the app, a few seconds after you change something, and when you switch away from it. To add another device, open Chess Prep there →
-          Settings → Sync between devices, and paste the same token. Your Lichess API token stays on each device.
+          Settings → Connections, and paste the same token. Your Lichess connection stays on each device — connect Lichess there too.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="panel col">
-      <h2>Sync between devices</h2>
+    <div className={box}>
+      {heading}
       <p className="muted small">
         Use Chess Prep on your phone and your computer with the same repertoires, notes, training progress, games and settings. The data is kept
         in a secret gist in your own GitHub account — nothing goes anywhere else.

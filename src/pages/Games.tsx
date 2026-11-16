@@ -19,6 +19,7 @@ import { ColorPill, Empty, LineView, Stat, fmtDate, timeAgo } from '../component
 import { href, navigate } from '../router';
 import { rangeCutoff } from '../lib/gameRange';
 import { GameRangeSelect } from '../components/GameRangeSelect';
+import { LichessAccount } from '../components/LichessConnect';
 
 export function GamesPage({ route }: PageProps) {
   const id = route.path[1];
@@ -93,11 +94,10 @@ function SyncPanel() {
           </button>
         )}
       </div>
+      <div style={{ marginTop: 10 }}>
+        <LichessAccount />
+      </div>
       <div className="row" style={{ marginTop: 10 }}>
-        <label className="field">
-          <span>Lichess username</span>
-          <input defaultValue={settings.lichessUsername} key={`l${settings.loaded}`} onBlur={(e) => updateSettings({ lichessUsername: e.target.value.trim() })} />
-        </label>
         <label className="field">
           <span>Chess.com username</span>
           <input defaultValue={settings.chesscomUsername} key={`c${settings.loaded}`} onBlur={(e) => updateSettings({ chesscomUsername: e.target.value.trim() })} />

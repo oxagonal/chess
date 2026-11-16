@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSettings } from '../db/settings';
+import { ConnectLichessButton } from './LichessConnect';
 import { fetchExplorer, onExplorerStatus, paramsLabel, type ExplorerParams } from '../services/explorer';
 import { lichessParams, MASTERS } from '../services/coverage';
 import { GameStatsIndex } from '../lib/mygames';
@@ -87,6 +88,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   useEffect(() => setShowAll(false), [fenKey]);
   const [data, setData] = useState<PositionStats | undefined>();
   const [error, setError] = useState<string | undefined>();
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [waitUntil, setWaitUntil] = useState<number | undefined>();
   const games = useRecentGames('opponentRange');
@@ -98,6 +100,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
 
   useEffect(() => {
     setError(undefined);
+    setNeedsLogin(false);
     if (tab === 'mine') {
       setData(mine?.get(fenKey));
       setLoading(false);
@@ -112,12 +115,14 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
         if (tab === 'lichess' || tab === 'masters') onOpening?.(d.opening?.name);
       })
       .catch((e: Error) => {
-        if (e.name !== 'AbortError') setError(e.message);
+        if (e.name === 'AbortError') return;
+        setError(e.message);
+        setNeedsLogin(e.name === 'LichessLoginRequired');
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fenKey, tab, paramsKey, mine, settings.loaded]);
+  }, [fenKey, tab, paramsKey, mine, settings.loaded, settings.lichessToken]);
 
   const total = data?.total ?? 0;
   // Database moves in popularity order, with your saved moves merged in; saved moves the database
@@ -158,7 +163,12 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
         {tab === 'mine' && <GameRangeSelect setting="opponentRange" />}
       </div>
       {waitUntil && <div className="note">Lichess rate limit — pausing about a minute before the next lookup.</div>}
-      {error && <div className="error">{error}</div>}
+      {error && (
+        <div className="error row" style={{ alignItems: 'center', gap: 10 }}>
+          <span style={{ flex: 1 }}>{error}</span>
+          {needsLogin && <ConnectLichessButton />}
+        </div>
+      )}
       {notes}
       {settings.engineEnabled && bestCount > 1 && evals.size > 1 && (
         <div className="muted small" style={{ marginBottom: 4 }}>

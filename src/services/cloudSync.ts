@@ -45,7 +45,7 @@ const CONFIG = 'config';
 const BOOK = 'book';
 const SETTINGS_KEY = 'settings';
 /** Settings that stay on this device. */
-const DEVICE_SETTINGS = ['lichessToken'];
+const DEVICE_SETTINGS = ['lichessToken', 'lichessAccount'];
 
 async function getState<T>(db: ChessDB, key: string): Promise<T | undefined> {
   return (await db.syncState.get(key))?.value as T | undefined;

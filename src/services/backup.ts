@@ -1,11 +1,24 @@
 import { db } from '../db/db';
 import { noteLocalDataReplaced } from './cloudSync';
 
+/** The Lichess login is a credential: kept out of backup files, and kept on this device across restores. */
+const CREDENTIALS = ['lichessToken', 'lichessAccount'] as const;
+const SETTINGS_KEY = 'settings';
+
+type KvRow = { key: string; value: unknown };
+function withoutCredentials(row: KvRow): KvRow {
+  if (row.key !== SETTINGS_KEY || !row.value || typeof row.value !== 'object') return row;
+  const value = { ...(row.value as Record<string, unknown>) };
+  for (const k of CREDENTIALS) delete value[k];
+  return { ...row, value };
+}
+
 const TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv'] as const;
 
 export async function exportBackup(): Promise<string> {
   const out: Record<string, unknown> = { app: 'chess-prep', version: 1, exportedAt: new Date().toISOString() };
   for (const t of TABLES) out[t] = await db.table(t).toArray();
+  out.kv = (out.kv as KvRow[]).map(withoutCredentials);
   return JSON.stringify(out);
 }
 
@@ -13,9 +26,17 @@ export async function importBackup(json: string): Promise<void> {
   const data = JSON.parse(json) as Record<string, unknown[]>;
   if ((data as unknown as { app?: string }).app !== 'chess-prep') throw new Error('Not a Chess Prep backup file');
   await db.transaction('rw', [...TABLES.map((t) => db.table(t)), db.syncState], async () => {
+    const current = (await db.kv.get(SETTINGS_KEY))?.value as Record<string, unknown> | undefined;
     for (const t of TABLES) {
       await db.table(t).clear();
-      if (Array.isArray(data[t])) await db.table(t).bulkAdd(data[t]);
+      if (!Array.isArray(data[t])) continue;
+      await db.table(t).bulkAdd(t === 'kv' ? (data[t] as KvRow[]).map(withoutCredentials) : data[t]);
+    }
+    // Stay connected to Lichess on this device.
+    const keep = Object.fromEntries(CREDENTIALS.filter((k) => current?.[k]).map((k) => [k, current![k]]));
+    if (Object.keys(keep).length) {
+      const restored = (await db.kv.get(SETTINGS_KEY))?.value as Record<string, unknown> | undefined;
+      await db.kv.put({ key: SETTINGS_KEY, value: { ...restored, ...keep } });
     }
     // With sync on, the backup becomes what every device has.
     await noteLocalDataReplaced();

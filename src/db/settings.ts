@@ -8,8 +8,13 @@ import type { GameRange } from '../lib/gameRange';
 export interface AppSettings {
   lichessUsername: string;
   chesscomUsername: string;
-  /** Optional personal Lichess API token — only used for game downloads (higher rate limit). */
+  /**
+   * Lichess token from "Connect Lichess" (or a pasted personal token). Required by the Lichess
+   * opening explorer; also speeds up game downloads.
+   */
   lichessToken: string;
+  /** Username of the connected Lichess account ('' when not connected or unknown). */
+  lichessAccount: string;
   /** ISO date (YYYY-MM-DD): only import games played after this. */
   importSince: string;
   importTimeClasses: TimeClass[];
@@ -54,6 +59,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lichessUsername: '',
   chesscomUsername: '',
   lichessToken: '',
+  lichessAccount: '',
   importSince: yearAgo(),
   importTimeClasses: ['blitz', 'rapid', 'classical', 'correspondence'],
   rating: 1500,
