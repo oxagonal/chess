@@ -253,6 +253,11 @@ interface LineState {
 
 type Feedback = { kind: 'good' | 'bad' | 'hint' | 'show' | 'info'; text: ReactNode } | null;
 
+/** Steps the app plays for you: opponent/earlier moves, and later known moves while a new line is being shown. */
+function playedForYou(step: PlannedStep, phase: 'show' | 'quiz'): boolean {
+  return step.kind === 'auto' || (step.kind === 'practice' && phase === 'show');
+}
+
 function Session({ setup }: { setup: SessionSetup }) {
   const { mode, graphs, reps, queue, settings } = setup;
   const pendingRef = useRef(new Set(queue.map((c) => c.id)));
@@ -286,7 +291,7 @@ function Session({ setup }: { setup: SessionSetup }) {
         continue;
       }
       const steps = planLine(graph, move, pending, mode === 'learn' ? 'learn' : 'review');
-      if (!steps.some((s) => s.kind !== 'auto')) {
+      if (!steps.some((s) => s.kind === 'quiz' || s.kind === 'show')) {
         pending.delete(card.id);
         continue;
       }
@@ -337,8 +342,8 @@ function Session({ setup }: { setup: SessionSetup }) {
       return () => clearTimeout(t);
     }
     const step = line.steps[idx];
-    if (step.kind !== 'auto') return;
-    const beforeUser = line.steps[idx + 1] && line.steps[idx + 1].kind !== 'auto';
+    if (!playedForYou(step, line.phase)) return;
+    const beforeUser = line.steps[idx + 1] && !playedForYou(line.steps[idx + 1], line.phase);
     const delay = idx === 0 ? 350 : beforeUser ? settings.autoPlayDelayMs : Math.min(140, settings.autoPlayDelayMs);
     const t = setTimeout(() => {
       const r = playUci(pos, step.move.uci);
@@ -354,12 +359,12 @@ function Session({ setup }: { setup: SessionSetup }) {
   }, [line, idx, pos, finished, nextLine, settings.autoPlayDelayMs, holdAtEnd]);
 
   const step = line && idx < line.steps.length ? line.steps[idx] : undefined;
-  const waiting = !!step && step.kind !== 'auto';
+  const waiting = !!step && !!line && !playedForYou(step, line.phase);
   const rep = line ? reps.get(line.repId) : undefined;
   const graph = line ? graphs.get(line.repId) : undefined;
 
   const onMove = async (uci: string) => {
-    if (!line || !step || step.kind === 'auto') return;
+    if (!line || !step || !waiting) return;
     const r = playUci(pos, uci);
     if (!r) return;
     const expected = step.move;
@@ -373,6 +378,13 @@ function Session({ setup }: { setup: SessionSetup }) {
       setHint(false);
       if (line.phase !== 'quiz') {
         setFeedback({ kind: 'good', text: <b>✓ {expected.san}</b> });
+        return;
+      }
+      if (step.kind === 'practice') {
+        // Further down the branch: you play it, but it doesn't count toward your schedule.
+        if (wrong > 0 || hint) setNoteMove({ id: expected.id, san: expected.san });
+        feedbackToken.current++;
+        setFeedback({ kind: wrong > 0 || hint ? 'hint' : 'good', text: <b>{wrong > 0 || hint ? `${expected.san} — keep it in mind.` : `✓ ${expected.san}`}</b> });
         return;
       }
       const failed = wrong > 0 || hint;
@@ -416,7 +428,7 @@ function Session({ setup }: { setup: SessionSetup }) {
 
   const showAnswer = () => {
     setHint(true);
-    if (step && step.kind !== 'auto') setNoteMove({ id: step.move.id, san: step.move.san });
+    if (step && waiting) setNoteMove({ id: step.move.id, san: step.move.san });
     setWrong((w) => Math.max(1, w));
   };
 
@@ -427,7 +439,7 @@ function Session({ setup }: { setup: SessionSetup }) {
   };
 
   const arrows: Arrow[] = useMemo(() => {
-    if (!step || step.kind === 'auto') return [];
+    if (!step || !waiting) return [];
     if (line?.phase === 'show' || hint) return [{ uci: step.move.uci, brush: 'green' }];
     return [];
   }, [step, line?.phase, hint]);

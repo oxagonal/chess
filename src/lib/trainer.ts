@@ -1,7 +1,11 @@
 import type { RepGraph } from './graph';
 import type { RepMove, ReviewCard } from './types';
 
-export type StepKind = 'quiz' | 'show' | 'auto';
+/**
+ * quiz: graded (review) · show: shown then quizzed (learn) · auto: played for you ·
+ * practice: you play it, but it isn't graded (your known moves further down the branch).
+ */
+export type StepKind = 'quiz' | 'show' | 'auto' | 'practice';
 
 export interface PlannedStep {
   move: RepMove;
@@ -62,12 +66,26 @@ export function planLine(graph: RepGraph, target: RepMove, pending: ReadonlySet<
     key = next.toKey;
   }
 
+  // Then carry on down the branch to its end, like a game would: your (first) move on your turn,
+  // the first saved reply on theirs.
+  for (let guard = 0; guard < 400; guard++) {
+    const kids = graph.childrenOf(key).filter((m) => !onLine.has(m.toKey));
+    const next = graph.isMyTurn(key) ? kids.find((m) => m.mine) : kids[0];
+    if (!next) break;
+    line.push(next);
+    onLine.add(next.toKey);
+    key = next.toKey;
+  }
+
+  const targetIndex = prefix.length;
   const asked = new Set<string>();
-  return line.map((move) => {
+  return line.map((move, i) => {
     if (move.mine && pending.has(move.id) && !asked.has(move.id)) {
       asked.add(move.id);
       return { move, kind: mode === 'learn' ? 'show' : 'quiz' };
     }
+    // Your moves after the one being trained: you play them, ungraded.
+    if (move.mine && i > targetIndex) return { move, kind: 'practice' };
     return { move, kind: 'auto' };
   });
 }

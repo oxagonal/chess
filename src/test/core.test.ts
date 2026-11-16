@@ -135,6 +135,13 @@ describe('trainer planning', () => {
     expect(steps.filter((s) => s.kind === 'show').map((s) => s.move.san)).toEqual(['Nf3', 'd4']);
   });
 
+  it('continues down the branch to its end after the trained move, asking your later moves ungraded', () => {
+    const nf3 = byLine(['e4', 'e5', 'Nf3']);
+    const steps = planLine(g, nf3, new Set([nf3.id]), 'review');
+    expect(steps.map((s) => s.move.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+    expect(steps.map((s) => s.kind)).toEqual(['auto', 'auto', 'quiz', 'auto', 'practice']);
+  });
+
   it('orders cards shallow-first, or by probability when known', () => {
     const cards = g.myMoves().map((m) => newCard({ id: m.id, repId: 'r', fromKey: m.fromKey, san: m.san }));
     const ordered = orderCards(cards, g);
