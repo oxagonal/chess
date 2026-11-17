@@ -13,7 +13,8 @@ import {
   renameRepertoire,
 } from '../db/repertoire';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
-import { useCards, useCoverage, useRepertoires, useRepGraph } from '../hooks';
+import { useCards, useCoverage, useMediaQuery, useRepertoires, useRepGraph } from '../hooks';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { MoveNote } from '../components/MoveNote';
@@ -275,6 +276,10 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const freshCoverage = rep && settings.loaded && isCoverageFresh(coverage, rep, settings) ? coverage : undefined;
   const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings, freshCoverage);
   const [flipped, setFlipped] = useState(false);
+  // Desktop: a resizable "studio" (drag the borders between panes; remembered per device).
+  // Phones and narrow windows: everything stacked, the page scrolls.
+  const stacked = useMediaQuery('(max-width: 900px)');
+  const [layoutVersion, setLayoutVersion] = useState(0);
   const [opening, setOpening] = useState<string | undefined>();
   const [message, setMessage] = useState<string | null>(null);
   const autoAdd = settings.builderAutoAdd;
@@ -497,6 +502,15 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const dueCount = (cards ?? []).filter((c) => isDue(c)).length;
   const newCount = (cards ?? []).filter(isNew).length;
   const nav = settings.builderNav;
+  // Forget the saved pane sizes (react-resizable-panels keeps them in localStorage, per device).
+  const resetLayout = () => {
+    try {
+      for (const k of Object.keys(localStorage)) if (k.startsWith('react-resizable-panels:builder')) localStorage.removeItem(k);
+    } catch {
+      /* storage unavailable: nothing saved anyway */
+    }
+    setLayoutVersion((v) => v + 1);
+  };
 
   // Side lines: the repertoire's other moves where the displayed line could have gone differently,
   // each run ahead to its next choice.
@@ -544,6 +558,11 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
         ▶ Play from memory{cursor > 0 ? ' from here' : ''}
       </button>
       <span className="spacer" />
+      {!stacked && (
+        <button className="small ghost" onClick={resetLayout} title="Put the panes back to their original sizes">
+          Reset layout
+        </button>
+      )}
       {onDone ? (
         <button className="primary small" onClick={onDone}>
           Continue training →
@@ -715,127 +734,174 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     </div>
   );
 
-  return (
-    <div className="builder">
-      {!zen && header}
-      <div className="board-layout builder-grid">
-        <div className="board-col col">
-          <Board
-            pos={pos}
-            orientation={orientation}
-            interactive
-            lastMove={lastMove}
-            onMove={onBoardMove}
-            arrows={zen ? [] : children.map((c) => ({ uci: c.uci, brush: c.mine ? 'green' : 'paleBlue' }))}
-          />
-          <div className="row">
-            <button onClick={() => setCursor(0)} title="Start (Home)">
-              ⏮
-            </button>
-            <button onClick={() => setCursor(Math.max(0, cursor - 1))} title="Back (←)">
-              ◀
-            </button>
-            <button onClick={forward} title="Forward (→)">
-              ▶
-            </button>
-            <button onClick={() => goTo(display.length)} title="End of the line (End)">
-              ⏭
-            </button>
-            <button onClick={() => setFlipped(!flipped)} title="Flip board (f)">
-              ⇅
-            </button>
-            {!zen && (
-              <a
-                className="btn small"
-                href={`https://lichess.org/analysis/standard/${`${key} 0 1`.replace(/ /g, '_')}?color=${orientation}`}
-                target="_blank"
-                rel="noreferrer"
-                title="Open this position on the Lichess analysis board (new tab)"
-              >
-                Analyze on Lichess ↗
-              </a>
-            )}
-            <span className="spacer" />
-            {!zen && (
-              <label className="check small" title="Every move you play on the board is saved into the repertoire immediately">
-                <input type="checkbox" checked={autoAdd} onChange={(e) => updateSettings({ builderAutoAdd: e.target.checked })} />
-                Auto-add moves
-              </label>
-            )}
-          </div>
-          {!zen && (
-            <CoverageBox
-              reach={reach}
-              inRep={inRep}
-              score={coverage?.coverage?.[key]}
-              prob={prob}
-              oneInN={goalN}
-              source={sourceLabel(settings)}
-              running={live.running || live.stale}
-              error={live.error}
-            />
+  const engine = <EnginePanel fenKey={key} ply={cursor} onPlay={(san) => play(san)} />;
+  const boardPane = (
+    <>
+      <div className="board-fit">
+        <Board
+          pos={pos}
+          orientation={orientation}
+          interactive
+          lastMove={lastMove}
+          onMove={onBoardMove}
+          arrows={zen ? [] : children.map((c) => ({ uci: c.uci, brush: c.mine ? 'green' : 'paleBlue' }))}
+        />
+      </div>
+      <div className="row">
+        <button onClick={() => setCursor(0)} title="Start (Home)">
+          ⏮
+        </button>
+        <button onClick={() => setCursor(Math.max(0, cursor - 1))} title="Back (←)">
+          ◀
+        </button>
+        <button onClick={forward} title="Forward (→)">
+          ▶
+        </button>
+        <button onClick={() => goTo(display.length)} title="End of the line (End)">
+          ⏭
+        </button>
+        <button onClick={() => setFlipped(!flipped)} title="Flip board (f)">
+          ⇅
+        </button>
+        {!zen && (
+          <a
+            className="btn small"
+            href={`https://lichess.org/analysis/standard/${`${key} 0 1`.replace(/ /g, '_')}?color=${orientation}`}
+            target="_blank"
+            rel="noreferrer"
+            title="Open this position on the Lichess analysis board (new tab)"
+          >
+            Analyze on Lichess ↗
+          </a>
+        )}
+        <span className="spacer" />
+        {!zen && (
+          <label className="check small" title="Every move you play on the board is saved into the repertoire immediately">
+            <input type="checkbox" checked={autoAdd} onChange={(e) => updateSettings({ builderAutoAdd: e.target.checked })} />
+            Auto-add moves
+          </label>
+        )}
+      </div>
+      {!zen && (
+        <CoverageBox
+          reach={reach}
+          inRep={inRep}
+          score={coverage?.coverage?.[key]}
+          prob={prob}
+          oneInN={goalN}
+          source={sourceLabel(settings)}
+          running={live.running || live.stale}
+          error={live.error}
+        />
+      )}
+    </>
+  );
+  const explorer = !zen && (
+    <ExplorerPanel
+      fenKey={key}
+      color={rep.color}
+      title={myTurn ? 'Your move' : "Opponent's replies"}
+      saved={children.map((c) => {
+        const card = cardById.get(c.id);
+        const childProb = coverage?.probs[c.toKey];
+        const prepared = coverage?.coverage?.[c.toKey];
+        return {
+          id: c.id,
+          san: c.san,
+          uci: c.uci,
+          mine: c.mine,
+          comment: c.comment,
+          extras: (
+            <>
+              {prepared !== undefined && childProb !== undefined && childProb >= 1 / goalN && (
+                <span className="small" style={{ color: coverColor(prepared) }} title="Prepared from the position after this move">
+                  {Math.round(prepared * 100)}%
+                </span>
+              )}
+              {card && <CardBadge state={card.state} due={card.due} />}
+            </>
+          ),
+        };
+      })}
+      notes={
+        <>
+          {!inRep && (
+            <div className="note" style={{ marginBottom: 6 }}>
+              Not in your repertoire yet. Use <b>Add line</b> to save the line up to here{autoAdd ? '' : ' (or turn on Auto-add)'}.
+            </div>
           )}
-        </div>
+          {inRep && children.length === 0 && (
+            <div className="note" style={{ marginBottom: 6 }}>
+              {myTurn ? 'No move prepared here yet — play one on the board or press + on a move below.' : 'End of line — press + on the replies you expect.'}
+            </div>
+          )}
+          {myTurn && myMovesHere.length > 1 && (
+            <div className="note" style={{ marginBottom: 6 }}>
+              You have {myMovesHere.length} prepared moves here. That's fine (all are trained), but most players keep one.
+            </div>
+          )}
+        </>
+      }
+      onPlay={(san) => play(san)}
+      onAdd={(san) => play(san, true)}
+      onDelete={(id, san) => removeMove(id, san)}
+      onOpening={setOpening}
+      reachHere={reach.loading ? undefined : reach.prob}
+    />
+  );
 
-        <div className="col builder-right">
-          {memoryPanel}
-          {!zen && <EnginePanel fenKey={key} ply={cursor} onPlay={(san) => play(san)} />}
-          {movesPanel}
-          {!zen && (
-            <ExplorerPanel
-              fenKey={key}
-              color={rep.color}
-              title={myTurn ? 'Your move' : "Opponent's replies"}
-              saved={children.map((c) => {
-                const card = cardById.get(c.id);
-                const childProb = coverage?.probs[c.toKey];
-                const prepared = coverage?.coverage?.[c.toKey];
-                return {
-                  id: c.id,
-                  san: c.san,
-                  uci: c.uci,
-                  mine: c.mine,
-                  comment: c.comment,
-                  extras: (
-                    <>
-                      {prepared !== undefined && childProb !== undefined && childProb >= 1 / goalN && (
-                        <span className="small" style={{ color: coverColor(prepared) }} title="Prepared from the position after this move">
-                          {Math.round(prepared * 100)}%
-                        </span>
-                      )}
-                      {card && <CardBadge state={card.state} due={card.due} />}
-                    </>
-                  ),
-                };
-              })}
-              notes={
-                <>
-                  {!inRep && (
-                    <div className="note" style={{ marginBottom: 6 }}>
-                      Not in your repertoire yet. Use <b>Add line</b> to save the line up to here{autoAdd ? '' : ' (or turn on Auto-add)'}.
-                    </div>
-                  )}
-                  {inRep && children.length === 0 && (
-                    <div className="note" style={{ marginBottom: 6 }}>
-                      {myTurn ? 'No move prepared here yet — play one on the board or press + on a move below.' : 'End of line — press + on the replies you expect.'}
-                    </div>
-                  )}
-                  {myTurn && myMovesHere.length > 1 && (
-                    <div className="note" style={{ marginBottom: 6 }}>
-                      You have {myMovesHere.length} prepared moves here. That's fine (all are trained), but most players keep one.
-                    </div>
-                  )}
-                </>
-              }
-              onPlay={(san) => play(san)}
-              onAdd={(san) => play(san, true)}
-              onDelete={(id, san) => removeMove(id, san)}
-              onOpening={setOpening}
-              reachHere={reach.loading ? undefined : reach.prob}
-            />
-          )}
+  if (stacked)
+    return (
+      <div className="builder">
+        {!zen && header}
+        <div className="board-layout builder-grid">
+          <div className="board-col col">{boardPane}</div>
+          <div className="col builder-right">
+            {memoryPanel}
+            {!zen && engine}
+            {movesPanel}
+            {explorer}
+          </div>
         </div>
       </div>
+    );
+
+  return (
+    <div className="builder studio">
+      {!zen && header}
+      <PanelGroup key={layoutVersion} direction="horizontal" autoSaveId="builder-cols" className="studio-group">
+        <Panel id="board" order={1} defaultSize={42} minSize={22}>
+          <div className="studio-pane board-pane">{boardPane}</div>
+        </Panel>
+        <PanelResizeHandle className="resize-handle" />
+        <Panel id="side" order={2} defaultSize={58} minSize={25}>
+          {zen ? (
+            <PanelGroup key={layoutVersion} direction="vertical" autoSaveId="builder-side-zen">
+              <Panel id="memory" order={1} defaultSize={30} minSize={15}>
+                <div className="studio-pane">{memoryPanel}</div>
+              </Panel>
+              <PanelResizeHandle className="resize-handle" />
+              <Panel id="moves" order={2} defaultSize={70} minSize={15}>
+                <div className="studio-pane">{movesPanel}</div>
+              </Panel>
+            </PanelGroup>
+          ) : (
+            <PanelGroup key={layoutVersion} direction="vertical" autoSaveId="builder-side">
+              <Panel id="stockfish" order={1} defaultSize={16} minSize={8}>
+                <div className="studio-pane">{engine}</div>
+              </Panel>
+              <PanelResizeHandle className="resize-handle" />
+              <Panel id="moves" order={2} defaultSize={42} minSize={12}>
+                <div className="studio-pane">{movesPanel}</div>
+              </Panel>
+              <PanelResizeHandle className="resize-handle" />
+              <Panel id="explorer" order={3} defaultSize={42} minSize={12}>
+                <div className="studio-pane">{explorer}</div>
+              </Panel>
+            </PanelGroup>
+          )}
+        </Panel>
+      </PanelGroup>
     </div>
   );
 }

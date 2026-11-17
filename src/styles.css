@@ -492,19 +492,29 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .engine-options .muted { cursor: help; }
 .inline-field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 .inline-field select { padding: 3px 6px; }
-@media (min-width: 901px) {
-  /* Everything fits the window: the board sizes to the height left over, and the right column's
-     moves panel and explorer scroll inside themselves. */
-  .builder { height: calc(100vh - 56px - 48px); }
-  .builder-grid { flex: 1; min-height: 0; grid-template-columns: auto minmax(340px, 1fr); }
-  .builder .board-col { position: static; width: min(640px, max(320px, calc(100vh - 56px - 48px - 46px - 12px - 70px - 12px - 84px))); }
-  .builder-right { min-height: 0; height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
-  .builder-right > .engine, .builder-right > .memory-panel { flex: none; }
-  .builder-right > .moves-panel { flex: 1.4 1 0; min-height: 200px; display: flex; flex-direction: column; }
-  .moves-panel .moves-body { flex: 1; min-height: 0; overflow-y: auto; }
-  .builder-right > .explorer { flex: 1 1 0; min-height: 160px; overflow-y: auto; }
-  .builder-right > .explorer thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
-}
+/* Desktop builder "studio": edge to edge, resizable panes (react-resizable-panels), each scrolling
+   inside itself. The board fills its pane, as large as fits while staying square. */
+.main:has(.studio) { max-width: none; padding: 8px 10px 10px; }
+.studio { height: calc(100vh - 56px - 18px); gap: 8px; }
+.studio .builder-head h1 { font-size: 19px; }
+.studio-group { flex: 1; min-height: 0; }
+.studio-pane { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.studio-pane > .panel { flex: 1; min-height: 0; overflow: auto; margin: 0; }
+.studio-pane > .moves-panel { display: flex; flex-direction: column; overflow: hidden; }
+.studio-pane > .moves-panel .moves-body { flex: 1; min-height: 0; overflow-y: auto; }
+.studio-pane > .explorer thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.board-pane { gap: 8px; }
+.board-pane .board-fit { flex: 1; min-height: 0; container-type: size; display: flex; justify-content: center; align-items: flex-start; }
+.board-pane .board-fit > .board-wrap { width: min(100cqw, 100cqh); }
+.board-pane > .row { flex: none; background: var(--panel); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 6px; }
+.board-pane > .coverage-box { flex: none; margin: 0; padding-top: 8px; padding-bottom: 8px; }
+.resize-handle { flex: 0 0 8px; position: relative; outline: none; }
+.resize-handle::after { content: ''; position: absolute; inset: 0; margin: auto; border-radius: 2px; background: transparent; transition: background .12s; }
+[data-panel-group-direction='horizontal'] > .resize-handle::after { width: 2px; height: 48px; }
+[data-panel-group-direction='vertical'] > .resize-handle::after { height: 2px; width: 48px; }
+.resize-handle:hover::after, .resize-handle[data-resize-handle-state='drag']::after, .resize-handle:focus-visible::after { background: var(--accent); width: auto; height: auto; }
+[data-panel-group-direction='horizontal'] > .resize-handle:hover::after, [data-panel-group-direction='horizontal'] > .resize-handle[data-resize-handle-state='drag']::after { width: 2px; height: 100%; }
+[data-panel-group-direction='vertical'] > .resize-handle:hover::after, [data-panel-group-direction='vertical'] > .resize-handle[data-resize-handle-state='drag']::after { height: 2px; width: 100%; }
 
 /* ---------- scoresheet (MoveList) ---------- */
 .movelist2 { display: grid; grid-template-columns: 38px 1fr 1fr; align-items: stretch; font-size: 15px; }
