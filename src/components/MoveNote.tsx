@@ -91,7 +91,7 @@ export function MoveNote({
         rows={compact ? 2 : 3}
         value={text ?? stored}
         autoFocus={autoFocus || (prompt && !stored)}
-        placeholder={asking ? `Why ${san}? The idea, the plan, the trap — so it sticks next time.` : 'Why this move? Plans, traps, ideas… (shown during training)'}
+        placeholder={asking ? `Why ${san}? The idea, the plan, the trap…` : 'Why this move? Plans, traps, ideas… (shown during training)'}
         onChange={(e) => setText(e.target.value)}
         onBlur={save}
         onKeyDown={keys}

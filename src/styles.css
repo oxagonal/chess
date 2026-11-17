@@ -388,31 +388,36 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
   .stat .v { font-size: 22px; }
 }
 
-/* ---------- training session ---------- */
-.line-panel .line-head { margin-bottom: 8px; }
-/* Phones: the whole session fits between the header and the tab bar — status, board, note, line,
-   feedback and buttons in one column, the board taking whatever height is left (up to the full
-   width), so Continue / Show move are always on screen. Taller content (a long note) just scrolls. */
-@media (max-width: 700px) {
-  .main:has(> .train-layout) { padding-top: 8px; padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
-  .board-layout.train-layout {
-    display: flex; flex-direction: column; align-items: stretch; gap: 8px; container-type: inline-size;
-    min-height: calc(100dvh - 48px - env(safe-area-inset-top) - 8px - 62px - env(safe-area-inset-bottom));
-  }
-  .train-layout > .col, .train-layout > .board-col { display: contents; }
-  .train-layout .panel { margin-top: 0; padding: 8px 12px; }
-  .train-layout .train-head { order: 1; }
-  .train-layout .train-head h2 { font-size: 16px; }
-  .train-layout .train-head .progress { height: 4px; }
-  .train-layout .train-head > div[style] { margin-top: 6px !important; }
-  .train-layout .board-slot { order: 2; flex: 1 1 0; min-height: 160px; max-height: 100cqw; container-type: size; }
-  .train-layout .board-slot .board-wrap { width: 100%; width: min(100cqw, 100cqh); margin: 0 auto; }
-  .train-layout .movenote { order: 3; }
-  .train-layout .movenote-ask { display: none; }
-  .train-layout .movenote textarea { min-height: 0; height: 52px; resize: none; }
-  .train-layout .line-panel { order: 4; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-  .train-layout .line-panel .line-head { margin-bottom: 0; }
-  .train-layout .line-panel .mono { min-height: 0 !important; font-size: 14px; }
-  .train-layout .feedback { order: 5; min-height: 0; padding: 9px 12px; font-size: 14px; }
-  .train-layout .train-actions { order: 6; }
+/* ---------- training session on a phone ---------- */
+/* Only rendered on phones (Train.tsx). It fills the space between the header and the tab bar, so
+   Continue / Show move never need a scroll. The board's size depends only on the screen: its width,
+   or the height left after a fixed allowance (--tp-reserve) for the status strip, line strip,
+   feedback box and buttons — so it stays put while the line grows or a note opens. */
+.train-phone {
+  --tp-reserve: 250px;
+  display: flex; flex-direction: column; gap: 8px; container-type: size;
+  height: calc(100dvh - 48px - env(safe-area-inset-top) - 8px - 62px - env(safe-area-inset-bottom));
 }
+@media (max-width: 700px) {
+  .main:has(> .train-phone) { padding-top: 8px; padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+}
+.tp-status { flex: none; display: flex; flex-direction: column; gap: 5px; padding: 0 2px; }
+.tp-status .row { gap: 6px; flex-wrap: nowrap; font-size: 14px; white-space: nowrap; }
+.tp-status .row > .muted:not(.small) { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tp-status .progress { height: 4px; }
+.tp-board { flex: none; align-self: center; width: 100%; width: min(100cqw, max(160px, 100cqh - var(--tp-reserve))); }
+.tp-line {
+  flex: none; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px;
+  background: var(--panel); border: 1px solid var(--border-soft); border-radius: var(--radius);
+}
+.tp-line > h3, .tp-line > .badge { flex: none; }
+.tp-moves { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font-size: 14px; scrollbar-width: none; }
+.tp-moves::-webkit-scrollbar { display: none; }
+.tp-info { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.tp-info > .feedback { flex: 1 0 auto; min-height: 0; padding: 9px 12px; font-size: 14px; }
+.tp-info .movenote { margin-top: 6px; padding: 6px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.tp-info .movenote.prompt { box-shadow: none; }
+.tp-info .movenote.prompt textarea { border-color: var(--warn); }
+.tp-info .movenote-ask { display: none; }
+.tp-info .movenote textarea { min-height: 0; height: 58px; resize: none; }
+.train-phone .train-actions { flex: none; flex-wrap: nowrap; }

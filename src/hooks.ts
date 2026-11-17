@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
 import { RepGraph } from './lib/graph';
@@ -71,3 +71,19 @@ export function useLearnedToday() {
     return new Set(logs.filter((l) => l.state === 0).map((l) => l.cardId)).size;
   }, []);
 }
+
+/** Whether a CSS media query matches, kept up to date (e.g. the phone layout: PHONE_QUERY). */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setMatches(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, [query]);
+  return matches;
+}
+
+/** Same breakpoint as the phone rules in styles.css. */
+export const PHONE_QUERY = '(max-width: 700px)';

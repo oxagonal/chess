@@ -8,7 +8,7 @@ import { gradeCard } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
 import { Board, type Arrow } from '../components/Board';
 import { ColorPill, Empty, ProgressBar, Stat } from '../components/ui';
-import { useCards, useRepertoires, startOfToday } from '../hooks';
+import { PHONE_QUERY, useCards, useMediaQuery, useRepertoires, startOfToday } from '../hooks';
 import { href, navigate } from '../router';
 import { formatLine, playUci, startPos } from '../lib/chess';
 import { RepGraph } from '../lib/graph';
@@ -467,6 +467,15 @@ function Session({ setup }: { setup: SessionSetup }) {
     nextLine();
   };
 
+  // Phones get their own arrangement (see the end of this component).
+  const phone = useMediaQuery(PHONE_QUERY);
+  const movesRef = useRef<HTMLDivElement>(null);
+  // The phone's one-row move strip keeps the latest move in view.
+  useEffect(() => {
+    const el = movesRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [idx, line, phone]);
+
   const arrows: Arrow[] = useMemo(() => {
     if (!step || !waiting) return [];
     if (line?.phase === 'show' || hint) return [{ uci: step.move.uci, brush: 'green' }];
@@ -522,103 +531,152 @@ function Session({ setup }: { setup: SessionSetup }) {
 
   if (editing) return <Builder key={editing.line} repId={editing.repId} initialLine={editing.line} onDone={() => void finishEditing()} />;
 
-  // On phones (styles.css, .train-layout) this becomes one screen-high column — status, board, note,
-  // line, feedback, buttons — with the board shrinking to fit so Continue never needs a scroll.
-  return (
-    <div className="board-layout train-layout">
-      <div className="board-col col">
-        <div className="board-slot">
-          <Board pos={pos} orientation={rep?.color ?? 'white'} interactive={waiting} lastMove={lastMove} onMove={onMove} arrows={arrows} flash={flash} />
+  const modeName = mode === 'learn' ? 'Learn' : mode === 'drill' ? 'Drill' : 'Review';
+  const counter = `${total - pendingRef.current.size} / ${total}`;
+  const endButton = (
+    <a className="btn small" href={href('train')}>
+      End
+    </a>
+  );
+  const board = <Board pos={pos} orientation={rep?.color ?? 'white'} interactive={waiting} lastMove={lastMove} onMove={onMove} arrows={arrows} flash={flash} />;
+  const note = noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" prompt compact={phone} />;
+  const lineLabel = <h3 style={{ margin: 0 }}>{line?.phase === 'show' ? 'New line' : 'Line'}</h3>;
+  const orderBadge = line?.order && (
+    <span
+      className="badge"
+      title="This position can be reached by more than one move order. Each review takes the next one (most common first), so you practise them all."
+    >
+      {phone ? 'Order' : 'Move order'} {line.order.index + 1} {phone ? '/' : 'of'} {line.order.count}
+    </span>
+  );
+  const lineText = pathSoFar.length ? formatLine(pathSoFar) : <span className="muted">Starting position</span>;
+  const notes = setup.notes.map((n) => (
+    <div key={n} className="note">
+      {n}
+    </div>
+  ));
+  const feedbackBox = (
+    <div className={`feedback ${waiting && !feedback ? '' : feedback?.kind ?? ''}`}>
+      {waiting && line?.phase === 'show' && (
+        <div>
+          <b>Play {step!.move.san}</b>
+          {step!.move.comment && <div style={{ marginTop: 4 }}>{step!.move.comment}</div>}
         </div>
-        {noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" prompt />}
-      </div>
-      <div className="col">
-        <div className="panel train-head">
+      )}
+      {feedback && <div style={{ marginBottom: 4, marginTop: waiting && line?.phase === 'show' ? 6 : 0 }}>{feedback.text}</div>}
+      {waiting && line?.phase === 'quiz' && feedback?.kind !== 'bad' && <b>Your move — what's your prep here?</b>}
+      {waiting && prevStep && !prevStep.move.mine && prevStep.move.comment && (
+        <div className="muted small" style={{ marginTop: 6 }}>
+          After {prevStep.move.san}: {prevStep.move.comment}
+        </div>
+      )}
+      {!waiting && !feedback && <span className="muted">…</span>}
+      {holdAtEnd && !phone && (
+        <div className="muted small" style={{ marginTop: 6 }}>
+          Line finished. {noteMove ? 'Write or edit the note under the board, or edit' : 'Edit'} the line in the builder, then press Continue.
+        </div>
+      )}
+      {/* On phones a missed move's note lives here, inside the feedback, instead of under the board. */}
+      {phone && note}
+    </div>
+  );
+  const actions = (
+    <div className="row train-actions">
+      {holdAtEnd ? (
+        <>
+          <button className="primary" onClick={continueAfterLine} autoFocus={false}>
+            Continue →
+          </button>
+          <button onClick={editLine} title="Open this line in the repertoire builder — add, change or delete moves and notes — then continue training">
+            Edit line
+          </button>
+        </>
+      ) : (
+        <>
+          {line?.phase === 'quiz' && (
+            <button onClick={showAnswer} disabled={!waiting || hint}>
+              Show move
+            </button>
+          )}
+          <button onClick={skipLine}>Skip line</button>
+        </>
+      )}
+      <span className="spacer" />
+      <span className="muted small">
+        ✓ {stats.correct} · ✗ {stats.failed}
+      </span>
+      {phone && endButton}
+    </div>
+  );
+
+  // Phones: one screen between the header and the tab bar. The board's size depends only on the
+  // screen (styles.css, .tp-board), never on what's under it, so it doesn't jump while you play;
+  // the line is one sideways-scrolling row, and feedback + note share a fixed box above the buttons.
+  if (phone)
+    return (
+      <div className="train-phone">
+        <div className="tp-status">
           <div className="row">
-            <h2 style={{ margin: 0 }}>{mode === 'learn' ? 'Learn' : mode === 'drill' ? 'Drill' : 'Review'}</h2>
+            <b>{modeName}</b>
             {rep && <span className="muted">{rep.name}</span>}
             <span className="spacer" />
-            <span className="muted small">
-              {total - pendingRef.current.size} / {total}
-            </span>
-            <a className="btn small" href={href('train')}>
-              End
-            </a>
+            <span className="muted small">{counter}</span>
+          </div>
+          <ProgressBar value={progress} />
+        </div>
+        <div className="tp-board">{board}</div>
+        <div className="tp-line">
+          {lineLabel}
+          {orderBadge}
+          <div className="mono tp-moves" ref={movesRef}>
+            {lineText}
+          </div>
+        </div>
+        <div className="tp-info">
+          {feedbackBox}
+          {notes}
+        </div>
+        {actions}
+      </div>
+    );
+
+  return (
+    <div className="board-layout">
+      <div className="board-col col">
+        {board}
+        {note}
+      </div>
+      <div className="col">
+        <div className="panel">
+          <div className="row">
+            <h2 style={{ margin: 0 }}>{modeName}</h2>
+            {rep && <span className="muted">{rep.name}</span>}
+            <span className="spacer" />
+            <span className="muted small">{counter}</span>
+            {endButton}
           </div>
           <div style={{ marginTop: 8 }}>
             <ProgressBar value={progress} />
           </div>
-          {setup.notes.map((n) => (
-            <div key={n} className="note" style={{ marginTop: 8 }}>
-              {n}
+          {notes.length > 0 && (
+            <div className="col" style={{ marginTop: 8, gap: 8 }}>
+              {notes}
             </div>
-          ))}
+          )}
         </div>
 
-        <div className="panel line-panel">
-          <div className="row line-head">
-            <h3 style={{ margin: 0 }}>{line?.phase === 'show' ? 'New line' : 'Line'}</h3>
-            {line?.order && (
-              <span
-                className="badge"
-                title="This position can be reached by more than one move order. Each review takes the next one (most common first), so you practise them all."
-              >
-                Move order {line.order.index + 1} of {line.order.count}
-              </span>
-            )}
+        <div className="panel">
+          <div className="row" style={{ marginBottom: 8 }}>
+            {lineLabel}
+            {orderBadge}
           </div>
           <div className="mono" style={{ minHeight: 22 }}>
-            {pathSoFar.length ? formatLine(pathSoFar) : <span className="muted">Starting position</span>}
+            {lineText}
           </div>
         </div>
 
-        <div className={`feedback ${waiting && !feedback ? '' : feedback?.kind ?? ''}`}>
-          {waiting && line?.phase === 'show' && (
-            <div>
-              <b>Play {step!.move.san}</b>
-              {step!.move.comment && <div style={{ marginTop: 4 }}>{step!.move.comment}</div>}
-            </div>
-          )}
-          {feedback && <div style={{ marginBottom: 4, marginTop: waiting && line?.phase === 'show' ? 6 : 0 }}>{feedback.text}</div>}
-          {waiting && line?.phase === 'quiz' && feedback?.kind !== 'bad' && <b>Your move — what's your prep here?</b>}
-          {waiting && prevStep && !prevStep.move.mine && prevStep.move.comment && (
-            <div className="muted small" style={{ marginTop: 6 }}>
-              After {prevStep.move.san}: {prevStep.move.comment}
-            </div>
-          )}
-          {!waiting && !feedback && <span className="muted">…</span>}
-          {holdAtEnd && (
-            <div className="muted small hide-sm" style={{ marginTop: 6 }}>
-              Line finished. {noteMove ? 'Write or edit the note under the board, or edit' : 'Edit'} the line in the builder, then press Continue.
-            </div>
-          )}
-        </div>
-
-        <div className="row train-actions">
-          {holdAtEnd ? (
-            <>
-              <button className="primary" onClick={continueAfterLine} autoFocus={false}>
-                Continue →
-              </button>
-              <button onClick={editLine} title="Open this line in the repertoire builder — add, change or delete moves and notes — then continue training">
-                Edit line
-              </button>
-            </>
-          ) : (
-            <>
-              {line?.phase === 'quiz' && (
-                <button onClick={showAnswer} disabled={!waiting || hint}>
-                  Show move
-                </button>
-              )}
-              <button onClick={skipLine}>Skip line</button>
-            </>
-          )}
-          <span className="spacer" />
-          <span className="muted small">
-            ✓ {stats.correct} · ✗ {stats.failed}
-          </span>
-        </div>
+        {feedbackBox}
+        {actions}
       </div>
     </div>
   );
