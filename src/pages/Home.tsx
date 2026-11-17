@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { useSettings } from '../db/settings';
-import { useAllGraphs, useCards, useRecentGames, useRepertoires, startOfToday } from '../hooks';
+import { useAllGraphs, useCards, useLearnedToday, useRecentGames, useRepertoires, startOfToday } from '../hooks';
 import { rangeLabel } from '../lib/gameRange';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { analyzeGame, summarize } from '../lib/prep';
@@ -17,6 +17,7 @@ export function HomePage() {
   const allGameCount = useLiveQuery(() => db.games.count(), []);
   const graphs = useAllGraphs();
   const settings = useSettings();
+  const learnedToday = useLearnedToday();
   const reviewsToday = useLiveQuery(() => db.reviewLog.where('reviewedAt').aboveOrEqual(startOfToday()).count(), []);
   const coverageCount = useLiveQuery(() => db.coverage.count(), []);
 
@@ -32,6 +33,7 @@ export function HomePage() {
   const fresh = cards.filter(isNew).length;
   const mature = cards.filter(isMature).length;
   const learned = cards.length - fresh;
+  const newLeft = Math.max(0, settings.newPerDay - (learnedToday ?? 0));
 
   const steps = [
     { done: !!(settings.lichessUsername || settings.chesscomUsername), text: <>Add your Lichess / Chess.com usernames and rating in <a href={href('settings')}>Settings</a></> },
@@ -56,8 +58,19 @@ export function HomePage() {
           <a className={`btn primary ${due ? '' : 'disabled'}`} href={href('train', { rep: 'all', mode: 'review' })} aria-disabled={!due}>
             Review now
           </a>
-          <a className={`btn blue ${fresh ? '' : 'disabled'}`} href={href('train', { rep: 'all', mode: 'learn' })} aria-disabled={!fresh}>
-            Learn new
+          {/* Never greyed out: past today's limit it learns another batch; with nothing new, it opens the repertoires. */}
+          <a
+            className="btn blue"
+            href={
+              !fresh
+                ? href('repertoire')
+                : newLeft
+                  ? href('train', { rep: 'all', mode: 'learn' })
+                  : href('train', { rep: 'all', mode: 'learn', extra: '10' })
+            }
+            title={!fresh ? 'Every move is learned — add new moves to a repertoire' : newLeft ? undefined : 'Today’s new-move limit is reached — learn more anyway'}
+          >
+            {!fresh || newLeft ? 'Learn new' : 'Learn 10 more'}
           </a>
         </div>
       </div>

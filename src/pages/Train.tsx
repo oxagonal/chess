@@ -129,23 +129,25 @@ function Counts({ due, fresh }: { due: number; fresh: number }) {
 }
 
 function SessionButtons({ rep, due, fresh, unlearned }: { rep: string; due: number; fresh: number; unlearned: number }) {
+  // Learn is never greyed out: past today's limit it learns another batch anyway, and with every
+  // move learned it opens the builder to add more.
+  const learn = () => {
+    if (fresh) navigate('train', { rep, mode: 'learn', t: String(Date.now()) });
+    else if (unlearned) navigate('train', { rep, mode: 'learn', extra: String(EXTRA_BATCH), t: String(Date.now()) });
+    else navigate(rep === 'all' ? 'repertoire' : `repertoire/${rep}`);
+  };
   return (
     <div className="list-buttons">
       <button className="primary small" disabled={!due} onClick={() => navigate('train', { rep, mode: 'review', t: String(Date.now()) })}>
         Review {due || ''}
       </button>
-      <button className="blue small" disabled={!fresh} onClick={() => navigate('train', { rep, mode: 'learn', t: String(Date.now()) })}>
-        Learn {fresh || ''}
+      <button
+        className="blue small"
+        onClick={learn}
+        title={fresh ? undefined : unlearned ? 'Today’s new-move limit is reached — learn more anyway' : 'Every move is learned — add new moves in the builder'}
+      >
+        {fresh ? `Learn ${fresh}` : unlearned ? `Learn ${Math.min(EXTRA_BATCH, unlearned)} more` : 'Learn'}
       </button>
-      {!fresh && unlearned > 0 && (
-        <button
-          className="small"
-          title="Daily limit reached — learn more anyway"
-          onClick={() => navigate('train', { rep, mode: 'learn', extra: String(EXTRA_BATCH), t: String(Date.now()) })}
-        >
-          +{Math.min(EXTRA_BATCH, unlearned)} more
-        </button>
-      )}
     </div>
   );
 }
