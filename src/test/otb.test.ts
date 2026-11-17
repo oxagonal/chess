@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../db/db';
-import { draftFromPgn, draftOf, makeOtbGame, normalizeName, parsePgnDate, readPgnGames, sameName, sideOf } from '../lib/otb';
+import { draftFromPgn, draftOf, makeOtbGame, normalizeName, parsePgnDate, readPgnGames, sameName, sideOf, similarNames } from '../lib/otb';
 import { otbGamesVs, pgnGamesOf } from '../lib/players';
 import { GameStatsIndex } from '../lib/mygames';
 import { START_KEY } from '../lib/chess';
@@ -44,6 +44,13 @@ describe('names', () => {
     expect(sameName('Müller, Jörg', 'Jorg Muller')).toBe(true);
     expect(sameName('Anna Smith', 'Anna Smyth')).toBe(false);
     expect(sameName('', '')).toBe(false);
+  });
+
+  it('suggests names that share a word, for typos and nicknames', () => {
+    const names = ['Iinuma, Paul', 'Paul Smith', 'Anna Iinuma', 'Bob Jones'];
+    expect(similarNames('Paul Inuma', names)).toEqual(['Iinuma, Paul', 'Paul Smith']);
+    expect(similarNames('Mr Iinuma', names)).toEqual(['Anna Iinuma', 'Iinuma, Paul']);
+    expect(similarNames('Paul Iinuma', names)).not.toContain('Iinuma, Paul'); // exact match isn't a suggestion
   });
 });
 

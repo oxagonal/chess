@@ -6,7 +6,7 @@ import { lichessParams, MASTERS } from '../services/coverage';
 import { GameStatsIndex } from '../lib/mygames';
 import { moveGames, type MoveStat, type PositionStats } from '../lib/types';
 import { opposite, turnOfKey, type Color } from '../lib/chess';
-import { PlayersBar, usePlayerGames, useScoutPlayerId } from './PlayersScout';
+import { PlayersBar, filterBySource, usePlayerGames, useScoutPlayerId, type ScoutSource } from './PlayersScout';
 import { useRecentGames } from '../hooks';
 import { GameRangeSelect } from './GameRangeSelect';
 import { TableWrap, WdlBar } from './ui';
@@ -64,7 +64,11 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   const [playerAs, setPlayerAs] = useState<Color>(opposite(color));
   useEffect(() => setPlayerAs(opposite(color)), [color]);
   const scout = usePlayerGames(tab === 'players' ? playerId : undefined);
-  const scoutIndex = useMemo(() => (scout ? new GameStatsIndex(scout.games, { color: playerAs }) : undefined), [scout, playerAs]);
+  const [playerSource, setPlayerSource] = useState<ScoutSource>('all');
+  const scoutIndex = useMemo(
+    () => (scout ? new GameStatsIndex(filterBySource(scout.games, playerSource), { color: playerAs }) : undefined),
+    [scout, playerAs, playerSource],
+  );
   const params: ExplorerParams | undefined = tab === 'lichess' ? lichessParams(settings) : tab === 'masters' ? MASTERS : undefined;
   const paramsKey = params ? paramsLabel(params) : tab;
 
@@ -128,7 +132,18 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
         </span>
         {tab === 'mine' && <GameRangeSelect setting="opponentRange" />}
       </div>
-      {tab === 'players' && <PlayersBar playerId={playerId} onSelect={setPlayerId} as={playerAs} onAs={setPlayerAs} scout={scout} />}
+      {tab === 'players' && <PlayersBar
+          playerId={playerId}
+          onSelect={(id) => {
+            setPlayerId(id);
+            setPlayerSource('all');
+          }}
+          as={playerAs}
+          onAs={setPlayerAs}
+          source={playerSource}
+          onSource={setPlayerSource}
+          scout={scout}
+        />}
       {waitUntil && <div className="note">Lichess rate limit — pausing about a minute before the next lookup.</div>}
       {error && (
         <div className="error row" style={{ alignItems: 'center', gap: 10 }}>

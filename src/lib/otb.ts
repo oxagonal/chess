@@ -29,6 +29,19 @@ export function sameName(a: string | undefined, b: string | undefined): boolean 
   return na !== '' && na === normalizeName(b);
 }
 
+/** Names that share a word with `query` (e.g. the same surname) but aren't the same name — for "did you mean". */
+export function similarNames(query: string, names: readonly string[]): string[] {
+  const words = new Set(normalizeName(query).split(' ').filter((w) => w.length >= 3));
+  if (!words.size) return [];
+  const out = new Map<string, string>();
+  for (const n of names) {
+    const key = normalizeName(n);
+    if (!key || sameName(n, query) || out.has(key)) continue;
+    if (key.split(' ').some((w) => words.has(w))) out.set(key, n);
+  }
+  return [...out.values()].sort();
+}
+
 /** "2026.11.15" (PGN) or "2026-11-15" → local noon that day; unknown parts ("????.??.??") → undefined. */
 export function parsePgnDate(raw: string | undefined): number | undefined {
   const m = raw?.match(/^(\d{4})[.-](\d{2})[.-](\d{2})$/);

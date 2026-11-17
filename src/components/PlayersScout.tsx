@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { deletePlayer, refreshPlayerGames, savePlayer } from '../services/players';
 import { otbGamesVs, pgnGamesOf } from '../lib/players';
-import { readPgnGames } from '../lib/otb';
+import { readPgnGames, sameName, similarNames } from '../lib/otb';
+import { href } from '../router';
 import type { Color } from '../lib/chess';
 import type { Player, StoredGame } from '../lib/types';
 import { MoreMenu, timeAgo } from './ui';
@@ -54,6 +55,14 @@ export function usePlayerGames(playerId: string | undefined): ScoutGames | undef
   }, [player, online, myOtb]);
 }
 
+/** Which of a player's games to show: everything, their online games, or over-the-board ones (yours vs them + PGN). */
+export type ScoutSource = 'all' | 'online' | 'otb';
+
+export function filterBySource(games: StoredGame[], source: ScoutSource): StoredGame[] {
+  if (source === 'all') return games;
+  return games.filter((g) => (source === 'otb') === (g.source === 'otb'));
+}
+
 /** Players refreshed during this visit, so switching back and forth doesn't download again. */
 const refreshed = new Set<string>();
 
@@ -63,11 +72,13 @@ interface BarProps {
   /** The color the player has in the games shown. */
   as: Color;
   onAs: (c: Color) => void;
+  source: ScoutSource;
+  onSource: (s: ScoutSource) => void;
   scout: ScoutGames | undefined | null;
 }
 
 /** Controls above the Players tab: pick, add, edit and update players. */
-export function PlayersBar({ playerId, onSelect, as, onAs, scout }: BarProps) {
+export function PlayersBar({ playerId, onSelect, as, onAs, source, onSource, scout }: BarProps) {
   const players = useLiveQuery(() => db.players.orderBy('name').toArray(), []);
   const [editing, setEditing] = useState<Player | 'new' | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
@@ -143,9 +154,11 @@ export function PlayersBar({ playerId, onSelect, as, onAs, scout }: BarProps) {
   }
   const p = scout?.player;
   const c = scout?.counts;
-  const parts = c ? [c.online && `${c.online} online`, c.otb && `${c.otb} vs you OTB`, c.pgn && `${c.pgn} from PGN`].filter(Boolean) : [];
+  const otbCount = c ? c.otb + c.pgn : 0;
+  const total = c ? c.online + otbCount : 0;
+  const accounts = p ? [p.lichess && `Lichess ${p.lichess}`, p.chesscom && `Chess.com ${p.chesscom}`].filter(Boolean).join(', ') : '';
   return (
-    <div className="col scout-bar" style={{ gap: 6 }}>
+    <div className="col scout-bar" style={{ gap: 8 }}>
       <div className="row" style={{ gap: 6 }}>
         <select value={playerId ?? ''} onChange={(e) => onSelect(e.target.value)} style={{ flex: '1 1 140px', minWidth: 0 }} aria-label="Player">
           {players.map((x) => (
@@ -176,20 +189,79 @@ export function PlayersBar({ playerId, onSelect, as, onAs, scout }: BarProps) {
           )}
         </MoreMenu>
       </div>
-      <div className="muted small">
+      {c && total > 0 && (
+        <div className="segmented scout-sources" role="group" aria-label="Which games">
+          {(
+            [
+              ['all', `All ${total}`],
+              ['online', `Online ${c.online}`],
+              ['otb', `Over the board ${otbCount}`],
+            ] as [ScoutSource, string][]
+          ).map(([k, label]) => (
+            <button key={k} className={`small ${source === k ? 'active' : ''}`} disabled={k !== 'all' && (k === 'online' ? !c.online : !otbCount)} onClick={() => onSource(k)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="muted small scout-detail">
         {progress ? (
           <>Downloading {p?.name}’s games — {progress}</>
-        ) : p ? (
+        ) : p && c ? (
           <>
-            {[p.lichess && `Lichess ${p.lichess}`, p.chesscom && `Chess.com ${p.chesscom}`].filter(Boolean).join(' · ') || 'No online accounts'}
-            {' · '}
-            {parts.length ? parts.join(', ') : 'no games yet'}
-            {scout?.newest ? ` · latest ${timeAgo(scout.newest)}` : ''}
+            <div>
+              <b>Online:</b>{' '}
+              {accounts ? (
+                <>
+                  {c.online} game{c.online === 1 ? '' : 's'} from {accounts}
+                  {scout?.newest ? ` · latest ${timeAgo(scout.newest)}` : ''}
+                </>
+              ) : (
+                <>
+                  no username —{' '}
+                  <button className="linklike" onClick={() => setEditing(p)}>
+                    add their Lichess or Chess.com
+                  </button>
+                </>
+              )}
+            </div>
+            <div>
+              <b>Over the board:</b> {c.otb} game{c.otb === 1 ? '' : 's'} you entered against “{p.name}”
+              {c.pgn ? `, ${c.pgn} from pasted PGN` : ''}
+              {' · '}
+              <a href={href('games/new', { opponent: p.name })}>add a game vs {p.name}</a>
+            </div>
           </>
         ) : (
           'Loading…'
         )}
       </div>
+      {p && c && !progress && total === 0 && (
+        <div className="note col" style={{ gap: 6 }}>
+          <b>No games for {p.name} yet.</b>
+          <span>
+            There’s no public database of club and school over-the-board games, so a name on its own only finds games you add yourself:
+          </span>
+          <ul className="steps">
+            <li>
+              games you played against them — <a href={href('games/new', { opponent: p.name })}>add one</a> (Games → + Over-the-board game)
+            </li>
+            <li>
+              their games as PGN, e.g. from a tournament —{' '}
+              <button className="linklike" onClick={() => setEditing(p)}>
+                paste PGN
+              </button>
+            </li>
+            <li>
+              their online games —{' '}
+              <button className="linklike" onClick={() => setEditing(p)}>
+                add a Lichess or Chess.com username
+              </button>
+              {(p.lichess || p.chesscom) && ' (none found in the time controls chosen in Settings)'}
+            </li>
+          </ul>
+        </div>
+      )}
       {errors.map((e) => (
         <div key={e} className="error small">
           {e}
@@ -205,6 +277,17 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
   const [chesscom, setChesscom] = useState(player?.chesscom ?? '');
   const [pgn, setPgn] = useState(player?.pgn ?? '');
   const [busy, setBusy] = useState(false);
+  const opponents = useLiveQuery(async () => {
+    const games = await db.games.where('source').equals('otb').toArray();
+    return games.map((g) => (g.userColor === 'white' ? g.black : g.white));
+  }, []);
+  const match = useMemo(() => {
+    if (!opponents || !name.trim()) return null;
+    const count = opponents.filter((o) => sameName(o, name)).length;
+    const counts = new Map<string, number>();
+    for (const o of opponents) counts.set(o, (counts.get(o) ?? 0) + 1);
+    return { count, suggestions: similarNames(name, [...counts.keys()]).map((n) => ({ name: n, games: counts.get(n) ?? 0 })) };
+  }, [opponents, name]);
   const pgnInfo = useMemo(() => {
     if (!pgn.trim()) return null;
     const { games } = readPgnGames(pgn);
@@ -222,6 +305,34 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
         <span>Name</span>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="As on their score sheet or in PGN files" autoFocus />
       </label>
+      {match && (
+        <div className="small" style={{ marginTop: -4 }}>
+          {match.count > 0 ? (
+            <span style={{ color: 'var(--good)' }}>
+              ✓ {match.count} of your over-the-board games {match.count === 1 ? 'is' : 'are'} against this name.
+            </span>
+          ) : match.suggestions.length ? (
+            <span className="muted">
+              None of your over-the-board games are against this exact name. Did you mean{' '}
+              {match.suggestions.map((sug, i) => (
+                <span key={sug.name}>
+                  {i > 0 && ', '}
+                  <button className="linklike" onClick={() => setName(sug.name)}>
+                    {sug.name}
+                  </button>{' '}
+                  ({sug.games})
+                </span>
+              ))}
+              ?
+            </span>
+          ) : (
+            <span className="muted">
+              No over-the-board games against this name yet. A name only finds games you’ve entered or paste below — there’s no public
+              database of over-the-board games to search.
+            </span>
+          )}
+        </div>
+      )}
       <div className="row">
         <label className="field" style={{ flex: '1 1 140px' }}>
           <span>Lichess username</span>
@@ -237,7 +348,6 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
         <textarea rows={3} value={pgn} onChange={(e) => setPgn(e.target.value)} placeholder="Paste games from a tournament bulletin, chess-results, etc." />
       </label>
       {pgnInfo && <div className="muted small">{pgnInfo}</div>}
-      <div className="muted small">Your over-the-board games against someone with this name are included automatically.</div>
       <div className="row">
         <button className="primary small" disabled={busy || !(name.trim() || lichess.trim() || chesscom.trim())} onClick={save}>
           {player ? 'Save' : 'Add player'}
