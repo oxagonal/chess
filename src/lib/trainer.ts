@@ -17,9 +17,47 @@ export interface PlannedStep {
 export type TrainMode = 'review' | 'learn';
 
 /**
+ * Every distinct move order (path from the starting position) that reaches `key` through the
+ * repertoire — a transposed position has several. Ordered most common first when reach
+ * probabilities are known (estimated per path from the coverage run), else shortest first.
+ */
+export function moveOrders(graph: RepGraph, key: string, probs?: Record<string, number>, max = 8): RepMove[][] {
+  const found: RepMove[][] = [];
+  const onPath = new Set<string>([key]);
+  const rev: RepMove[] = [];
+  let budget = 20_000; // transposition-heavy repertoires: stop exploring rather than hang
+  const walk = (k: string) => {
+    if (found.length >= max * 4 || budget-- <= 0) return;
+    if (k === graph.root) {
+      found.push([...rev].reverse());
+      return;
+    }
+    for (const m of graph.parentsOf(k)) {
+      if (onPath.has(m.fromKey)) continue;
+      onPath.add(m.fromKey);
+      rev.push(m);
+      walk(m.fromKey);
+      rev.pop();
+      onPath.delete(m.fromKey);
+    }
+  };
+  walk(key);
+  // A path's share ≈ product over the opponent's moves of how often that reply is chosen, read off
+  // the coverage probabilities (exact unless the reply itself lands on a transposition).
+  const weight = (path: RepMove[]) =>
+    probs
+      ? path.reduce((w, m) => (m.mine ? w : w * Math.min(1, (probs[m.toKey] ?? 0) / Math.max(probs[m.fromKey] ?? 0, 1e-12))), 1)
+      : 0;
+  const keyed = found.map((path) => ({ path, w: weight(path) }));
+  keyed.sort((a, b) => b.w - a.w || a.path.length - b.path.length || a.path.map((m) => m.san).join().localeCompare(b.path.map((m) => m.san).join()));
+  return keyed.slice(0, max).map((x) => x.path);
+}
+
+/**
  * Plan the next line to play through in a training session.
  *
- * Starting from the root, walk the shortest path to the target card's position, play the target move,
+ * Starting from the root, walk the path to the target card's position (`via`: one particular move
+ * order, else the shortest), play the target move,
  * then keep extending the line through opponent replies whose continuation still contains pending
  * cards. Your moves along the way are quizzed (review) / shown (learn) if pending, else auto-played.
  * This mirrors how a real game unfolds: you always see the position arise from the starting position.
@@ -29,10 +67,12 @@ export function planLine(
   target: RepMove,
   pending: ReadonlySet<string>,
   mode: TrainMode,
-  /** Also have you play your moves before the trained one (the first line of a session). */
+  /** Also have you play your moves before the trained one, from move 1. */
   leadIn = false,
+  /** Which move order to reach the target by (see moveOrders); defaults to the shortest. */
+  via?: RepMove[],
 ): PlannedStep[] {
-  const prefix = graph.pathTo(target.fromKey);
+  const prefix = via ?? graph.pathTo(target.fromKey);
   if (!prefix) return [];
   const line: RepMove[] = [...prefix, target];
   const onLine = new Set(line.map((m) => m.fromKey));
@@ -95,7 +135,7 @@ export function planLine(
     }
     // Your moves after the one being trained: you play them, ungraded.
     if (move.mine && i > targetIndex) return { move, kind: 'practice' };
-    // First line of a session: you also play your moves from the starting position.
+    // Lead-in: you also play your moves from the starting position.
     if (move.mine && leadIn && i < targetIndex) return { move, kind: 'practice', leadIn: true };
     return { move, kind: 'auto' };
   });

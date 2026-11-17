@@ -255,7 +255,11 @@ function lineFromSans(sans: string[]): LineMove[] {
 
 const toEdges = (l: LineMove[]) => l.map((m) => ({ fromKey: m.fromKey, toKey: m.key, san: m.san, uci: m.uci }));
 
-function Builder({ repId, initialLine }: { repId: string; initialLine: string }) {
+/**
+ * The repertoire builder. `onDone`: opened from a training session (Edit line) — shows "Continue
+ * training" instead of the links that would leave the session.
+ */
+export function Builder({ repId, initialLine, onDone }: { repId: string; initialLine: string; onDone?: () => void }) {
   const { rep, graph, loading } = useRepGraph(repId);
   const cards = useCards(repId);
   const coverage = useCoverage(repId);
@@ -509,7 +513,6 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
             </label>
           )}
         </div>
-        {currentEdge && !zen && <MoveNote key={currentEdge.id} id={currentEdge.id} san={currentEdge.san} />}
       </div>
 
       <div className="col">
@@ -519,21 +522,29 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
               <h1 style={{ margin: 0 }}>{rep.name}</h1>
               <ColorPill color={rep.color} />
               <span className="spacer" />
-              <a className="btn small" href={href('train', { rep: rep.id, mode: 'learn' })}>
-                Learn <span className="badge new">{newCount}</span>
-              </a>
-              <a className="btn small" href={href('train', { rep: rep.id, mode: 'review' })}>
-                Review <span className="badge due">{dueCount}</span>
-              </a>
-              <a className="btn small" href={href(`coverage/${rep.id}`)}>
-                Coverage
-              </a>
-              <a className="btn small" href={href(`insights/${rep.id}`)}>
-                Insights
-              </a>
-              <a className="btn small" href={href('repertoire')}>
-                All
-              </a>
+              {onDone ? (
+                <button className="primary small" onClick={onDone}>
+                  Continue training →
+                </button>
+              ) : (
+                <>
+                  <a className="btn small" href={href('train', { rep: rep.id, mode: 'learn' })}>
+                    Learn <span className="badge new">{newCount}</span>
+                  </a>
+                  <a className="btn small" href={href('train', { rep: rep.id, mode: 'review' })}>
+                    Review <span className="badge due">{dueCount}</span>
+                  </a>
+                  <a className="btn small" href={href(`coverage/${rep.id}`)}>
+                    Coverage
+                  </a>
+                  <a className="btn small" href={href(`insights/${rep.id}`)}>
+                    Insights
+                  </a>
+                  <a className="btn small" href={href('repertoire')}>
+                    All
+                  </a>
+                </>
+              )}
             </div>
             <div className="muted small" style={{ marginTop: 4 }}>
               {plural(graph.myMoves().length, 'move')} · {plural(graph.leaves().length, 'line')}
@@ -636,7 +647,14 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
             )}
           </div>
           <LineView
-            items={line.map((m, i) => ({ san: m.san, className: lineInRep[i] ? 'book' : 'out', title: lineInRep[i] ? 'In repertoire' : 'Not in repertoire' }))}
+            items={line.map((m, i) => ({
+              san: m.san,
+              className: lineInRep[i] ? 'book' : 'out',
+              title: lineInRep[i] ? 'In repertoire' : 'Not in repertoire',
+              // Zen mode (Play from memory) hides notes: they'd give the answer away.
+              note: zen ? undefined : graph.edge(m.fromKey, m.san)?.comment || undefined,
+            }))}
+            editor={currentEdge && !zen ? <MoveNote key={currentEdge.id} id={currentEdge.id} san={currentEdge.san} inline /> : undefined}
             current={cursor}
             onSelect={setCursor}
           />

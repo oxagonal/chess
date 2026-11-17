@@ -149,6 +149,32 @@ describe('trainer planning', () => {
     expect(steps.filter((s) => s.leadIn).map((s) => s.move.san)).toEqual(['e4', 'Nf3']);
   });
 
+  it('finds every move order into a transposed position, most common first', async () => {
+    const { moveOrders } = await import('../lib/trainer');
+    const { keysAlong } = await import('../lib/pgn');
+    // 1.d4 Nf6 2.c4 e6 and 1.d4 e6 2.c4 Nf6 meet; then 3.Nc3.
+    const tm = movesFromLines('t', 'white', ['d4 Nf6 c4 e6 Nc3', 'd4 e6 c4 Nf6']);
+    const tg = new RepGraph('white', tm);
+    const meet = keysAlong(['d4', 'Nf6', 'c4', 'e6']).keys.at(-1)!;
+    const orders = moveOrders(tg, meet);
+    expect(orders.map((o) => o.map((m) => m.san).join(' ')).sort()).toEqual(['d4 Nf6 c4 e6', 'd4 e6 c4 Nf6']);
+
+    // With reach probabilities, the more common move order comes first.
+    const k = (l: string) => keysAlong(l.split(' ')).keys.at(-1)!;
+    const probs = { [k('d4')]: 1, [k('d4 Nf6')]: 0.8, [k('d4 Nf6 c4')]: 0.8, [k('d4 e6')]: 0.2, [k('d4 e6 c4')]: 0.2, [meet]: 0.5 };
+    expect(moveOrders(tg, meet, probs)[0].map((m) => m.san)).toEqual(['d4', 'Nf6', 'c4', 'e6']);
+
+    // planLine follows the chosen move order, then carries on to the end.
+    const nc3 = tm.find((m) => m.san === 'Nc3')!;
+    const other = orders.find((o) => o[1].san === 'e6')!;
+    const steps = planLine(tg, nc3, new Set([nc3.id]), 'review', true, other);
+    expect(steps.map((s) => s.move.san)).toEqual(['d4', 'e6', 'c4', 'Nf6', 'Nc3']);
+    expect(steps.map((s) => s.kind)).toEqual(['practice', 'auto', 'practice', 'auto', 'quiz']);
+
+    // A position with one move order has just that one.
+    expect(moveOrders(tg, k('d4 Nf6'))).toHaveLength(1);
+  });
+
   it('orders cards shallow-first, or by probability when known', () => {
     const cards = g.myMoves().map((m) => newCard({ id: m.id, repId: 'r', fromKey: m.fromKey, san: m.san }));
     const ordered = orderCards(cards, g);

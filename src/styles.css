@@ -261,6 +261,11 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .mv.deviation { outline: 2px solid var(--bad); }
 .mv.book { color: var(--mine); }
 .mv.book.current { color: #fff; }
+/* Notes inline in a line of moves, like PGN comments; the current move's note is an editable box. */
+.mv-note { color: var(--muted); font-style: italic; font-size: 13px; padding: 2px 4px; cursor: pointer; white-space: pre-wrap; }
+.mv-note:hover { color: var(--text); }
+.movenote.inline { flex-basis: 100%; display: flex; align-items: flex-start; gap: 6px; margin: 2px 0 4px; }
+.movenote.inline textarea { flex: 1; min-height: 0; resize: none; overflow: hidden; font-size: 13px; padding: 5px 8px; line-height: 1.4; }
 
 .movelist { display: flex; flex-direction: column; gap: 4px; }
 .moverow { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--panel2); }

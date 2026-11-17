@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { setMoveComment } from '../db/repertoire';
@@ -14,6 +14,7 @@ export function MoveNote({
   compact = false,
   autoFocus = false,
   prompt = false,
+  inline = false,
 }: {
   id: string;
   san: string;
@@ -23,6 +24,8 @@ export function MoveNote({
   autoFocus?: boolean;
   /** You just got this move wrong: if it has no note yet, ask for one and put the cursor in the box. */
   prompt?: boolean;
+  /** A slim box inside a line of moves (the builder), without the panel and heading. */
+  inline?: boolean;
 }) {
   const stored = useLiveQuery(async () => (await db.moves.get(id))?.comment ?? '', [id]);
   const [text, setText] = useState<string | undefined>();
@@ -41,6 +44,32 @@ export function MoveNote({
   };
 
   if (stored === undefined) return null;
+  const keys = (e: KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void save();
+    e.stopPropagation(); // don't let board shortcuts (arrows, f) fire while typing
+  };
+  if (inline)
+    return (
+      <span className="movenote inline">
+        <textarea
+          rows={1}
+          value={text ?? stored}
+          placeholder={`Note on ${san} — why this move? (shown when you miss it in training)`}
+          aria-label={`Note on ${san}`}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={save}
+          onKeyDown={keys}
+          ref={(el) => {
+            // Grow with the text so a long note doesn't hide behind a scrollbar.
+            if (el) {
+              el.style.height = 'auto';
+              el.style.height = `${el.scrollHeight + 2}px`;
+            }
+          }}
+        />
+        {saved && <span className="badge good">Saved</span>}
+      </span>
+    );
   const asking = prompt && !stored && text === undefined;
   return (
     <div className={`${compact ? 'movenote compact' : 'panel movenote'}${asking ? ' prompt' : ''}`}>
@@ -65,10 +94,7 @@ export function MoveNote({
         placeholder="Why this move? Plans, traps, ideas… (shown during training)"
         onChange={(e) => setText(e.target.value)}
         onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void save();
-          e.stopPropagation(); // don't let board shortcuts (arrows, f) fire while typing
-        }}
+        onKeyDown={keys}
         style={{ marginTop: 6 }}
       />
     </div>

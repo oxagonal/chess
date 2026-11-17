@@ -12,7 +12,8 @@ import { useCards, useRepertoires, startOfToday } from '../hooks';
 import { href, navigate } from '../router';
 import { formatLine, playUci, startPos } from '../lib/chess';
 import { RepGraph } from '../lib/graph';
-import { asQuiz, filterByProbability, orderCards, planLine, type PlannedStep } from '../lib/trainer';
+import { asQuiz, filterByProbability, moveOrders, orderCards, planLine, type PlannedStep } from '../lib/trainer';
+import { Builder } from './Repertoire';
 import { computeInsights, movesForLine, movesUnder } from '../lib/insights';
 import { formatInterval, isDue, isNew, Rating } from '../lib/srs';
 import type { Repertoire, ReviewCard } from '../lib/types';
@@ -162,6 +163,8 @@ interface SessionSetup {
   queue: ReviewCard[];
   settings: AppSettings;
   notes: string[];
+  /** Each repertoire's last coverage run: how often positions come up (orders move orders). */
+  probs: Map<string, Record<string, number>>;
 }
 
 const WEAK_DRILL_SIZE = 20;
@@ -174,6 +177,7 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
       const s = await getSettings();
       const reps = repParam === 'all' ? await db.repertoires.toArray() : [await db.repertoires.get(repParam)].filter((r): r is Repertoire => !!r);
       const graphs = new Map<string, RepGraph>();
+      const probs = new Map<string, Record<string, number>>();
       const queue: ReviewCard[] = [];
       const notes: string[] = [];
       const now = Date.now();
@@ -185,6 +189,7 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
         // A line you picked yourself trains every move in it, learned or not.
         let pool = cards.filter((c) => (mode === 'review' ? isDue(c, now) : mode === 'learn' ? isNew(c) : at ? true : !isNew(c)));
         const cov = await db.coverage.get(rep.id);
+        if (cov) probs.set(rep.id, cov.probs);
         if (mode === 'drill') {
           if (at) {
             const ids = movesForLine(graph, at);
@@ -213,7 +218,7 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
         const left = extra ?? Math.max(0, s.newPerDay - (await learnedTodayCount()));
         finalQueue = queue.slice(0, left);
       }
-      if (!cancelled) setSetup({ mode, reps: new Map(reps.map((r) => [r.id, r])), graphs, queue: finalQueue, settings: s, notes });
+      if (!cancelled) setSetup({ mode, reps: new Map(reps.map((r) => [r.id, r])), graphs, queue: finalQueue, settings: s, notes, probs });
     })();
     return () => {
       cancelled = true;
@@ -243,6 +248,8 @@ interface LineState {
   repId: string;
   steps: PlannedStep[];
   phase: 'show' | 'quiz';
+  /** The trained position can be reached by several move orders: which one this is (0-based) of how many. */
+  order?: { index: number; count: number };
 }
 
 type Feedback = { kind: 'good' | 'bad' | 'hint' | 'show' | 'info'; text: ReactNode } | null;
@@ -253,7 +260,10 @@ function playedForYou(step: PlannedStep, phase: 'show' | 'quiz'): boolean {
 }
 
 function Session({ setup }: { setup: SessionSetup }) {
-  const { mode, graphs, reps, queue, settings } = setup;
+  const { mode, reps, queue, settings } = setup;
+  // Graphs are refreshed after you edit a line mid-session (Edit line), so keep them in a ref.
+  const graphsRef = useRef(setup.graphs);
+  const [editing, setEditing] = useState<{ repId: string; line: string } | null>(null);
   const pendingRef = useRef(new Set(queue.map((c) => c.id)));
   const [line, setLine] = useState<LineState | null>(null);
   const [idx, setIdx] = useState(0);
@@ -266,7 +276,6 @@ function Session({ setup }: { setup: SessionSetup }) {
   const [stats, setStats] = useState({ done: 0, correct: 0, failed: 0, lines: 0 });
   const [finished, setFinished] = useState(false);
   const feedbackToken = useRef(0);
-  const startedLines = useRef(0);
 
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const flashFor = (f: 'good' | 'bad' | 'hint') => {
@@ -279,20 +288,28 @@ function Session({ setup }: { setup: SessionSetup }) {
     const pending = pendingRef.current;
     for (const card of queue) {
       if (!pending.has(card.id)) continue;
-      const graph = graphs.get(card.repId);
+      const graph = graphsRef.current.get(card.repId);
       const move = graph?.byId.get(card.id);
       if (!graph || !move) {
         pending.delete(card.id);
         continue;
       }
-      // The first line of a session starts you from move 1; later lines skip ahead to what's being trained.
-      const steps = planLine(graph, move, pending, mode === 'learn' ? 'learn' : 'review', !startedLines.current);
+      // A transposed position: each review takes the next move order into it (most common first),
+      // so over time you practise reaching it every way your repertoire allows.
+      const orders = moveOrders(graph, move.fromKey, setup.probs.get(card.repId));
+      const index = orders.length ? card.reps % orders.length : 0;
+      // Every line is played from move 1 (your earlier moves too) through to the end of the branch.
+      const steps = planLine(graph, move, pending, mode === 'learn' ? 'learn' : 'review', true, orders[index]);
       if (!steps.some((s) => s.kind === 'quiz' || s.kind === 'show')) {
         pending.delete(card.id);
         continue;
       }
-      startedLines.current++;
-      setLine({ repId: card.repId, steps, phase: mode === 'learn' ? 'show' : 'quiz' });
+      setLine({
+        repId: card.repId,
+        steps,
+        phase: mode === 'learn' ? 'show' : 'quiz',
+        order: orders.length > 1 ? { index, count: orders.length } : undefined,
+      });
       setIdx(0);
       setPos(startPos());
       setLastMove(undefined);
@@ -303,7 +320,7 @@ function Session({ setup }: { setup: SessionSetup }) {
     }
     setLine(null);
     setFinished(true);
-  }, [graphs, mode, queue]);
+  }, [mode, queue, setup.probs]);
 
   useEffect(() => {
     nextLine();
@@ -312,11 +329,23 @@ function Session({ setup }: { setup: SessionSetup }) {
   // The move you last missed — its note opens for reading/editing once the answer is revealed.
   const [noteMove, setNoteMove] = useState<{ id: string; san: string } | undefined>();
   useEffect(() => setNoteMove(undefined), [line]);
-  // A line with a missed move waits at the end (note still open) until you press Continue.
-  const holdAtEnd = !!line && line.phase === 'quiz' && idx >= line.steps.length && !!noteMove;
+  // Every line waits at the end so you can edit it (or its note) before pressing Continue.
+  const holdAtEnd = !!line && line.phase === 'quiz' && idx >= line.steps.length;
   const continueAfterLine = () => {
     setStats((s) => ({ ...s, lines: s.lines + 1 }));
     nextLine();
+  };
+  const editLine = () => line && setEditing({ repId: line.repId, line: line.steps.map((s) => s.move.san).join(' ') });
+  // Back from the builder: reload that repertoire (moves may have been added or deleted), then go on.
+  const finishEditing = async () => {
+    if (!editing) return;
+    const rep = reps.get(editing.repId);
+    if (rep) {
+      const moves = await db.moves.where('repId').equals(rep.id).toArray();
+      graphsRef.current = new Map(graphsRef.current).set(rep.id, new RepGraph(rep.color, moves));
+    }
+    setEditing(null);
+    continueAfterLine();
   };
 
   // Auto-play opponent moves and moves that are not being tested; handle end of line.
@@ -358,7 +387,7 @@ function Session({ setup }: { setup: SessionSetup }) {
   const step = line && idx < line.steps.length ? line.steps[idx] : undefined;
   const waiting = !!step && !!line && !playedForYou(step, line.phase);
   const rep = line ? reps.get(line.repId) : undefined;
-  const graph = line ? graphs.get(line.repId) : undefined;
+  const graph = line ? graphsRef.current.get(line.repId) : undefined;
 
   const onMove = async (uci: string) => {
     if (!line || !step || !waiting) return;
@@ -488,6 +517,8 @@ function Session({ setup }: { setup: SessionSetup }) {
   const prevStep = line && idx > 0 ? line.steps[idx - 1] : undefined;
   const pathSoFar = line ? line.steps.slice(0, idx).map((s) => s.move.san) : [];
 
+  if (editing) return <Builder key={editing.line} repId={editing.repId} initialLine={editing.line} onDone={() => void finishEditing()} />;
+
   return (
     <div className="board-layout">
       <div className="board-col col">
@@ -518,7 +549,17 @@ function Session({ setup }: { setup: SessionSetup }) {
         </div>
 
         <div className="panel">
-          <h3>{line?.phase === 'show' ? 'New line' : 'Line'}</h3>
+          <div className="row" style={{ marginBottom: 8 }}>
+            <h3 style={{ margin: 0 }}>{line?.phase === 'show' ? 'New line' : 'Line'}</h3>
+            {line?.order && (
+              <span
+                className="badge"
+                title="This position can be reached by more than one move order. Each review takes the next one (most common first), so you practise them all."
+              >
+                Move order {line.order.index + 1} of {line.order.count}
+              </span>
+            )}
+          </div>
           <div className="mono" style={{ minHeight: 22 }}>
             {pathSoFar.length ? formatLine(pathSoFar) : <span className="muted">Starting position</span>}
           </div>
@@ -541,16 +582,21 @@ function Session({ setup }: { setup: SessionSetup }) {
           {!waiting && !feedback && <span className="muted">…</span>}
           {holdAtEnd && (
             <div className="muted small" style={{ marginTop: 6 }}>
-              Line finished. Write or edit the note under the board, then press Continue.
+              Line finished. {noteMove ? 'Write or edit the note under the board, or edit' : 'Edit'} the line in the builder, then press Continue.
             </div>
           )}
         </div>
 
         <div className="row">
           {holdAtEnd ? (
-            <button className="primary" onClick={continueAfterLine} autoFocus={false}>
-              Continue →
-            </button>
+            <>
+              <button className="primary" onClick={continueAfterLine} autoFocus={false}>
+                Continue →
+              </button>
+              <button onClick={editLine} title="Open this line in the repertoire builder — add, change or delete moves and notes — then continue training">
+                Edit line
+              </button>
+            </>
           ) : (
             <>
               {line?.phase === 'quiz' && (

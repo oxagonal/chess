@@ -34,6 +34,8 @@ export interface LineItem {
   san: string;
   className?: string;
   title?: string;
+  /** The move's note, shown inline after it like a PGN comment. */
+  note?: string;
 }
 
 /** Clickable "1. e4 c5 2. Nf3" rendering. `current` = number of plies shown (0 = start). */
@@ -42,28 +44,36 @@ export function LineView({
   current,
   onSelect,
   startPly = 0,
+  editor,
 }: {
   items: LineItem[];
   current?: number;
   onSelect?: (plies: number) => void;
   startPly?: number;
+  /** Rendered after the current move, in place of its note (the builder's inline note editor). */
+  editor?: ReactNode;
 }) {
   if (!items.length) return <span className="muted">Starting position</span>;
   return (
     <div className="line">
       {items.map((it, i) => {
         const ply = startPly + i;
-        const prefix = moveNumberPrefix(ply, i === 0);
+        // After a note, Black's move gets its number again ("2... Nf6"), as in PGN.
+        const prefix = moveNumberPrefix(ply, i === 0 || (!!items[i - 1].note && current !== i));
+        const isCurrent = current === i + 1;
         return (
           <span key={i} style={{ display: 'contents' }}>
             {prefix && <span className="num">{prefix}</span>}
-            <span
-              className={`mv ${current === i + 1 ? 'current' : ''} ${it.className ?? ''}`}
-              title={it.title}
-              onClick={() => onSelect?.(i + 1)}
-            >
+            <span className={`mv ${isCurrent ? 'current' : ''} ${it.className ?? ''}`} title={it.title} onClick={() => onSelect?.(i + 1)}>
               {it.san}
             </span>
+            {isCurrent && editor
+              ? editor
+              : it.note && (
+                  <span className="mv-note" title="Click to edit" onClick={() => onSelect?.(i + 1)}>
+                    {it.note}
+                  </span>
+                )}
           </span>
         );
       })}
