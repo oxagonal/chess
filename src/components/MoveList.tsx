@@ -13,6 +13,8 @@ export interface ListMove {
   comment?: string;
   /** Right-click / long-press handlers (e.g. to annotate it). */
   menu?: Record<string, unknown>;
+  /** Small text at the end of the move's cell (e.g. the clock in a game review). */
+  extra?: ReactNode;
 }
 
 /** A side line: a one-line alternative to the move at its ply, shown under the row where it branches. */
@@ -77,6 +79,7 @@ export function MoveList({
         {...m.menu}
       >
         {m.san}
+        {m.extra !== undefined && <span className="ml-extra">{m.extra}</span>}
       </span>,
     );
     const sides = sideLines?.(i) ?? [];

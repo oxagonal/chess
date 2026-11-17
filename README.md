@@ -9,6 +9,11 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   inside your prep until positions get rarer than 1 in N games — with a score per reply, recalculated as
   you edit. Import PGN (with variations and comments),
   `.pgn` files or public Lichess studies; export back to PGN.
+- **Game review** — each game opens in the same dockable studio as the builder: board with both clocks,
+  Stockfish, the game's moves as a scoresheet (always the game itself, with each move's clock), and a
+  computer review (eval graph, your three biggest mistakes and your opponent's). Right-click a move — or
+  long-press it on a phone or iPad — to annotate it like a Lichess study (!!, !, !?, ?!, ?, ??, □, ±, N…, a
+  comment). Annotations and the analysis are saved with the game (an interrupted analysis continues).
 - **Players** — a tab next to the explorer in the builder for scouting opponents: save a player with their
   Lichess / Chess.com usernames (their recent games are downloaded and cached on the device) or just a name
   (your over-the-board games against them, plus any PGN you paste), or find them by name in the

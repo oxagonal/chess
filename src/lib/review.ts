@@ -17,6 +17,8 @@ export interface GameReview {
   evals: (Score | null)[];
   /** best[i] = engine's best move in position i (standard UCI). */
   best: (string | null)[];
+  /** false while the analysis is still running (or was interrupted): evals cover only the start. */
+  complete?: boolean;
 }
 
 export type Judgement = 'inaccuracy' | 'mistake' | 'blunder';
@@ -65,6 +67,14 @@ export function swings(review: GameReview): Swing[] {
     out.push({ ply, mover, before, after, loss, judgement: judge(loss), best: review.best[ply] ?? undefined });
   }
   return out;
+}
+
+/** One side's biggest swings, largest first (only real losses). */
+export function biggestSwingsFor(review: GameReview, side: Color, count = 3): Swing[] {
+  return swings(review)
+    .filter((s) => s.mover === side && s.loss > 1)
+    .sort((a, b) => b.loss - a.loss)
+    .slice(0, count);
 }
 
 /** The biggest swings of the game, largest first (only real losses). */

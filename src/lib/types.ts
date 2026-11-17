@@ -1,4 +1,5 @@
 import type { GameReview } from './review';
+import type { MoveAnnotation } from './annotations';
 import type { Color } from './chess';
 
 export interface Repertoire {
@@ -99,6 +100,8 @@ export interface StoredGame {
   review?: GameReview;
   /** Tournament / event name (over-the-board games). */
   event?: string;
+  /** Your annotations (symbols, comments), by the move's index in `sans` (as a string key). */
+  annotations?: Record<string, MoveAnnotation>;
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;
 }

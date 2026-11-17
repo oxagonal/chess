@@ -128,6 +128,7 @@ function resolve(table: SyncTable, l: Row, r: Row): Row {
     const g = { ...newer };
     if (older.prepApplied && !g.prepApplied) g.prepApplied = true;
     if (!g.review && older.review) g.review = older.review;
+    if (!g.annotations && older.annotations) g.annotations = older.annotations;
     return sameRow(g, newer) ? newer : g;
   }
   return newer;

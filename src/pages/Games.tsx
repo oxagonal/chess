@@ -1,6 +1,5 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import type { Chess } from 'chessops/chess';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { updateSettings, useSettings } from '../db/settings';
@@ -8,19 +7,17 @@ import { markForgotten } from '../db/repertoire';
 import { useAllGraphs, useGames } from '../hooks';
 import { syncSource, lastSync, type SyncResult } from '../services/sync';
 import { analyzeGame, summarize, PREP_LABEL, type PrepKind, type PrepResult, type RepWithGraph } from '../lib/prep';
-import { formatLine, playSan, startPos } from '../lib/chess';
+import { formatLine } from '../lib/chess';
 import type { GameSource, StoredGame } from '../lib/types';
 import type { ImportProgress } from '../lib/importers/common';
-import { Board, type Arrow } from '../components/Board';
 import { MoveNote } from '../components/MoveNote';
-import { GameReviewPanel } from '../components/GameReviewPanel';
-import { biggestSwings, JUDGEMENT_GLYPH, swings } from '../lib/review';
-import { ColorPill, Empty, LineView, Stat, TableWrap, fmtDate, timeAgo } from '../components/ui';
+import { ColorPill, Empty, Stat, TableWrap, fmtDate, timeAgo } from '../components/ui';
 import { href, navigate } from '../router';
 import { rangeCutoff } from '../lib/gameRange';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { LichessAccount } from '../components/LichessConnect';
 import { OtbGameEditor } from './OtbGame';
+import { GameReview } from './GameReview';
 
 /** "Lichess", "Chess.com" or "Over the board". */
 export function sourceName(source: GameSource): string {
@@ -31,7 +28,7 @@ export function GamesPage({ route }: PageProps) {
   const id = route.path[1];
   if (id === 'new') return <OtbGameEditor key="new" initialOpponent={route.query.get('opponent') ?? undefined} />;
   if (id === 'edit' && route.path[2]) return <OtbGameEditor key={route.path[2]} editId={route.path[2]} />;
-  if (id) return <GameViewer id={id} />;
+  if (id) return <GameReview key={id} id={id} />;
   return <GamesOverview />;
 }
 
@@ -449,200 +446,6 @@ function GamesOverview() {
 }
 
 /* ---------------------------------------------------------------- viewer */
-
-function GameViewer({ id }: { id: string }) {
-  const game = useLiveQuery(() => db.games.get(id), [id]);
-  const graphs = useAllGraphs();
-  const result = useMemo(() => (game && graphs ? analyzeGame(game, graphs) : undefined), [game, graphs]);
-  const replay = useMemo(() => {
-    if (!game) return undefined;
-    let pos: Chess = startPos();
-    const positions: Chess[] = [pos];
-    const ucis: string[] = [];
-    for (const s of game.sans) {
-      const r = playSan(pos, s);
-      if (!r) break;
-      positions.push(r.pos);
-      ucis.push(r.uci);
-      pos = r.pos;
-    }
-    return { positions, ucis };
-  }, [game]);
-  const [cursor, setCursor] = useState<number | null>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!replay) return;
-      const max = replay.positions.length - 1;
-      if (e.key === 'ArrowLeft') setCursor((c) => Math.max(0, (c ?? 0) - 1));
-      else if (e.key === 'ArrowRight') setCursor((c) => Math.min(max, (c ?? 0) + 1));
-      else if (e.key === 'Home') setCursor(0);
-      else if (e.key === 'End') setCursor(max);
-      else return;
-      e.preventDefault();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [replay]);
-
-  if (game === undefined || !graphs || !replay) return <div className="muted">Loading…</div>;
-  if (!game) return <Empty>Game not found.</Empty>;
-
-  const r = result!;
-  const devPly = r.ply;
-  const cur = cursor ?? devPly ?? Math.min(r.bookPlies, replay.positions.length - 1);
-  const graph = r.repId ? graphs.find((x) => x.rep.id === r.repId)?.graph : undefined;
-  const pos = replay.positions[cur];
-  const arrows: Arrow[] = [];
-  if (devPly !== undefined && cur === devPly && graph && r.key) {
-    for (const m of graph.childrenOf(r.key)) arrows.push({ uci: m.uci, brush: m.mine ? 'green' : 'paleBlue' });
-    if (r.playedUci) arrows.push({ uci: r.playedUci, brush: 'red' });
-  }
-  // Computer review: glyphs for inaccuracies/mistakes/blunders, and at those positions the played
-  // move (red) vs the engine's choice (green).
-  const judged = new Map((game.review ? swings(game.review) : []).filter((s) => s.judgement).map((s) => [s.ply, s]));
-  const topPlies = new Set(game.review ? biggestSwings(game.review, 3).map((s) => s.ply) : []);
-  const swingHere = judged.get(cur) ?? (topPlies.has(cur) ? swings(game.review!).find((s) => s.ply === cur) : undefined);
-  if (swingHere && cur < replay.ucis.length && !(devPly !== undefined && cur === devPly)) {
-    arrows.push({ uci: replay.ucis[cur], brush: 'red' });
-    if (swingHere.best && swingHere.best !== replay.ucis[cur]) arrows.push({ uci: swingHere.best, brush: 'green' });
-  }
-  const pathToDev = r.key && graph ? (graph.pathTo(r.key) ?? []).map((m) => m.san) : [];
-  const moveNo = devPly !== undefined ? `${Math.floor(devPly / 2) + 1}${devPly % 2 ? '…' : '.'}` : '';
-  const opp = game.userColor === 'white' ? game.black : game.white;
-
-  return (
-    <div className="board-layout">
-      <div className="board-col col">
-        <Board pos={pos} orientation={game.userColor} lastMove={cur > 0 ? replay.ucis[cur - 1] : undefined} arrows={arrows} />
-        <div className="row">
-          <button onClick={() => setCursor(0)}>⏮</button>
-          <button onClick={() => setCursor(Math.max(0, cur - 1))}>◀</button>
-          <button onClick={() => setCursor(Math.min(replay.positions.length - 1, cur + 1))}>▶</button>
-          <button onClick={() => setCursor(replay.positions.length - 1)}>⏭</button>
-          {devPly !== undefined && <button onClick={() => setCursor(devPly)}>Jump to deviation</button>}
-        </div>
-        {r.kind === 'you-deviated' &&
-          r.key &&
-          graph?.childrenOf(r.key).filter((m) => m.mine).map((m) => <MoveNote key={m.id} id={m.id} san={m.san} label="(your prep)" prompt />)}
-      </div>
-      <div className="col">
-        <div className="panel">
-          <div className="row">
-            <a href={href('games')} className="btn small">
-              ← Games
-            </a>
-            <h2 style={{ margin: 0 }}>
-              {game.white} {game.whiteElo ? `(${game.whiteElo})` : ''} – {game.black} {game.blackElo ? `(${game.blackElo})` : ''}
-            </h2>
-          </div>
-          <div className="muted small" style={{ marginTop: 6 }}>
-            {fmtDate(game.playedAt)} · {sourceName(game.source)} {game.timeClass}
-            {game.event ? ` · ${game.event}` : ''} · {game.result} · {game.opening ?? ''}{' '}
-            {game.url && (
-              <a href={game.url} target="_blank" rel="noreferrer">
-                open on site ↗
-              </a>
-            )}
-          </div>
-          {game.source === 'otb' && (
-            <div className="row" style={{ marginTop: 8 }}>
-              <a className="btn small" href={href(`games/edit/${encodeURIComponent(game.id)}`)}>
-                Edit game
-              </a>
-              <button
-                className="small danger"
-                onClick={async () => {
-                  if (!confirm('Delete this game?')) return;
-                  await db.games.delete(game.id);
-                  navigate('games');
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className={`feedback ${r.kind === 'you-deviated' ? 'bad' : r.kind === 'opponent-deviated' ? 'hint' : 'good'}`}>
-          <b>{PREP_LABEL[r.kind]}</b>
-          <div style={{ marginTop: 4 }}>
-            {r.kind === 'you-deviated' && (
-              <>
-                On move {moveNo} you played <b>{r.played}</b>, but your repertoire says <b>{r.expected?.join(' or ')}</b>.
-              </>
-            )}
-            {r.kind === 'opponent-deviated' && (
-              <>
-                On move {moveNo} {opp} played <b>{r.played}</b>, which your repertoire doesn't cover.
-              </>
-            )}
-            {r.kind === 'end-of-prep' && <>You stayed in book for {Math.ceil(r.bookPlies / 2)} moves until your prepared line ended.</>}
-            {r.kind === 'still-in-book' && <>The whole game stayed inside your repertoire.</>}
-            {r.kind === 'other-opening' && <>You chose an opening that isn't in your repertoire ({r.played}).</>}
-            {r.kind === 'no-repertoire' && (
-              <>
-                You have no {game.userColor} repertoire yet. <a href={href('repertoire')}>Create one</a>.
-              </>
-            )}
-          </div>
-          <div className="row" style={{ marginTop: 8 }}>
-            {r.kind === 'you-deviated' && r.repId && r.key && graph && (
-              <button
-                className="primary small"
-                onClick={async () => {
-                  await markForgotten(graph.childrenOf(r.key!).filter((m) => m.mine).map((m) => m.id), game.id);
-                  navigate('train', { rep: r.repId, mode: 'review', t: String(Date.now()) });
-                }}
-              >
-                Drill this move now
-              </button>
-            )}
-            {r.kind === 'opponent-deviated' && r.repId && (
-              <button className="primary small" onClick={() => navigate(`repertoire/${r.repId}`, { line: [...pathToDev, r.played!].join(' ') })}>
-                Prepare an answer to {r.played}
-              </button>
-            )}
-            {(r.kind === 'end-of-prep' || r.kind === 'you-deviated') && r.repId && (
-              <button className="small" onClick={() => navigate(`repertoire/${r.repId}`, { line: pathToDev.join(' ') })}>
-                Open position in repertoire
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="panel">
-          <h3>Moves</h3>
-          <LineView
-            items={game.sans.map((san, i) => {
-              const j = judged.get(i)?.judgement;
-              return {
-                san: j ? `${san}${JUDGEMENT_GLYPH[j]}` : san,
-                className: [i === devPly ? 'deviation' : i < r.bookPlies ? 'book' : '', j ? `judged ${j}` : ''].join(' '),
-                title: i === devPly ? 'You left your prep here' : i < r.bookPlies ? 'In your repertoire' : j ? j : undefined,
-              };
-            })}
-            current={cur}
-            onSelect={setCursor}
-          />
-          <p className="muted small" style={{ marginTop: 8 }}>
-            Green moves were in your repertoire; the red outline is where you left it. Use ← → to step through.
-          </p>
-        </div>
-
-        <GameReviewPanel
-          game={game}
-          positions={replay.positions}
-          sans={game.sans}
-          cursor={cur}
-          onJump={setCursor}
-          userColor={game.userColor}
-          prepPly={devPly}
-        />
-      </div>
-    </div>
-  );
-}
 
 /** "Nov 16" this year, "Nov 16, 2025" before. */
 function shortDate(ts: number): string {

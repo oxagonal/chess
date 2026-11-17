@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Chess } from 'chessops/chess';
 import { db } from '../db/db';
-import { fenOf, playUci, type Color } from '../lib/chess';
-import { biggestSwings, JUDGEMENT_GLYPH, swings, winChanceOf, type GameReview, type Score, type Swing } from '../lib/review';
+import { fenOf, opposite, playUci, type Color } from '../lib/chess';
+import { biggestSwingsFor, JUDGEMENT_GLYPH, swings, winChanceOf, type GameReview, type Score, type Swing } from '../lib/review';
 import type { StoredGame } from '../lib/types';
 import { evaluatePosition } from '../services/engine';
 
@@ -15,9 +15,13 @@ function terminalScore(pos: Chess): Score {
   return { cp: 0 }; // stalemate / insufficient material
 }
 
+/** Save the analysis every this many positions, so leaving the page loses at most a few. */
+const SAVE_EVERY = 6;
+
 /**
- * Runs Stockfish over every position of a game, saves the result on the game, and shows an eval graph
- * plus the three biggest swings (like a Lichess study chapter with computer analysis).
+ * Runs Stockfish over every position of a game and saves the result on the game as it goes (an
+ * interrupted analysis continues where it stopped next time the game is opened). Shows the eval graph
+ * and each side's three biggest swings.
  */
 export function GameReviewPanel({
   game,
@@ -26,6 +30,7 @@ export function GameReviewPanel({
   cursor,
   onJump,
   userColor,
+  opponentName,
   prepPly,
 }: {
   game: StoredGame;
@@ -34,43 +39,82 @@ export function GameReviewPanel({
   cursor: number;
   onJump: (ply: number) => void;
   userColor: Color;
+  opponentName: string;
   prepPly?: number;
 }) {
   const review = game.review;
+  const partial = review?.complete === false;
   const [depth, setDepth] = useState(12);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const cancel = useRef(false);
-  useEffect(() => () => void (cancel.current = true), []);
+  /** The analysis running now; each run has its own token so a stopped one can't get in a new one's way. */
+  const run = useRef<{ cancelled: boolean } | null>(null);
+  useEffect(() => () => void (run.current && (run.current.cancelled = true)), []);
 
-  const analyze = async () => {
-    cancel.current = false;
+  const analyze = async (resume?: GameReview) => {
+    if (run.current && !run.current.cancelled) return;
+    const token = { cancelled: false };
+    run.current = token;
+    const d = resume?.depth ?? depth;
     const total = positions.length;
-    const evals: (Score | null)[] = [];
-    const best: (string | null)[] = [];
-    setProgress({ done: 0, total });
-    for (let i = 0; i < total; i++) {
-      if (cancel.current) break;
-      const pos = positions[i];
-      if (pos.isEnd()) {
-        evals.push(terminalScore(pos));
-        best.push(null);
-      } else {
-        const r = await evaluatePosition(fenOf(pos), depth);
-        evals.push(r ? { cp: r.eval.cp, mate: r.eval.mate } : null);
-        best.push(r?.best ?? null);
+    const evals: (Score | null)[] = resume ? resume.evals.slice(0, total) : [];
+    const best: (string | null)[] = resume ? resume.best.slice(0, total) : [];
+    // A run stopped because another took over doesn't save (the new one owns the result).
+    const save = async (complete: boolean) =>
+      (run.current === token || !token.cancelled) &&
+      db.games.update(game.id, { review: { depth: d, analyzedAt: Date.now(), evals: [...evals], best: [...best], ...(complete ? {} : { complete: false }) } });
+    setProgress({ done: evals.length, total });
+    try {
+      for (let i = evals.length; i < total; i++) {
+        if (token.cancelled) break;
+        const pos = positions[i];
+        if (pos.isEnd()) {
+          evals.push(terminalScore(pos));
+          best.push(null);
+        } else {
+          const r = await evaluatePosition(fenOf(pos), d);
+          if (token.cancelled) break;
+          evals.push(r ? { cp: r.eval.cp, mate: r.eval.mate } : null);
+          best.push(r?.best ?? null);
+        }
+        if (run.current === token) setProgress({ done: i + 1, total });
+        if ((i + 1) % SAVE_EVERY === 0 && i + 1 < total) await save(false);
       }
-      setProgress({ done: i + 1, total });
+      await save(evals.length >= total);
+    } finally {
+      if (run.current === token) {
+        run.current = null;
+        setProgress(null);
+      }
     }
-    if (!cancel.current) {
-      const result: GameReview = { depth, analyzedAt: Date.now(), evals, best };
-      await db.games.update(game.id, { review: result });
-    }
-    setProgress(null);
   };
+
+  // An analysis that was interrupted (you left the page) carries on by itself.
+  useEffect(() => {
+    if (partial && review) void analyze(review);
+    return () => void (run.current && (run.current.cancelled = true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.id, partial]);
+
+  const progressBar = progress && (
+    <div style={{ marginTop: 10 }}>
+      <div className="progress">
+        <div style={{ width: `${(progress.done / progress.total) * 100}%` }} />
+      </div>
+      <div className="row muted small" style={{ marginTop: 4 }}>
+        <span>
+          Stockfish is going through the game… {progress.done}/{progress.total} positions (saved as it goes)
+        </span>
+        <span className="spacer" />
+        <button className="small" onClick={() => run.current && (run.current.cancelled = true)}>
+          Pause
+        </button>
+      </div>
+    </div>
+  );
 
   if (!review) {
     return (
-      <div className="panel">
+      <div className="panel review-panel">
         <div className="row">
           <h3 style={{ margin: 0 }}>Computer review</h3>
           <span className="spacer" />
@@ -83,62 +127,69 @@ export function GameReviewPanel({
                   </option>
                 ))}
               </select>
-              <button className="primary small" onClick={analyze}>
+              <button className="primary small" onClick={() => analyze()}>
                 Analyze game
               </button>
             </>
           )}
-          {progress && (
-            <button className="small" onClick={() => (cancel.current = true)}>
-              Stop
-            </button>
-          )}
         </div>
-        {progress ? (
-          <div style={{ marginTop: 10 }}>
-            <div className="progress">
-              <div style={{ width: `${(progress.done / progress.total) * 100}%` }} />
-            </div>
-            <div className="muted small" style={{ marginTop: 4 }}>
-              Stockfish is going through the game… {progress.done}/{progress.total} positions
-            </div>
-          </div>
-        ) : (
+        {progressBar ?? (
           <p className="muted small" style={{ marginTop: 8, marginBottom: 0 }}>
-            Runs Stockfish on every position (in your browser) and finds the three biggest swings. Saved with the game.
+            Runs Stockfish on every position (in your browser) and finds each side’s three biggest swings. Saved with the game as it goes.
           </p>
         )}
       </div>
     );
   }
 
-  const top = biggestSwings(review, 3);
+  const mine = biggestSwingsFor(review, userColor, 3);
+  const theirs = biggestSwingsFor(review, opposite(userColor), 3);
+  const list = (items: Swing[], empty: string) =>
+    items.length === 0 ? (
+      <div className="muted small">{empty}</div>
+    ) : (
+      <div className="col" style={{ gap: 6 }}>
+        {items.map((s) => (
+          <SwingRow key={s.ply} s={s} san={sans[s.ply]} pos={positions[s.ply]} active={cursor === s.ply} onJump={onJump} />
+        ))}
+      </div>
+    );
   return (
-    <div className="panel">
+    <div className="panel review-panel">
       <div className="row">
         <h3 style={{ margin: 0 }}>Computer review</h3>
         <span className="spacer" />
         <span className="muted small">Stockfish depth {review.depth}</span>
-        <button className="small ghost" onClick={() => db.games.update(game.id, { review: undefined })} title="Discard and analyze again">
-          Re-analyze
-        </button>
+        {partial && !progress && (
+          <button className="small primary" onClick={() => analyze(review)}>
+            Continue ({review.evals.length}/{positions.length})
+          </button>
+        )}
+        {!progress && (
+          <button className="small ghost" onClick={() => db.games.update(game.id, { review: undefined })} title="Discard and analyze again">
+            Re-analyze
+          </button>
+        )}
       </div>
+      {progressBar}
       <EvalGraph review={review} cursor={cursor} onJump={onJump} prepPly={prepPly} />
-      <h3 style={{ marginTop: 12 }}>Biggest swings</h3>
-      {top.length === 0 ? (
-        <div className="muted">No real swings — a clean game.</div>
-      ) : (
+      <div className="swing-columns">
         <div className="col" style={{ gap: 6 }}>
-          {top.map((s) => (
-            <SwingRow key={s.ply} s={s} san={sans[s.ply]} you={s.mover === userColor} pos={positions[s.ply]} active={cursor === s.ply} onJump={onJump} />
-          ))}
+          <h3 style={{ margin: 0 }}>Your biggest mistakes</h3>
+          {list(mine, partial ? 'None so far.' : 'No real swings — a clean game for you.')}
         </div>
-      )}
+        <div className="col" style={{ gap: 6 }}>
+          <h3 style={{ margin: 0 }}>
+            <span className="keep-case">{opponentName}’s</span> biggest mistakes
+          </h3>
+          {list(theirs, partial ? 'None so far.' : 'No real swings.')}
+        </div>
+      </div>
     </div>
   );
 }
 
-function SwingRow({ s, san, you, pos, active, onJump }: { s: Swing; san: string; you: boolean; pos: Chess; active: boolean; onJump: (ply: number) => void }) {
+function SwingRow({ s, san, pos, active, onJump }: { s: Swing; san: string; pos: Chess; active: boolean; onJump: (ply: number) => void }) {
   const bestSan = s.best ? playUci(pos, s.best)?.san : undefined;
   const moveNo = `${Math.floor(s.ply / 2) + 1}${s.mover === 'white' ? '.' : '…'}`;
   const pct = (x: number) => `${Math.round(x)}%`;
@@ -149,8 +200,7 @@ function SwingRow({ s, san, you, pos, active, onJump }: { s: Swing; san: string;
       <span>
         <b>
           {moveNo} <span className="keep-case">{san}</span>
-        </b>{' '}
-        <span className="muted">{you ? 'you' : 'opponent'}</span>
+        </b>
         <br />
         <span className="small muted">
           win chance {pct(fromView(s.before))} → {pct(fromView(s.after))}
