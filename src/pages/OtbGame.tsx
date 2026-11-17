@@ -27,7 +27,7 @@ function resultOf(o: Outcome, color: Color): StoredGame['result'] {
 const TIME_CLASSES: TimeClass[] = ['classical', 'rapid', 'blitz'];
 
 /** Add (or edit) a game played over the board: enter the moves on the board or paste PGN. */
-export function OtbGameEditor({ editId }: { editId?: string }) {
+export function OtbGameEditor({ editId, initialOpponent }: { editId?: string; initialOpponent?: string }) {
   const settings = useSettings();
   const existing = useLiveQuery(async () => (editId ? ((await db.games.get(editId)) ?? null) : null), [editId]);
   const players = useLiveQuery(() => db.players.toArray(), []);
@@ -47,7 +47,15 @@ export function OtbGameEditor({ editId }: { editId?: string }) {
     if (draft || existing === undefined || !settings.loaded) return;
     const d: OtbDraft = existing
       ? draftOf(existing)
-      : { sans: [], userColor: 'white', opponent: '', result: '*', playedAt: Date.now(), timeClass: 'classical', myName: settings.otbName || undefined };
+      : {
+          sans: [],
+          userColor: 'white',
+          opponent: initialOpponent ?? '',
+          result: '*',
+          playedAt: Date.now(),
+          timeClass: 'classical',
+          myName: settings.otbName || undefined,
+        };
     setDraft(d);
     setCursor(d.sans.length);
   }, [existing, settings.loaded, settings.otbName, draft]);

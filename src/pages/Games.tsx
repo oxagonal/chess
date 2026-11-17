@@ -29,7 +29,7 @@ export function sourceName(source: GameSource): string {
 
 export function GamesPage({ route }: PageProps) {
   const id = route.path[1];
-  if (id === 'new') return <OtbGameEditor key="new" />;
+  if (id === 'new') return <OtbGameEditor key="new" initialOpponent={route.query.get('opponent') ?? undefined} />;
   if (id === 'edit' && route.path[2]) return <OtbGameEditor key={route.path[2]} editId={route.path[2]} />;
   if (id) return <GameViewer id={id} />;
   return <GamesOverview />;
@@ -280,7 +280,8 @@ function GamesOverview() {
                         <ColorPill color={g.userColor} />
                       </td>
                       <td>
-                        {opp} {oppElo ? <span className="muted small">({oppElo})</span> : null}
+                        {opp} {g.source === 'otb' && <span className="badge otb" title="Over the board">OTB</span>}{' '}
+                        {oppElo ? <span className="muted small">({oppElo})</span> : null}
                       </td>
                       <td>
                         <span className={`badge ${g.userScore === 1 ? 'good' : g.userScore === 0 ? 'bad' : ''}`}>

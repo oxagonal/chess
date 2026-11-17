@@ -162,6 +162,7 @@ label.check { display: inline-flex; gap: 7px; align-items: center; cursor: point
 .badge.new { background: var(--accent2); color: #fff; }
 .badge.good { background: var(--good); color: #0e1a0a; }
 .badge.bad { background: var(--bad); color: #fff; }
+.badge.otb { background: #3d3350; color: #ddd0f2; }
 .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--panel2); }
 .pill.white { background: #ece9e5; color: #1e1e1e; }
 .pill.black { background: #0c0c0c; color: #ddd; border: 1px solid #444; }
@@ -229,6 +230,11 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .scout-bar, .scout-intro, .scout-editor { margin-bottom: 10px; }
 .scout-editor { padding: 12px; border-radius: var(--radius-sm); background: var(--bg2); border: 1px solid var(--border-soft); }
 .segmented button.small { padding: 4px 9px; }
+.scout-sources { align-self: flex-start; max-width: 100%; overflow-x: auto; }
+.scout-sources button { white-space: nowrap; }
+.scout-detail { display: flex; flex-direction: column; gap: 2px; }
+button.linklike { background: none; border: none; padding: 0; min-height: 0; color: var(--accent2); font: inherit; font-weight: inherit; cursor: pointer; display: inline; }
+button.linklike:hover:not(:disabled) { background: none; text-decoration: underline; }
 
 /* ---------- about ---------- */
 .credits { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
