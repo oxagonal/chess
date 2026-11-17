@@ -39,6 +39,13 @@ export interface AppSettings {
   /** Only review cards whose position is reached at least once in N games (needs a coverage run). */
   trainOnlyLikely: boolean;
   autoPlayDelayMs: number;
+  /** Trainer: go straight to the next line instead of waiting for Continue (still waits after a miss). */
+  trainAutoNext: boolean;
+  /**
+   * Trainer "Skip repeats": moves you've already played in this session are played for you, the
+   * move order with the most new positions is chosen, and lines carry on into what you haven't played.
+   */
+  trainSkipRepeats: boolean;
   /** Builder: save every move played on the board straight into the repertoire. */
   builderAutoAdd: boolean;
   /** Show Stockfish evaluations next to each move in the builder. */
@@ -78,6 +85,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxIntervalDays: 365,
   trainOnlyLikely: false,
   autoPlayDelayMs: 350,
+  trainAutoNext: false,
+  trainSkipRepeats: false,
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,

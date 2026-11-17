@@ -418,6 +418,7 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .tp-moves::-webkit-scrollbar { display: none; }
 .tp-info { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .tp-info > .feedback { flex: 1 0 auto; min-height: 0; padding: 9px 12px; font-size: 14px; }
+.tp-info > .train-options { flex: 0 0 auto; padding: 10px 12px; font-size: 13px; }
 .tp-info .movenote { margin-top: 6px; padding: 6px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
 .tp-info .movenote.prompt { box-shadow: none; }
 .tp-info .movenote.prompt textarea { border-color: var(--warn); }

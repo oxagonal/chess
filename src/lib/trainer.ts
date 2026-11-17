@@ -66,16 +66,20 @@ export function moveOrders(graph: RepGraph, key: string, probs?: Record<string, 
  * known moves from move 1 as ungraded practice. Learn only asks for the new moves: everything you
  * already know is played for you, and the line stops after the last new move.
  */
-export function planLine(
-  graph: RepGraph,
-  target: RepMove,
-  pending: ReadonlySet<string>,
-  mode: TrainMode,
+export interface PlanOptions {
   /** Also have you play your moves before the trained one, from move 1 (review only). */
-  leadIn = false,
+  leadIn?: boolean;
   /** Which move order to reach the target by (see moveOrders); defaults to the shortest. */
-  via?: RepMove[],
-): PlannedStep[] {
+  via?: RepMove[];
+  /**
+   * "Skip repeats": your moves already played this session. They're played for you instead of
+   * asked (unless due), and the rest of the branch heads for moves you haven't played yet.
+   */
+  seen?: ReadonlySet<string>;
+}
+
+export function planLine(graph: RepGraph, target: RepMove, pending: ReadonlySet<string>, mode: TrainMode, opts: PlanOptions = {}): PlannedStep[] {
+  const { leadIn = false, via, seen } = opts;
   const prefix = via ?? graph.pathTo(target.fromKey);
   if (!prefix) return [];
   const line: RepMove[] = [...prefix, target];
@@ -119,11 +123,29 @@ export function planLine(
     key = next.toKey;
   }
 
+  // With Skip repeats: does the branch below `key` still hold one of your moves not played this session?
+  const freshMemo = new Map<string, boolean>();
+  const freshBelow = (k: string, guard: Set<string>): boolean => {
+    if (!seen) return false;
+    const hit = freshMemo.get(k);
+    if (hit !== undefined) return hit;
+    if (guard.has(k)) return false;
+    guard.add(k);
+    const found = graph.childrenOf(k).some((m) => (m.mine && !seen.has(m.id)) || freshBelow(m.toKey, guard));
+    guard.delete(k);
+    freshMemo.set(k, found);
+    return found;
+  };
+
   // Review: then carry on down the branch to its end, like a game would — your (first) move on your
-  // turn, the first saved reply on theirs. Learn stops here: the rest is moves you already know.
+  // turn, the first saved reply on theirs; with Skip repeats, the way into moves you haven't played
+  // yet this session. Learn stops here: the rest is moves you already know.
   for (let guard = 0; guard < 400 && mode === 'review'; guard++) {
     const kids = graph.childrenOf(key).filter((m) => !onLine.has(m.toKey));
-    const next = graph.isMyTurn(key) ? kids.find((m) => m.mine) : kids[0];
+    const fresh = (m: RepMove) => (m.mine && !seen?.has(m.id)) || freshBelow(m.toKey, new Set(onLine));
+    const next = graph.isMyTurn(key)
+      ? (seen && kids.find((m) => m.mine && fresh(m))) || kids.find((m) => m.mine)
+      : (seen && kids.find(fresh)) || kids[0];
     if (!next) break;
     line.push(next);
     onLine.add(next.toKey);
@@ -139,6 +161,8 @@ export function planLine(
     }
     // Learn: moves you already know are played for you, never asked.
     if (mode === 'learn') return { move, kind: 'auto' };
+    // Skip repeats: a known move you've already played this session is played for you.
+    if (move.mine && seen?.has(move.id)) return { move, kind: 'auto' };
     // Your moves after the one being trained: you play them, ungraded.
     if (move.mine && i > targetIndex) return { move, kind: 'practice' };
     // Lead-in: you also play your moves from the starting position.

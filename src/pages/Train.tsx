@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import type { Chess } from 'chessops/chess';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
-import { getSettings, repTarget, useSettings, type AppSettings } from '../db/settings';
+import { getSettings, repTarget, updateSettings, useSettings, type AppSettings } from '../db/settings';
 import { gradeCard } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
 import { Board, type Arrow } from '../components/Board';
@@ -16,7 +16,7 @@ import { asQuiz, filterByProbability, moveOrders, orderCards, planLine, type Pla
 import { Builder } from './Repertoire';
 import { computeInsights, movesForLine, movesUnder } from '../lib/insights';
 import { formatInterval, isDue, isNew, Rating } from '../lib/srs';
-import type { Repertoire, ReviewCard } from '../lib/types';
+import type { Repertoire, RepMove, ReviewCard } from '../lib/types';
 
 /** review = due moves, learn = new moves, drill = extra practice of a chosen line / your weakest moves. */
 type SessionMode = 'review' | 'learn' | 'drill';
@@ -277,6 +277,13 @@ function Session({ setup }: { setup: SessionSetup }) {
   const [stats, setStats] = useState({ done: 0, correct: 0, failed: 0, lines: 0 });
   const [finished, setFinished] = useState(false);
   const feedbackToken = useRef(0);
+  // Trainer options (⚙): read live, so a change applies from the next line.
+  const live = useSettings();
+  const [showOptions, setShowOptions] = useState(false);
+  const skipRepeatsRef = useRef(false);
+  skipRepeatsRef.current = live.trainSkipRepeats;
+  // Your moves played so far in this session (Skip repeats). A new session starts empty.
+  const seenRef = useRef(new Set<string>());
 
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const flashFor = (f: 'good' | 'bad' | 'hint') => {
@@ -298,11 +305,24 @@ function Session({ setup }: { setup: SessionSetup }) {
       // A transposed position: each review takes the next move order into it (most common first),
       // so over time you practise reaching it every way your repertoire allows.
       const orders = moveOrders(graph, move.fromKey, setup.probs.get(card.repId));
-      const index = orders.length ? card.reps % orders.length : 0;
-      // Review and drills: every line is played from move 1 (your earlier moves too) to the end of the
-      // branch. Learn: only the new moves are asked; the moves you already know are played for you.
+      let index = orders.length ? card.reps % orders.length : 0;
       const learn = mode === 'learn';
-      const steps = planLine(graph, move, pending, learn ? 'learn' : 'review', !learn, orders[index]);
+      const seen = !learn && skipRepeatsRef.current ? seenRef.current : undefined;
+      if (seen && orders.length > 1) {
+        // Skip repeats: take the move order with the most of your moves not yet played this session
+        // (ties keep the rotation), e.g. into the Four Knights via 2.Nc3 once 2.Nf3 has been played.
+        const fresh = (o: RepMove[]) => o.filter((m) => m.mine && !seen.has(m.id)).length;
+        let best = index;
+        for (let k = 1; k < orders.length; k++) {
+          const i = (index + k) % orders.length;
+          if (fresh(orders[i]) > fresh(orders[best])) best = i;
+        }
+        index = best;
+      }
+      // Review and drills: every line is played from move 1 (your earlier moves too) to the end of the
+      // branch — with Skip repeats, minus what you've already played this session. Learn: only the new
+      // moves are asked; the moves you already know are played for you.
+      const steps = planLine(graph, move, pending, learn ? 'learn' : 'review', { leadIn: !learn, via: orders[index], seen });
       if (!steps.some((s) => s.kind === 'quiz' || s.kind === 'show')) {
         pending.delete(card.id);
         continue;
@@ -332,8 +352,9 @@ function Session({ setup }: { setup: SessionSetup }) {
   // The move you last missed — its note opens for reading/editing once the answer is revealed.
   const [noteMove, setNoteMove] = useState<{ id: string; san: string } | undefined>();
   useEffect(() => setNoteMove(undefined), [line]);
-  // Every line waits at the end so you can edit it (or its note) before pressing Continue.
-  const holdAtEnd = !!line && line.phase === 'quiz' && idx >= line.steps.length;
+  // A finished line waits for Continue (so you can edit it or its note) — unless Auto-advance is on,
+  // which still stops after a missed move so you can write down why.
+  const holdAtEnd = !!line && line.phase === 'quiz' && idx >= line.steps.length && (!live.trainAutoNext || !!noteMove);
   const continueAfterLine = () => {
     setStats((s) => ({ ...s, lines: s.lines + 1 }));
     nextLine();
@@ -398,6 +419,7 @@ function Session({ setup }: { setup: SessionSetup }) {
     if (!r) return;
     const expected = step.move;
     if (r.san === expected.san) {
+      seenRef.current.add(expected.id);
       // Move the board first so the piece never jumps back while the grade is being saved.
       flashFor('good');
       setPos(r.pos);
@@ -538,6 +560,29 @@ function Session({ setup }: { setup: SessionSetup }) {
       End
     </a>
   );
+  const optionsButton = (
+    <button className={`small ${showOptions ? 'primary' : ''}`} onClick={() => setShowOptions((v) => !v)} title="Training options" aria-expanded={showOptions}>
+      ⚙ Settings
+    </button>
+  );
+  const optionsPanel = showOptions && (
+    <div className="panel col train-options" style={{ gap: 10 }}>
+      <label className="check">
+        <input type="checkbox" checked={live.trainAutoNext} onChange={(e) => updateSettings({ trainAutoNext: e.target.checked })} />
+        <span>
+          <b>Auto-advance</b> — next line without pressing Continue. Still stops after a miss, so you can write the note.
+        </span>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={live.trainSkipRepeats} onChange={(e) => updateSettings({ trainSkipRepeats: e.target.checked })} />
+        <span>
+          <b>Skip repeats</b> — moves you've already played this session are played for you, and lines head for positions you haven't
+          seen yet. Due moves are always asked; a new session starts fresh. (Review and drills.)
+        </span>
+      </label>
+      <div className="muted small">Changes apply from the next line.</div>
+    </div>
+  );
   const board = <Board pos={pos} orientation={rep?.color ?? 'white'} interactive={waiting} lastMove={lastMove} onMove={onMove} arrows={arrows} flash={flash} />;
   const note = noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" prompt compact={phone} />;
   const lineLabel = <h3 style={{ margin: 0 }}>{line?.phase === 'show' ? 'New line' : 'Line'}</h3>;
@@ -621,6 +666,7 @@ function Session({ setup }: { setup: SessionSetup }) {
             {rep && <span className="muted">{rep.name}</span>}
             <span className="spacer" />
             <span className="muted small">{counter}</span>
+            {optionsButton}
           </div>
           <ProgressBar value={progress} />
         </div>
@@ -633,8 +679,12 @@ function Session({ setup }: { setup: SessionSetup }) {
           </div>
         </div>
         <div className="tp-info">
-          {feedbackBox}
-          {notes}
+          {optionsPanel || (
+            <>
+              {feedbackBox}
+              {notes}
+            </>
+          )}
         </div>
         {actions}
       </div>
@@ -653,6 +703,7 @@ function Session({ setup }: { setup: SessionSetup }) {
             {rep && <span className="muted">{rep.name}</span>}
             <span className="spacer" />
             <span className="muted small">{counter}</span>
+            {optionsButton}
             {endButton}
           </div>
           <div style={{ marginTop: 8 }}>
@@ -664,6 +715,8 @@ function Session({ setup }: { setup: SessionSetup }) {
             </div>
           )}
         </div>
+
+        {optionsPanel}
 
         <div className="panel">
           <div className="row" style={{ marginBottom: 8 }}>
