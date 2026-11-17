@@ -138,6 +138,9 @@ would plug into that viewer or a new `review` tab.
 
 ## License & credits
 
+Designed by oxagonal and built together with [Claude](https://claude.com/claude-code), Anthropic's AI coding
+assistant.
+
 Chess Prep is free software, licensed under the **GNU GPL v3 or later** (see `LICENSE`); the app shows the
 notice, the license and a link to this repository under Settings → About & credits.
 
