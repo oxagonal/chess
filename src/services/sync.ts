@@ -84,8 +84,9 @@ export async function lastSync(source: GameSource, user: string): Promise<number
   return (row?.value as SyncState | undefined)?.lastSyncAt;
 }
 
+/** Delete the games downloaded from Lichess and Chess.com. Over-the-board games you entered stay. */
 export async function deleteAllGames() {
-  await db.games.clear();
+  await db.games.where('source').anyOf('lichess', 'chesscom').delete();
   const keys = (await db.kv.toArray()).filter((r) => r.key.startsWith('sync:')).map((r) => r.key);
   await db.kv.bulkDelete(keys);
 }

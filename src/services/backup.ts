@@ -13,7 +13,7 @@ function withoutCredentials(row: KvRow): KvRow {
   return { ...row, value };
 }
 
-const TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv'] as const;
+const TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players'] as const;
 
 export async function exportBackup(): Promise<string> {
   const out: Record<string, unknown> = { app: 'chess-prep', version: 1, exportedAt: new Date().toISOString() };
@@ -44,9 +44,10 @@ export async function importBackup(json: string): Promise<void> {
 }
 
 export async function wipeEverything(): Promise<void> {
-  await db.transaction('rw', [...TABLES.map((t) => db.table(t)), db.explorerCache, db.syncState], async () => {
+  await db.transaction('rw', [...TABLES.map((t) => db.table(t)), db.explorerCache, db.playerGames, db.syncState], async () => {
     for (const t of TABLES) await db.table(t).clear();
     await db.explorerCache.clear();
+    await db.playerGames.clear();
     await noteLocalDataReplaced();
   });
 }

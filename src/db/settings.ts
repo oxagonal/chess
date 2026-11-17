@@ -9,6 +9,8 @@ import type { Repertoire } from '../lib/types';
 export interface AppSettings {
   lichessUsername: string;
   chesscomUsername: string;
+  /** Your name as written in over-the-board PGNs (tells which side you played). */
+  otbName: string;
   /**
    * Lichess token from "Connect Lichess" (or a pasted personal token). Required by the Lichess
    * opening explorer; also speeds up game downloads.
@@ -69,6 +71,7 @@ function yearAgo(): string {
 export const DEFAULT_SETTINGS: AppSettings = {
   lichessUsername: '',
   chesscomUsername: '',
+  otbName: '',
   lichessToken: '',
   lichessAccount: '',
   importSince: yearAgo(),

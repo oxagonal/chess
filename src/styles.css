@@ -218,6 +218,18 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .menu-pop button { width: 100%; justify-content: flex-start; background: transparent; border-color: transparent; padding: 9px 11px; }
 .menu-pop button:hover:not(:disabled) { background: var(--panel3); border-color: transparent; }
 
+/* ---------- segmented choice (I played White/Black, result) ---------- */
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.segmented button { border: none; border-radius: 0; background: var(--bg2); color: var(--muted); }
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button.active { background: var(--accent-strong); color: #fff; }
+.segmented button:hover:not(:disabled):not(.active) { background: var(--panel3); color: var(--text); }
+.otb-moves { min-height: 44px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--bg2); border: 1px solid var(--border-soft); max-height: 220px; overflow-y: auto; }
+
+.scout-bar, .scout-intro, .scout-editor { margin-bottom: 10px; }
+.scout-editor { padding: 12px; border-radius: var(--radius-sm); background: var(--bg2); border: 1px solid var(--border-soft); }
+.segmented button.small { padding: 4px 9px; }
+
 /* ---------- about ---------- */
 .credits { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
 

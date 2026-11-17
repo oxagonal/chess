@@ -103,9 +103,10 @@ export async function importLichess(opts: ImportOptions): Promise<number> {
     clocks: 'true',
     opening: 'true',
     perfType: perf.join(','),
-    // Oldest first, so an interrupted download resumes where it stopped.
-    sort: 'dateAsc',
   });
+  // Oldest first, so an interrupted download resumes where it stopped — unless only the newest few are wanted.
+  if (opts.max) params.set('max', String(opts.max));
+  else params.set('sort', 'dateAsc');
   const headers: Record<string, string> = { Accept: 'application/x-ndjson' };
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
   opts.onProgress?.({ phase: 'Contacting Lichess…', games: 0 });

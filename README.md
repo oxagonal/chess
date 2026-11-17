@@ -9,6 +9,10 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   inside your prep until positions get rarer than 1 in N games — with a score per reply, recalculated as
   you edit. Import PGN (with variations and comments),
   `.pgn` files or public Lichess studies; export back to PGN.
+- **Players** — a tab next to the explorer in the builder for scouting opponents: save a player with their
+  Lichess / Chess.com usernames (their recent games are downloaded and cached on the device) or just a name
+  (your over-the-board games against them, plus any PGN you paste), and see what they play in the position
+  you're on.
 - **Spaced repetition** — every one of your moves is a card scheduled with [FSRS](https://github.com/open-spaced-repetition/ts-fsrs).
   *Learn* shows new lines and then has you replay them from memory; *Review* plays each due position out
   from the starting position (opponent moves and moves that aren't due are played for you) and asks only
@@ -18,7 +22,8 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   rating, how often does each position appear? Lists the opponent moves you'll face at least once every
   N games that your repertoire doesn't answer (*gaps*), positions where it's your move with nothing prepared,
   and the positions worth knowing cold. Optionally restrict training to positions above the threshold.
-- **Games** — downloads your Lichess and Chess.com games (incrementally) and checks each one against your
+- **Games** — downloads your Lichess and Chess.com games (incrementally), and takes **over-the-board games** you
+  enter (play the moves on a board, or paste PGN — a multi-game PGN is matched to your name) and checks each one against your
   repertoires: where *you* left your prep ("forgot prep"), where the *opponent* did (gaps), or where the
   line simply ended. Forgotten moves can be sent straight back into review; opponent surprises open the
   builder at that position so you can prepare an answer.

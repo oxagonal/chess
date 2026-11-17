@@ -68,7 +68,8 @@ export interface ReviewLogEntry {
   modifiedAt?: number;
 }
 
-export type GameSource = 'lichess' | 'chesscom';
+/** Where a game came from: downloaded from a site, or entered by hand after an over-the-board game. */
+export type GameSource = 'lichess' | 'chesscom' | 'otb';
 
 export interface StoredGame {
   id: string; // `${source}:${nativeId}`
@@ -96,6 +97,8 @@ export interface StoredGame {
   prepApplied?: boolean;
   /** Computer review (Stockfish eval of every position), once run. */
   review?: GameReview;
+  /** Tournament / event name (over-the-board games). */
+  event?: string;
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;
 }
@@ -168,3 +171,26 @@ export interface CoverageResult {
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;
 }
+
+/** Someone you want to prepare against (Builder → Players). */
+export interface Player {
+  id: string;
+  name: string;
+  lichess?: string;
+  chesscom?: string;
+  /** Their games added by hand as PGN (tournament bulletins and the like). */
+  pgn?: string;
+  createdAt: number;
+  /** Set automatically on every write; the newer copy wins when devices sync. */
+  modifiedAt?: number;
+}
+
+/**
+ * A downloaded game of a scouted player: a local cache (not synced — it can be downloaded again).
+ * `userColor` is the scouted player's color. `id` is `${playerId}|${gameId}`.
+ */
+export interface PlayerGame extends StoredGame {
+  playerId: string;
+  gameId: string;
+}
+
