@@ -1,4 +1,4 @@
-import { createElement, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import type { Chess } from 'chessops/chess';
@@ -13,7 +13,7 @@ import { keyOf, opposite, playSan, playUci, startPos } from '../lib/chess';
 import { biggestSwingsFor, JUDGEMENT_GLYPH, swings } from '../lib/review';
 import { glyphClass, glyphName, moveGlyph, otherGlyphs, withLineNote, type SavedLine } from '../lib/annotations';
 import { clocksAt, formatClock, timeSpent } from '../lib/clocks';
-import { MATERIAL_ROLES, materialBalance } from '../lib/material';
+import { MATERIAL_ROLES, materialBalance, type MaterialRole } from '../lib/material';
 import { Board, type Arrow } from '../components/Board';
 import { MoveNote } from '../components/MoveNote';
 import { MoveList } from '../components/MoveList';
@@ -26,6 +26,9 @@ import { Empty, fmtDate } from '../components/ui';
 import type { StudioPanelDef } from '../components/Studio';
 import { href, navigate } from '../router';
 import type { GameSource, StoredGame } from '../lib/types';
+
+/** Outline piece symbols for the material balance (text presentation, never emoji). */
+const OUTLINE: Record<MaterialRole, string> = { queen: '♕\uFE0E', rook: '♖\uFE0E', bishop: '♗\uFE0E', knight: '♘\uFE0E', pawn: '♙\uFE0E' };
 
 const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
 
@@ -195,8 +198,8 @@ export function GameReview({ id }: { id: string }) {
       {(material[color].up.length > 0 || material[color].plus > 0) && (
         <span className="material" title={material[color].plus ? `Up ${material[color].plus} in material` : 'Material'}>
           {MATERIAL_ROLES.filter((role) => material[color].up.includes(role)).map((role) => (
-            <span key={role} className="cg-wrap mat-pieces">
-              {material[color].up.filter((r) => r === role).map((r, i) => createElement('piece', { key: i, className: `${r} white` }))}
+            <span key={role} className="mat-pieces" aria-hidden="true">
+              {OUTLINE[role].repeat(material[color].up.filter((r) => r === role).length)}
             </span>
           ))}
           {material[color].plus > 0 && <span className="mat-plus">+{material[color].plus}</span>}
