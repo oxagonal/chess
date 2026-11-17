@@ -114,38 +114,6 @@ describe('PGN', () => {
   });
 });
 
-describe('builder navigator', () => {
-  it('runs each move ahead to the next choice, following transpositions', async () => {
-    const { continuations } = await import('../components/NextMoves');
-    const { keysAlong } = await import('../lib/pgn');
-    const ms = movesFromLines('n', 'white', [
-      'd4 Nf6 c4 e6 Nc3 Bb4 Qc2',
-      'd4 Nf6 c4 e6 Nc3 d5 cxd5',
-      'd4 Nf6 c4 g6 Nc3 Bg7 e4',
-      'd4 d5 c4 e6 Nc3',
-      'd4 d5 c4 c6 Nf3',
-      'd4 e6 c4 Nf6',
-    ]);
-    const g = new RepGraph('white', ms);
-    const show = (rows: { run: { san: string }[]; next: { san: string }[]; lines: number }[]) =>
-      rows.map((r) => `${r.run.map((m) => m.san).join(' ')} → ${r.next.map((m) => m.san).join('/') || 'end'} (${r.lines})`);
-
-    expect(show(continuations(g, g.root))).toEqual(['d4 → Nf6/d5/e6 (5)']);
-    const afterD4 = keysAlong(['d4']).keys.at(-1)!;
-    expect(show(continuations(g, afterD4))).toEqual([
-      'Nf6 c4 → e6/g6 (3)',
-      'd5 c4 → e6/c6 (2)',
-      // 1...e6 2.c4 Nf6 is the Nimzo/QGD position again: the row carries on to its next choice.
-      'e6 c4 Nf6 Nc3 → Bb4/d5 (2)',
-    ]);
-
-    // With reach probabilities, the more common reply comes first.
-    const k = (l: string) => keysAlong(l.split(' ')).keys.at(-1)!;
-    const probs = { [afterD4]: 1, [k('d4 Nf6')]: 0.3, [k('d4 d5')]: 0.6, [k('d4 e6')]: 0.1 };
-    expect(continuations(g, afterD4, probs).map((r) => r.run[0].san)).toEqual(['d5', 'Nf6', 'e6']);
-  });
-});
-
 describe('drilling ahead of time', () => {
   it('restarts the interval from today instead of growing it, however often you drill', async () => {
     const { gradeAhead } = await import('../lib/srs');

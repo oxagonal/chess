@@ -282,20 +282,6 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .mv.deviation { outline: 2px solid var(--bad); }
 .mv.book { color: var(--mine); }
 .mv.book.current { color: #fff; }
-/* Builder navigator: one row per move from here, running ahead to the next choice. */
-.next-moves { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
-.next-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; }
-.next-row:hover, .next-row:focus-visible { background: var(--panel2); outline: none; }
-.next-run { flex: 1; display: flex; flex-wrap: wrap; gap: 2px 2px; align-items: baseline; min-width: 0; }
-.next-run .num { color: var(--faint); margin: 0 2px 0 6px; font-size: 12px; }
-.next-run .num:first-child { margin-left: 0; }
-.next-run .mv { padding: 1px 5px; cursor: inherit; }
-.next-run .mv:hover { background: none; }
-.next-choices { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px; color: var(--muted); font-size: 13px; margin-left: 6px; }
-.next-choice { padding: 1px 7px; font-size: 13px; font-weight: 600; border-radius: 6px; background: var(--panel3); border: 1px solid var(--border-soft); color: var(--text); }
-.next-choice:hover { background: var(--accent2); border-color: var(--accent2); color: #fff; }
-.next-choice.has-note::after { content: '•'; color: var(--muted); margin-left: 2px; font-weight: 400; }
-.next-count { color: var(--faint); font-size: 12px; white-space: nowrap; }
 .mv.has-note::after { content: '•'; color: var(--muted); margin-left: 2px; font-weight: 400; }
 
 /* Coverage box: two numbers. */
@@ -318,7 +304,10 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .engine-lines { display: flex; flex-direction: column; gap: 0; }
 .engine-line { display: flex; gap: 10px; align-items: baseline; justify-content: flex-start; text-align: left; background: transparent; border: none; padding: 2px 4px; border-radius: 4px; font-weight: 400; font-size: 13px; line-height: 1.45; white-space: nowrap; overflow: hidden; }
 .engine-line:hover { background: var(--panel2); }
-.engine-line-eval { flex: 0 0 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.engine-line-eval { flex: 0 0 auto; min-width: 44px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 12px; padding: 0 5px; border-radius: 4px; }
+/* Each line's score matches the main badge: light when White is better, dark when Black is. */
+.engine-line-eval.white { background: #e8e6e1; color: #161512; }
+.engine-line-eval.black { background: #0c0b0a; color: #e8e6e1; box-shadow: inset 0 0 0 1px var(--border-soft); }
 .engine-line-moves { overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
 .switch { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--muted); }
 /* Notes inline in a line of moves, like PGN comments; the current move's note is an editable box. */
@@ -489,8 +478,6 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .builder-head h1 { margin: 0; font-size: 22px; }
 .moves-head { margin-bottom: 6px; gap: 6px; }
 .moves-opening { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
-.moves-note { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
-.moves-note .movenote.inline { margin: 0; }
 .seg { display: inline-flex; border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; background: transparent; color: var(--muted); }
 .seg button.active { background: var(--panel3); color: var(--text); }
@@ -577,3 +564,26 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .explorer .tabs select { padding: 2px 6px; font-size: 12.5px; }
 .studio-inner > .explorer > h3 { display: none; }
 .studio-inner > .explorer { padding-top: 6px; }
+
+/* Notes on the line you're on, under their move (scoresheet). */
+.ml-comment { grid-column: 1 / -1; padding: 4px 12px 6px 48px; color: var(--muted); font-size: 13.5px; white-space: pre-wrap; background: var(--bg2); border-bottom: 1px solid var(--border-soft); cursor: context-menu; }
+
+/* Inline notation: one block of text, variations in ( … ), notes as text. */
+.inline-moves { line-height: 1.85; font-size: 14.5px; padding: 4px 2px; }
+.iv-tok { white-space: nowrap; }
+.iv-tok .num { color: var(--faint); font-size: 12px; margin: 0 2px 0 4px; }
+.iv-move { padding: 1px 4px; border-radius: 4px; cursor: pointer; }
+.iv-move:hover { background: var(--panel3); }
+.iv-move.main { font-weight: 700; }
+.iv-move.current { background: var(--accent2); color: #fff; }
+.iv-move.out { color: var(--muted); font-style: italic; }
+.iv-var { color: var(--muted); }
+.iv-var .iv-move { font-weight: 500; }
+.iv-var .iv-move:hover { color: var(--text); }
+.iv-comment { color: #a7c4e8; font-size: 13.5px; margin: 0 4px; cursor: context-menu; }
+.iv-transpose { color: var(--faint); margin-left: 2px; cursor: help; }
+
+/* Right-click note editor. */
+.note-popover { position: fixed; z-index: 100; width: min(360px, calc(100vw - 16px)); background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55); padding: 10px 12px; }
+.note-popover .movenote { border: none; box-shadow: none; padding: 0; background: transparent; margin: 0; }
+.note-popover-foot { margin-top: 6px; }

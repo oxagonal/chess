@@ -55,8 +55,8 @@ export interface AppSettings {
   engineDepth: number;
   /** How many best lines the Stockfish box shows (1–5). */
   engineLines: number;
-  /** Builder moves panel: a scoresheet with side lines (like a Lichess study), or the older "next choices" rows. */
-  builderNav: 'scoresheet' | 'choices';
+  /** Builder moves panel: a scoresheet with side lines, or inline notation (one block of text) — like a Lichess study. */
+  builderNav: 'scoresheet' | 'inline';
   /** Which of your games count everywhere (Games, Insights, Home, "My games" explorer, coverage from your opponents). */
   gameRange: GameRange;
   /**

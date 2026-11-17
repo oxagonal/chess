@@ -124,7 +124,7 @@ export function EnginePanel({ fenKey, ply, onPlay }: { fenKey: string; /** Plies
               const sans = toSan(l.moves);
               return (
                 <button key={i} className="engine-line" onClick={() => sans[0] && onPlay?.(sans[0])} title={onPlay && sans[0] ? `Play ${sans[0]}` : undefined}>
-                  <span className="engine-line-eval">{formatEval(l.eval)}</span>
+                  <span className={`engine-line-eval ${(l.eval.mate ?? l.eval.cp ?? 0) < 0 ? 'black' : 'white'}`}>{formatEval(l.eval)}</span>
                   <span className="engine-line-moves">{formatLine(sans, ply)}</span>
                 </button>
               );

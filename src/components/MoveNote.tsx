@@ -33,6 +33,15 @@ export function MoveNote({
   const dirty = text !== undefined && text !== stored;
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
+  // Closing the box (e.g. the right-click note popover) saves what you typed, even without a blur.
+  const unsaved = useRef<string | undefined>(undefined);
+  unsaved.current = dirty ? text : undefined;
+  useEffect(
+    () => () => {
+      if (unsaved.current !== undefined) void setMoveComment(id, unsaved.current);
+    },
+    [id],
+  );
 
   const save = async () => {
     if (!dirty) return;

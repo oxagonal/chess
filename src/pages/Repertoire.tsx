@@ -20,11 +20,11 @@ const Studio = lazy(() => import('../components/Studio').then((m) => ({ default:
 import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
-import { MoveNote } from '../components/MoveNote';
-import { NextMoves } from '../components/NextMoves';
+import { InlineMoves } from '../components/InlineMoves';
+import { annotateProps, NotePopover, type NoteTarget } from '../components/NotePopover';
 import { MoveList, type SideLine } from '../components/MoveList';
 import { EnginePanel } from '../components/EnginePanel';
-import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
+import { ColorPill, Empty, MoreMenu } from '../components/ui';
 import { href, navigate } from '../router';
 import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
 import { formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
@@ -279,6 +279,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const freshCoverage = rep && settings.loaded && isCoverageFresh(coverage, rep, settings) ? coverage : undefined;
   const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings, freshCoverage);
   const [flipped, setFlipped] = useState(false);
+  // The move whose note is open in the right-click popover.
+  const [noteTarget, setNoteTarget] = useState<NoteTarget | null>(null);
   // Desktop: a dockable "studio" (tabs, rows and columns you arrange; remembered per device).
   // Phones and narrow windows: everything stacked, the page scrolls.
   const stacked = useMediaQuery('(max-width: 900px)');
@@ -308,7 +310,6 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const cardById = useMemo(() => new Map((cards ?? []).map((c) => [c.id, c])), [cards]);
   const lineInRep = line.map((m) => !!graph?.edge(m.fromKey, m.san));
   const missingUpToCursor = line.slice(0, cursor).some((_, i) => !lineInRep[i]);
-  const currentEdge = cursor > 0 && graph ? graph.edge(line[cursor - 1].fromKey, line[cursor - 1].san) : undefined;
 
   const play = async (san: string, add = false) => {
     const r = playSan(pos, san);
@@ -504,7 +505,9 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const zen = !!memory;
   const dueCount = (cards ?? []).filter((c) => isDue(c)).length;
   const newCount = (cards ?? []).filter(isNew).length;
-  const nav = settings.builderNav;
+  const nav = settings.builderNav === 'inline' ? 'inline' : 'scoresheet';
+  // Right-click (long-press on touch) a saved move to write its note. Not in Play from memory.
+  const annotate = (m: RepMove | undefined) => (m && !zen ? annotateProps((x, y) => setNoteTarget({ id: m.id, san: m.san, x, y })) : {});
   // Back to the default studio layout (the Studio forgets the saved one).
   const resetLayout = () => setLayoutVersion((v) => v + 1);
 
@@ -527,7 +530,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
         const more = graph.childrenOf(k).length;
         return {
           key: alt.id,
-          moves: run.map((x) => ({ san: x.san, note: !!x.comment, title: x.comment || undefined })),
+          moves: run.map((x) => ({ san: x.san, note: !!x.comment, title: x.comment || undefined, menu: annotate(x) })),
           onSelect: (j: number) => {
             const l = [...display.slice(0, i), ...run.slice(0, j + 1).map((x) => ({ san: x.san, uci: x.uci, fromKey: x.fromKey, key: x.toKey }))];
             setLine(l);
@@ -666,12 +669,12 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
             >
               Biggest gap{biggestGap ? ` · ${oneIn(biggestGap.prob)}` : ''}
             </button>
-            <span className="seg" title="How to show the moves">
+            <span className="seg" title="How to show the moves · right-click a move to write a note">
               <button className={`small ${nav === 'scoresheet' ? 'active' : ''}`} onClick={() => updateSettings({ builderNav: 'scoresheet' })}>
                 Scoresheet
               </button>
-              <button className={`small ${nav === 'choices' ? 'active' : ''}`} onClick={() => updateSettings({ builderNav: 'choices' })}>
-                Next choices
+              <button className={`small ${nav === 'inline' ? 'active' : ''}`} onClick={() => updateSettings({ builderNav: 'inline' })}>
+                Inline
               </button>
             </span>
           </>
@@ -686,8 +689,10 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
                 san: m.san,
                 // Only moves you've played that aren't saved stand out (grey, italic).
                 className: e ? undefined : 'out',
-                title: e ? (zen ? undefined : e.comment || undefined) : 'Not in your repertoire yet',
-                note: !zen && !!e?.comment,
+                title: e ? undefined : 'Not in your repertoire yet',
+                // The line you're on shows its notes (not in Play from memory: they'd give it away).
+                comment: zen ? undefined : e?.comment || undefined,
+                menu: annotate(e),
               };
             })}
             current={cursor}
@@ -695,38 +700,20 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
             sideLines={zen ? undefined : sideLines}
           />
         ) : (
-          <>
-            <LineView
-              items={line.map((m, i) => ({
-                san: m.san,
-                className: lineInRep[i] ? undefined : 'out',
-                title: lineInRep[i] ? undefined : 'Not in your repertoire yet',
-                note: graph.edge(m.fromKey, m.san)?.comment || undefined,
-              }))}
-              current={cursor}
-              onSelect={setCursor}
-            />
-            {inRep && (
-              <NextMoves
-                graph={graph}
-                fenKey={key}
-                ply={cursor}
-                probs={navProbs}
-                onGo={(moves) => {
-                  const l = [...line.slice(0, cursor), ...moves.map((m) => ({ san: m.san, uci: m.uci, fromKey: m.fromKey, key: m.toKey }))];
-                  setLine(l);
-                  setCursor(l.length);
-                }}
-              />
-            )}
-          </>
+          <InlineMoves
+            graph={graph}
+            line={display}
+            current={cursor}
+            order={orderKids}
+            onSelect={(path) => {
+              setLine(path);
+              setCursor(path.length);
+            }}
+            menuFor={(m) => annotate(m)}
+          />
         )}
       </div>
-      {currentEdge && !zen && (
-        <div className="moves-note">
-          <MoveNote key={currentEdge.id} id={currentEdge.id} san={currentEdge.san} inline />
-        </div>
-      )}
+      {noteTarget && <NotePopover target={noteTarget} onClose={() => setNoteTarget(null)} />}
     </div>
   );
 

@@ -7,8 +7,12 @@ export interface ListMove {
   /** Extra classes, e.g. "out" for a move that isn't saved. */
   className?: string;
   title?: string;
-  /** Has a note (shown as a dot; the note itself is read/edited elsewhere). */
+  /** Has a note (shown as a dot). */
   note?: boolean;
+  /** The note's text, shown under the move's row (the line you're on shows its notes). */
+  comment?: string;
+  /** Right-click / long-press handlers (e.g. to annotate it). */
+  menu?: Record<string, unknown>;
 }
 
 /** A side line: a one-line alternative to the move at its ply, shown under the row where it branches. */
@@ -67,16 +71,27 @@ export function MoveList({
     cells.push(
       <span
         key={`m${i}`}
-        className={`ml-move ${current === i + 1 ? 'current' : ''} ${m.note ? 'has-note' : ''} ${m.className ?? ''}`}
+        className={`ml-move ${current === i + 1 ? 'current' : ''} ${m.note && !m.comment ? 'has-note' : ''} ${m.className ?? ''}`}
         title={m.title}
         onClick={() => onSelect(i + 1)}
+        {...m.menu}
       >
         {m.san}
       </span>,
     );
     const sides = sideLines?.(i) ?? [];
+    // A note on the line you're on reads under the move, like a comment in a Lichess study.
+    if (m.comment) {
+      if (white) cells.push(<span key={`g${i}`} className="ml-move ml-empty">…</span>);
+      cells.push(
+        <div key={`c${i}`} className="ml-comment" {...m.menu}>
+          {m.comment}
+        </div>,
+      );
+      restart = true;
+    }
     if (sides.length) {
-      if (white) cells.push(<span key={`f${i}`} className="ml-move ml-empty">…</span>);
+      if (white && !m.comment) cells.push(<span key={`f${i}`} className="ml-move ml-empty">…</span>);
       cells.push(
         <div key={`s${i}`} className="ml-sides">
           {sides.map((s) => (
@@ -86,7 +101,7 @@ export function MoveList({
                 return (
                   <span key={j} style={{ display: 'contents' }}>
                     {prefix && <span className="num">{prefix}</span>}
-                    <span className={`mv ${sm.note ? 'has-note' : ''} ${sm.className ?? ''}`} title={sm.title} onClick={() => s.onSelect(j)}>
+                    <span className={`mv ${sm.note ? 'has-note' : ''} ${sm.className ?? ''}`} title={sm.title} onClick={() => s.onSelect(j)} {...sm.menu}>
                       {sm.san}
                     </span>
                   </span>
