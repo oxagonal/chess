@@ -570,3 +570,10 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 /* Games page: the recent games list scrolls inside its box instead of stretching the page. */
 .recent-games { max-height: min(560px, 60vh); overflow-y: auto; }
 .recent-games thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+
+/* Explorer header: one compact row of database tabs (the heading is the pane's tab in the studio). */
+.explorer .tabs { margin-bottom: 6px; align-items: center; }
+.explorer .tabs button { padding: 5px 9px; font-size: 13px; }
+.explorer .tabs select { padding: 2px 6px; font-size: 12.5px; }
+.studio-inner > .explorer > h3 { display: none; }
+.studio-inner > .explorer { padding-top: 6px; }
