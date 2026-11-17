@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import type { Chess } from 'chessops/chess';
@@ -8,7 +8,7 @@ import { saveAnnotation } from '../db/annotations';
 import { useAllGraphs, useMediaQuery } from '../hooks';
 import { analyzeGame, PREP_LABEL, type PrepResult } from '../lib/prep';
 import type { RepGraph } from '../lib/graph';
-import { keyOf, opposite, playSan, startPos } from '../lib/chess';
+import { keyOf, opposite, playSan, playUci, startPos } from '../lib/chess';
 import { biggestSwingsFor, JUDGEMENT_GLYPH, swings } from '../lib/review';
 import { glyphClass, glyphName, moveGlyph, otherGlyphs } from '../lib/annotations';
 import { clocksAt, formatClock, timeSpent } from '../lib/clocks';
@@ -44,6 +44,14 @@ export function GameReview({ id }: { id: string }) {
   const [flipped, setFlipped] = useState(false);
   const [menu, setMenu] = useState<AnnotationTarget | null>(null);
   const [layoutVersion, setLayoutVersion] = useState(0);
+  /**
+   * A line you're trying on the board: moves from the game's position after `from` moves. It shows as
+   * a side line in the scoresheet; the game itself always stays the main line.
+   */
+  const [line, setLine] = useState<{ from: number; sans: string[] } | null>(null);
+  /** How far into that line the board is (0 = on the game's own moves). */
+  const [lineAt, setLineAt] = useState(0);
+  const nav = useRef({ back: () => {}, forward: () => {}, start: () => {}, end: () => {} });
   const closeMenu = useCallback(() => setMenu(null), []);
 
   const result = useMemo(() => (game && graphs ? analyzeGame(game, graphs) : undefined), [game, graphs]);
@@ -67,11 +75,10 @@ export function GameReview({ id }: { id: string }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!replay || (e.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]')) return;
-      const max = replay.positions.length - 1;
-      if (e.key === 'ArrowLeft') setCursor((c) => Math.max(0, (c ?? 0) - 1));
-      else if (e.key === 'ArrowRight') setCursor((c) => Math.min(max, (c ?? 0) + 1));
-      else if (e.key === 'Home') setCursor(0);
-      else if (e.key === 'End') setCursor(max);
+      if (e.key === 'ArrowLeft') nav.current.back();
+      else if (e.key === 'ArrowRight') nav.current.forward();
+      else if (e.key === 'Home') nav.current.start();
+      else if (e.key === 'End') nav.current.end();
       else if (e.key === 'f') setFlipped((f) => !f);
       else return;
       e.preventDefault();
@@ -87,9 +94,53 @@ export function GameReview({ id }: { id: string }) {
   const devPly = r.ply;
   const last = replay.positions.length - 1;
   const cur = Math.min(cursor ?? devPly ?? Math.min(r.bookPlies, last), last);
-  const goTo = (ply: number) => setCursor(Math.max(0, Math.min(last, ply)));
+  /** Go to a move of the game itself (leaving any line you're trying; it stays in the scoresheet). */
+  const goTo = (ply: number) => {
+    setCursor(Math.max(0, Math.min(last, ply)));
+    setLineAt(0);
+  };
   const graph = r.repId ? graphs.find((x) => x.rep.id === r.repId)?.graph : undefined;
-  const pos = replay.positions[cur];
+
+  // The line you're trying, replayed from where it leaves the game.
+  const tried = (() => {
+    if (!line) return undefined;
+    const positions: Chess[] = [replay.positions[line.from]];
+    const ucis: string[] = [];
+    for (const san of line.sans) {
+      const p = playSan(positions[positions.length - 1], san);
+      if (!p) break;
+      positions.push(p.pos);
+      ucis.push(p.uci);
+    }
+    return { positions, ucis };
+  })();
+  const inLine = !!line && !!tried && lineAt > 0;
+  const pos = inLine ? tried.positions[Math.min(lineAt, tried.positions.length - 1)] : replay.positions[cur];
+  const lastMove = inLine ? tried.ucis[lineAt - 1] : cur > 0 ? replay.ucis[cur - 1] : undefined;
+  /** Moves played to reach the board's position (for move numbers). */
+  const plyHere = inLine ? line.from + lineAt : cur;
+
+  /** A move made on the board (or picked from Stockfish / the explorer). */
+  const play = (move: { uci?: string; san?: string }) => {
+    const played = move.uci ? playUci(pos, move.uci) : move.san ? playSan(pos, move.san) : undefined;
+    if (!played) return;
+    if (!inLine) {
+      // The game's own move just steps forward; anything else starts a line from here.
+      if (replay.sans[cur] === played.san) return goTo(cur + 1);
+      setLine({ from: cur, sans: [played.san] });
+      setLineAt(1);
+      return;
+    }
+    if (line.sans[lineAt] === played.san) return setLineAt(lineAt + 1);
+    setLine({ from: line.from, sans: [...line.sans.slice(0, lineAt), played.san] });
+    setLineAt(lineAt + 1);
+  };
+  nav.current = {
+    back: () => (inLine ? setLineAt(lineAt - 1) : goTo(cur - 1)),
+    forward: () => (inLine ? lineAt < line.sans.length && setLineAt(lineAt + 1) : goTo(cur + 1)),
+    start: () => goTo(0),
+    end: () => goTo(last),
+  };
   const key = keyOf(pos);
   const opp = game.userColor === 'white' ? game.black : game.white;
   const orientation = flipped ? opposite(game.userColor) : game.userColor;
@@ -101,7 +152,9 @@ export function GameReview({ id }: { id: string }) {
   const judged = new Map(allSwings.filter((s) => s.judgement).map((s) => [s.ply, s]));
   const top = new Set(review ? [...biggestSwingsFor(review, game.userColor), ...biggestSwingsFor(review, opposite(game.userColor))].map((s) => s.ply) : []);
   const arrows: Arrow[] = [];
-  if (devPly !== undefined && cur === devPly && graph && r.key) {
+  if (inLine) {
+    // (no game arrows while you try a line)
+  } else if (devPly !== undefined && cur === devPly && graph && r.key) {
     for (const m of graph.childrenOf(r.key)) arrows.push({ uci: m.uci, brush: m.mine ? 'green' : 'paleBlue' });
     if (r.playedUci) arrows.push({ uci: r.playedUci, brush: 'red' });
   } else {
@@ -132,17 +185,17 @@ export function GameReview({ id }: { id: string }) {
     <>
       {strip(opposite(orientation))}
       <div className="board-fit">
-        <Board pos={pos} orientation={orientation} lastMove={cur > 0 ? replay.ucis[cur - 1] : undefined} arrows={arrows} />
+        <Board pos={pos} orientation={orientation} interactive lastMove={lastMove} onMove={(uci) => play({ uci })} arrows={arrows} />
       </div>
       {strip(orientation)}
       <div className="row">
         <button onClick={() => goTo(0)} title="Start (Home)" aria-label="Start">
           ⏮
         </button>
-        <button onClick={() => goTo(cur - 1)} title="Back (←)" aria-label="Back">
+        <button onClick={() => nav.current.back()} title="Back (←)" aria-label="Back">
           ◀
         </button>
-        <button onClick={() => goTo(cur + 1)} title="Forward (→)" aria-label="Forward">
+        <button onClick={() => nav.current.forward()} title="Forward (→)" aria-label="Forward">
           ▶
         </button>
         <button onClick={() => goTo(last)} title="End (End)" aria-label="End">
@@ -170,7 +223,7 @@ export function GameReview({ id }: { id: string }) {
       <div className="row moves-head">
         <h3 style={{ margin: 0 }}>Moves</h3>
         <span className="spacer" />
-        <span className="muted small">{stacked ? 'Long-press' : 'Right-click'} a move to annotate it</span>
+        <span className="muted small">Play on the board to try a line · {stacked ? 'long-press' : 'right-click'} a move to annotate it</span>
       </div>
       <div className="moves-body">
         <MoveList
@@ -198,8 +251,35 @@ export function GameReview({ id }: { id: string }) {
               menu: annotateProps((x, y) => setMenu({ ply: i, san, x, y })),
             };
           })}
-          current={cur}
+          current={inLine ? -1 : cur}
           onSelect={goTo}
+          sideLines={(i) =>
+            line && i === line.from
+              ? [
+                  {
+                    key: 'tried',
+                    moves: line.sans.map((san, j) => ({ san, className: inLine && j === lineAt - 1 ? 'current' : undefined })),
+                    onSelect: (j) => {
+                      setCursor(line.from);
+                      setLineAt(j + 1);
+                    },
+                    tail: (
+                      <button
+                        className="ghost small tried-remove"
+                        title="Remove this line"
+                        aria-label="Remove this line"
+                        onClick={() => {
+                          setLine(null);
+                          setLineAt(0);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    ),
+                  },
+                ]
+              : []
+          }
         />
       </div>
     </div>
@@ -287,9 +367,9 @@ export function GameReview({ id }: { id: string }) {
       prepPly={devPly}
     />
   );
-  const engine = <EnginePanel fenKey={key} ply={cur} />;
-  // The explorer shows what's played here; clicking the game's own next move steps forward.
-  const explorer = <ExplorerPanel fenKey={key} color={game.userColor} onPlay={(san) => replay.sans[cur] === san && goTo(cur + 1)} />;
+  const engine = <EnginePanel fenKey={key} ply={plyHere} onPlay={(san) => play({ san })} />;
+  // The explorer shows what's played here; picking a move plays it like a move on the board.
+  const explorer = <ExplorerPanel fenKey={key} color={game.userColor} onPlay={(san) => play({ san })} />;
   const annotationMenu = menu && (
     <AnnotationMenu
       key={menu.ply}
