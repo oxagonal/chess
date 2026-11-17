@@ -144,7 +144,8 @@ class Stockfish {
     w.postMessage('ucinewgame');
     w.postMessage(`setoption name MultiPV value ${Math.max(1, job.multiPv)}`);
     w.postMessage(`position fen ${job.fen}`);
-    w.postMessage(`go depth ${job.depth}`);
+    // depth 0 = unlimited: search until stopped (the position changes or the box closes).
+    w.postMessage(job.depth > 0 ? `go depth ${job.depth}` : 'go infinite');
   }
 
   async analyse(job: Job) {
@@ -177,8 +178,9 @@ export interface AnalysisStatus {
 
 /**
  * The best `multiPv` lines in position `key`. Calls `onUpdate` as results arrive: Lichess's cloud
- * analysis first (if it has the position), then Stockfish's, deepening until `depth` — a deeper
- * cloud result is kept until the engine catches up. Returns a function that cancels the search.
+ * analysis first (if it has the position), then Stockfish's, deepening until `depth` (0 = unlimited,
+ * until cancelled) — a deeper cloud result is kept until the engine catches up. Returns a function
+ * that cancels the search.
  */
 export function analysePosition(key: string, depth: number, multiPv: number, onUpdate: (lines: EngineLine[], status: AnalysisStatus) => void): () => void {
   let cancelled = false;
@@ -186,7 +188,7 @@ export function analysePosition(key: string, depth: number, multiPv: number, onU
   const cacheKey = `${key}|${depth}|${multiPv}`;
 
   (async () => {
-    const cached = localCache.get(cacheKey);
+    const cached = depth > 0 ? localCache.get(cacheKey) : undefined;
     if (cached) {
       onUpdate(cached, { depth, done: true, source: 'local' });
       return;
@@ -215,8 +217,8 @@ export function analysePosition(key: string, depth: number, multiPv: number, onU
       );
       if (cancelled) return;
       if (final.length) {
-        const best = cloud?.length && cloudDepth > depth ? cloud : final;
-        localCache.set(cacheKey, best);
+        const best = cloud?.length && cloudDepth > final[0].eval.depth ? cloud : final;
+        if (depth > 0) localCache.set(cacheKey, best);
         onUpdate(best, { depth: best[0].eval.depth, done: true, source: best[0].eval.source });
       }
     } catch (e) {
@@ -245,6 +247,7 @@ export interface PositionEval {
  * was replaced.
  */
 export function evaluatePosition(fen: string, depth: number): Promise<PositionEval | undefined> {
+  if (!(depth > 0)) depth = 18; // a review needs a finite search
   return new Promise((resolve) => {
     let best: EngineLine | undefined;
     engine

@@ -300,15 +300,19 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .cov-error { color: var(--warn); max-width: 260px; }
 
 /* Engine box. */
-.engine .engine-eval { font-size: 20px; padding: 0 8px; border-radius: 6px; }
+.panel.engine { padding: 8px 12px; }
+.engine h3 { font-size: 11px; }
+.engine .engine-eval { font-size: 15px; padding: 0 6px; border-radius: 5px; line-height: 1.5; }
+.engine > .row { gap: 6px; }
+.engine > .row button.small { padding: 2px 7px; }
 .engine .engine-eval.white { background: #e8e6e1; color: #161512; }
 .engine .engine-eval.black { background: #0c0b0a; color: #e8e6e1; border: 1px solid var(--border-soft); }
-.evalbar { height: 6px; border-radius: 3px; background: #0c0b0a; border: 1px solid var(--border-soft); overflow: hidden; margin: 8px 0 6px; }
+.evalbar { height: 3px; border-radius: 2px; background: #0c0b0a; overflow: hidden; margin: 6px 0 3px; }
 .evalbar > div { height: 100%; background: #e8e6e1; transition: width .3s; }
-.engine-lines { display: flex; flex-direction: column; gap: 2px; }
-.engine-line { display: flex; gap: 10px; align-items: baseline; justify-content: flex-start; text-align: left; background: transparent; border: none; padding: 5px 6px; border-radius: var(--radius-sm); font-weight: 400; white-space: nowrap; overflow: hidden; }
+.engine-lines { display: flex; flex-direction: column; gap: 0; }
+.engine-line { display: flex; gap: 10px; align-items: baseline; justify-content: flex-start; text-align: left; background: transparent; border: none; padding: 2px 4px; border-radius: 4px; font-weight: 400; font-size: 13px; line-height: 1.45; white-space: nowrap; overflow: hidden; }
 .engine-line:hover { background: var(--panel2); }
-.engine-line-eval { flex: 0 0 52px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.engine-line-eval { flex: 0 0 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .engine-line-moves { overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
 .switch { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--muted); }
 /* Notes inline in a line of moves, like PGN comments; the current move's note is an editable box. */
@@ -484,7 +488,8 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .seg { display: inline-flex; border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; background: transparent; color: var(--muted); }
 .seg button.active { background: var(--panel3); color: var(--text); }
-.engine-options { margin: 8px 0 4px; padding: 8px 10px; background: var(--panel2); border-radius: var(--radius-sm); gap: 8px 16px; }
+.engine-options { margin: 6px 0 2px; padding: 5px 8px; background: var(--panel2); border-radius: var(--radius-sm); gap: 6px 14px; }
+.engine-options .muted { cursor: help; }
 .inline-field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 .inline-field select { padding: 3px 6px; }
 @media (min-width: 901px) {

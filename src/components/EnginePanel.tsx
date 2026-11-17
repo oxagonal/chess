@@ -4,7 +4,8 @@ import { formatLine, playUci, posFromFen } from '../lib/chess';
 import { analysePosition, formatEval, winChance, type AnalysisStatus, type EngineLine } from '../services/engine';
 
 const PLIES_SHOWN = 10;
-const DEPTHS = [12, 15, 18, 21, 24];
+/** 0 = unlimited (keeps searching until you move on). */
+const DEPTHS = [12, 15, 18, 21, 24, 0];
 
 /**
  * The Stockfish box, like Lichess's or Chess.com's: the evaluation of the board's position and the
@@ -67,7 +68,7 @@ export function EnginePanel({ fenKey, ply, onPlay }: { fenKey: string; /** Plies
         {on && status && (
           <span className="muted small">
             {status.source === 'cloud' ? 'Lichess cloud · ' : ''}depth {status.depth}
-            {!status.done && status.source === 'local' ? ` / ${settings.engineDepth}…` : ''}
+            {!status.done && status.source === 'local' ? (settings.engineDepth > 0 ? ` / ${settings.engineDepth}…` : ' / ∞') : ''}
           </span>
         )}
         {!on && <span className="muted small">off</span>}
@@ -86,8 +87,8 @@ export function EnginePanel({ fenKey, ply, onPlay }: { fenKey: string; /** Plies
             <select value={settings.engineDepth} onChange={(e) => updateSettings({ engineDepth: Number(e.target.value) })}>
               {DEPTHS.map((d) => (
                 <option key={d} value={d}>
-                  {d}
-                  {d === 12 ? ' (fast)' : d === 18 ? ' (default)' : d === 24 ? ' (slow, deep)' : ''}
+                  {d === 0 ? '∞ unlimited' : d}
+                  {d === 12 ? ' (fast)' : d === 18 ? ' (default)' : d === 24 ? ' (slow)' : ''}
                 </option>
               ))}
             </select>
@@ -102,7 +103,9 @@ export function EnginePanel({ fenKey, ply, onPlay }: { fenKey: string; /** Plies
               ))}
             </select>
           </label>
-          <span className="muted small">Common positions come from Lichess's cloud analysis first; Stockfish 19 runs in your browser (offline too).</span>
+          <span className="muted small" title="Common positions come from Lichess's cloud analysis first; Stockfish 19 runs in your browser (offline too). Unlimited keeps searching until you move on — it uses more battery.">
+            ⓘ
+          </span>
         </div>
       )}
       {on && top && (

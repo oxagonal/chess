@@ -218,9 +218,9 @@ export function SettingsPage() {
           <label className="field">
             <span>Search depth</span>
             <select value={s.engineDepth} onChange={(e) => set({ engineDepth: Number(e.target.value) })}>
-              {[12, 15, 18, 21, 24].map((d) => (
+              {[12, 15, 18, 21, 24, 0].map((d) => (
                 <option key={d} value={d}>
-                  {d}
+                  {d === 0 ? '∞ unlimited (until you move on)' : d}
                   {d === 12 ? ' (fast, phones)' : d === 18 ? ' (default)' : d === 24 ? ' (slow, accurate)' : ''}
                 </option>
               ))}
