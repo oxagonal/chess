@@ -114,6 +114,33 @@ describe('PGN', () => {
   });
 });
 
+describe('drilling ahead of time', () => {
+  it('restarts the interval from today instead of growing it, however often you drill', async () => {
+    const { gradeAhead } = await import('../lib/srs');
+    const DAY = 86_400_000;
+    const t0 = Date.UTC(2026, 0, 1);
+    // A learned move reviewed on Jan 1 with a 46-day interval.
+    let c = grade(newCard({ id: 'x', repId: 'r', fromKey: 'k', san: 'e4' }, t0 - 3 * DAY), Rating.Good, undefined, t0 - 3 * DAY);
+    c = { ...c, state: State.Review, stability: 46, lastReview: t0, due: t0 + 46 * DAY };
+    // Drilled 23 days early, then nine more times that day and once a day for a week.
+    let now = t0 + 23 * DAY;
+    c = gradeAhead(c, Rating.Good, undefined, now);
+    expect(c.due).toBe(now + 46 * DAY);
+    expect(c.stability).toBe(46);
+    for (let i = 0; i < 9; i++) c = gradeAhead(c, Rating.Good, undefined, (now += 30 * 60_000));
+    for (let d = 0; d < 7; d++) c = gradeAhead(c, Rating.Good, undefined, (now += DAY));
+    expect(c.due).toBe(now + 46 * DAY);
+    expect(c.stability).toBe(46);
+
+    // A miss counts in full; a move that's due gets a normal review (which can grow the interval).
+    const missed = gradeAhead(c, Rating.Again, undefined, now);
+    expect(missed.lapses).toBe(c.lapses + 1);
+    expect(missed.due - now).toBeLessThan(46 * DAY);
+    const due = gradeAhead(c, Rating.Good, undefined, c.due + DAY);
+    expect(due.due - (c.due + DAY)).toBeGreaterThan(46 * DAY);
+  });
+});
+
 describe('trainer planning', () => {
   const moves = movesFromLines('r', 'white', ['e4 c5 Nf3 d6 d4', 'e4 c5 Nf3 Nc6 d4', 'e4 e5 Nf3 Nc6 Bb5']);
   const g = new RepGraph('white', moves);
@@ -147,7 +174,7 @@ describe('trainer planning', () => {
     const lm = movesFromLines('r', 'white', ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4']);
     const lg = new RepGraph('white', lm);
     const bb5 = lm.find((m) => m.san === 'Bb5')!;
-    const steps = planLine(lg, bb5, new Set([bb5.id]), 'learn', true);
+    const steps = planLine(lg, bb5, new Set([bb5.id]), 'learn', { leadIn: true });
     expect(steps.map((s) => s.move.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
     expect(steps.map((s) => s.kind)).toEqual(['auto', 'auto', 'auto', 'auto', 'show']);
     // Known moves between new ones are played for you too.
@@ -155,14 +182,14 @@ describe('trainer planning', () => {
     const both = planLine(lg, bb5, new Set([bb5.id, ba4.id]), 'learn');
     expect(both.map((s) => s.kind)).toEqual(['auto', 'auto', 'auto', 'auto', 'show', 'auto', 'show']);
     // The same line in review: from move 1 to the end of the branch.
-    expect(planLine(lg, bb5, new Set([bb5.id]), 'review', true).map((s) => s.kind)).toEqual([
+    expect(planLine(lg, bb5, new Set([bb5.id]), 'review', { leadIn: true }).map((s) => s.kind)).toEqual([
       'practice', 'auto', 'practice', 'auto', 'quiz', 'auto', 'practice',
     ]);
   });
 
   it('with lead-in, asks your earlier moves from the starting position too', () => {
     const d4 = byLine(['e4', 'c5', 'Nf3', 'd6', 'd4']);
-    const steps = planLine(g, d4, new Set([d4.id]), 'review', true);
+    const steps = planLine(g, d4, new Set([d4.id]), 'review', { leadIn: true });
     expect(steps.map((s) => s.kind)).toEqual(['practice', 'auto', 'practice', 'auto', 'quiz']);
     expect(steps.filter((s) => s.leadIn).map((s) => s.move.san)).toEqual(['e4', 'Nf3']);
   });
@@ -185,12 +212,33 @@ describe('trainer planning', () => {
     // planLine follows the chosen move order, then carries on to the end.
     const nc3 = tm.find((m) => m.san === 'Nc3')!;
     const other = orders.find((o) => o[1].san === 'e6')!;
-    const steps = planLine(tg, nc3, new Set([nc3.id]), 'review', true, other);
+    const steps = planLine(tg, nc3, new Set([nc3.id]), 'review', { leadIn: true, via: other });
     expect(steps.map((s) => s.move.san)).toEqual(['d4', 'e6', 'c4', 'Nf6', 'Nc3']);
     expect(steps.map((s) => s.kind)).toEqual(['practice', 'auto', 'practice', 'auto', 'quiz']);
 
     // A position with one move order has just that one.
     expect(moveOrders(tg, k('d4 Nf6'))).toHaveLength(1);
+  });
+
+  it('Skip repeats: plays moves already played this session for you and heads for new ones', () => {
+    // Two branches after 1.e4 c5 2.Nf3: 2...d6 3.d4 and 2...Nc6 3.Bb5. Reviewing 2.Nf3 when 2...d6 3.d4
+    // was already played this session: e4 is played for you, and the line goes on into 2...Nc6 3.Bb5.
+    const sm = movesFromLines('s', 'white', ['e4 c5 Nf3 d6 d4', 'e4 c5 Nf3 Nc6 Bb5']);
+    const sg = new RepGraph('white', sm);
+    const id = (san: string) => sm.find((m) => m.san === san)!.id;
+    const nf3 = sm.find((m) => m.san === 'Nf3')!;
+    const seen = new Set([id('e4'), id('d4')]);
+    const steps = planLine(sg, nf3, new Set([nf3.id]), 'review', { leadIn: true, seen });
+    expect(steps.map((s) => s.move.san)).toEqual(['e4', 'c5', 'Nf3', 'Nc6', 'Bb5']);
+    expect(steps.map((s) => s.kind)).toEqual(['auto', 'auto', 'quiz', 'auto', 'practice']);
+
+    // Without it, the first branch and every move from move 1.
+    const full = planLine(sg, nf3, new Set([nf3.id]), 'review', { leadIn: true });
+    expect(full.map((s) => s.move.san)).toEqual(['e4', 'c5', 'Nf3', 'd6', 'd4']);
+    expect(full.map((s) => s.kind)).toEqual(['practice', 'auto', 'quiz', 'auto', 'practice']);
+
+    // A due move is always asked, even if you've played it this session.
+    expect(planLine(sg, nf3, new Set([nf3.id]), 'review', { leadIn: true, seen: new Set([nf3.id]) })[2].kind).toBe('quiz');
   });
 
   it('orders cards shallow-first, or by probability when known', () => {

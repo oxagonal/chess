@@ -264,6 +264,16 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .mv.deviation { outline: 2px solid var(--bad); }
 .mv.book { color: var(--mine); }
 .mv.book.current { color: #fff; }
+/* Repertoire tree (builder): main line inline, other moves folded behind toggles. */
+.tree-panel { max-height: 420px; display: flex; flex-direction: column; }
+.tree-panel .tree { overflow-y: auto; min-height: 0; }
+.tree .mv.onpath { background: var(--panel3); }
+.tree .mv.has-note::after { content: '•'; color: var(--muted); margin-left: 2px; font-weight: 400; }
+.tree-toggle { padding: 1px 7px; font-size: 12px; font-weight: 500; border-radius: 6px; background: transparent; border: 1px dashed var(--border-soft); color: var(--muted); margin: 0 2px; }
+.tree-toggle:hover { color: var(--text); border-style: solid; }
+.tree-vars { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; margin: 3px 0 5px 4px; padding-left: 10px; border-left: 2px solid var(--border-soft); }
+.tree-var { display: flex; flex-wrap: wrap; gap: 3px 2px; align-items: baseline; font-size: 14px; }
+.tree-transpose { color: var(--muted); padding: 0 4px; cursor: help; }
 /* Notes inline in a line of moves, like PGN comments; the current move's note is an editable box. */
 .mv-note { color: var(--muted); font-style: italic; font-size: 13px; padding: 2px 4px; cursor: pointer; white-space: pre-wrap; }
 .mv-note:hover { color: var(--text); }
@@ -418,6 +428,7 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .tp-moves::-webkit-scrollbar { display: none; }
 .tp-info { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .tp-info > .feedback { flex: 1 0 auto; min-height: 0; padding: 9px 12px; font-size: 14px; }
+.tp-info > .train-options { flex: 0 0 auto; padding: 10px 12px; font-size: 13px; }
 .tp-info .movenote { margin-top: 6px; padding: 6px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
 .tp-info .movenote.prompt { box-shadow: none; }
 .tp-info .movenote.prompt textarea { border-color: var(--warn); }

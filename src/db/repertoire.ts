@@ -3,7 +3,7 @@ import { getSettings } from './settings';
 import { RepGraph } from '../lib/graph';
 import { toRepMove, edgesForLine } from '../lib/lines';
 import { graphToPgn, pgnToEdges, type ImportedEdge } from '../lib/pgn';
-import { grade, newCard, Rating } from '../lib/srs';
+import { grade, gradeAhead, newCard, Rating } from '../lib/srs';
 import { START_KEY, type Color } from '../lib/chess';
 import type { Repertoire, RepMove, ReviewCard, ReviewSource } from '../lib/types';
 import type { Grade } from 'ts-fsrs';
@@ -153,13 +153,21 @@ export async function fetchLichessStudy(urlOrId: string): Promise<string> {
 }
 
 /** Grade a card and append to the review log. */
-export async function gradeCard(cardId: string, rating: Grade, source: ReviewSource, gameId?: string): Promise<ReviewCard | undefined> {
+/** `ahead`: a drill — a correct answer before the move is due restarts its interval rather than growing it (see gradeAhead). */
+export async function gradeCard(
+  cardId: string,
+  rating: Grade,
+  source: ReviewSource,
+  gameId?: string,
+  opts: { ahead?: boolean } = {},
+): Promise<ReviewCard | undefined> {
   const settings = await getSettings();
   return db.transaction('rw', [db.cards, db.reviewLog], async () => {
     const card = await db.cards.get(cardId);
     if (!card) return undefined;
     const now = Date.now();
-    const next = grade(card, rating, { requestRetention: settings.requestRetention, maximumIntervalDays: settings.maxIntervalDays }, now);
+    const srs = { requestRetention: settings.requestRetention, maximumIntervalDays: settings.maxIntervalDays };
+    const next = opts.ahead ? gradeAhead(card, rating, srs, now) : grade(card, rating, srs, now);
     await db.cards.put(next);
     await db.reviewLog.add({ cardId, repId: card.repId, rating, state: card.state, reviewedAt: now, source, gameId });
     return next;

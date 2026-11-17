@@ -244,9 +244,8 @@ function LineRow({ line, depth, repId, defaultOpen = false }: { line: LineInsigh
           <div className="list-actions">
             <button
               className="small"
-              disabled={!line.learned}
               onClick={() => navigate('train', { rep: repId, mode: 'drill', under: line.id, t: String(Date.now()) })}
-              title="Practise every learned move in this line"
+              title="Practise every move in this line, learned or not — each one you play counts as reviewed"
             >
               Drill
             </button>
