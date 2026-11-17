@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
@@ -13,11 +13,12 @@ import {
   renameRepertoire,
 } from '../db/repertoire';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
-import { useCards, useCoverage, useMediaQuery, useRepertoires, useRepGraph } from '../hooks';
+import { useCards, useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { MoveNote } from '../components/MoveNote';
 import { NextMoves } from '../components/NextMoves';
+import { MoveList, type SideLine } from '../components/MoveList';
 import { EnginePanel } from '../components/EnginePanel';
 import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
 import { href, navigate } from '../router';
@@ -26,7 +27,7 @@ import { formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Co
 import { oneIn } from '../lib/coverage';
 import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
 import type { AppSettings } from '../db/settings';
-import { type CoverageResult, type PositionStats, type Repertoire } from '../lib/types';
+import { type CoverageResult, type PositionStats, type RepMove, type Repertoire } from '../lib/types';
 import { isDue, isNew } from '../lib/srs';
 import { download } from '../services/backup';
 import type { RepGraph } from '../lib/graph';
@@ -274,9 +275,6 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const freshCoverage = rep && settings.loaded && isCoverageFresh(coverage, rep, settings) ? coverage : undefined;
   const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings, freshCoverage);
   const [flipped, setFlipped] = useState(false);
-  // Wide screens: board on the left with the engine and coverage under it; stacked (phones, narrow
-  // windows): they come after the line and its navigator instead.
-  const stacked = useMediaQuery('(max-width: 900px)');
   const [opening, setOpening] = useState<string | undefined>();
   const [message, setMessage] = useState<string | null>(null);
   const autoAdd = settings.builderAutoAdd;
@@ -322,6 +320,35 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
 
   /* ---- Play from memory: it plays popular opponent moves, you answer, your moves save as known ---- */
   const [memory, setMemory] = useState<{ startKey: string; startPath: MemoryStep[]; startProb: number } | null>(null);
+  // Replies most common first once coverage knows how often they're played.
+  const navProbs = coverage?.probs;
+  const orderKids = useCallback(
+    (kids: RepMove[]) => (navProbs ? [...kids].sort((a, b) => (navProbs[b.toKey] ?? 0) - (navProbs[a.toKey] ?? 0)) : kids),
+    [navProbs],
+  );
+  // The scoresheet shows your line and then carries on down the repertoire's main continuation to the
+  // end of the line, like a game score. Not in Play from memory: that would give the answers away.
+  const display = useMemo(() => {
+    const out: LineMove[] = [...line];
+    if (memory || !graph) return out;
+    const last = out[out.length - 1];
+    if (last && !graph.edge(last.fromKey, last.san)) return out; // you've left the repertoire
+    const seen = new Set([START_KEY, ...out.map((m) => m.key)]);
+    let k = last ? last.key : START_KEY;
+    for (let guard = 0; guard < 120; guard++) {
+      const m = orderKids(graph.childrenOf(k))[0];
+      if (!m || seen.has(m.toKey)) break;
+      out.push({ san: m.san, uci: m.uci, fromKey: m.fromKey, key: m.toKey });
+      seen.add(m.toKey);
+      k = m.toKey;
+    }
+    return out;
+  }, [line, graph, memory, orderKids]);
+  const goTo = (plies: number) => {
+    if (plies > line.length) setLine(display.slice(0, plies));
+    setCursor(plies);
+  };
+  const forward = () => (cursor < display.length ? goTo(cursor + 1) : !memory && children[0] && play(children[0].san));
   const [memSkip, setMemSkip] = useState<Set<string>>(new Set());
   const [memState, setMemState] = useState<{ status: 'searching' | 'waiting' | 'done' | 'error'; targetKey?: string; prob?: number; error?: string }>({
     status: 'searching',
@@ -447,11 +474,9 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest('input, textarea, select')) return;
       if (e.key === 'ArrowLeft') setCursor((c) => Math.max(0, c - 1));
-      else if (e.key === 'ArrowRight') {
-        if (cursor < line.length) setCursor(cursor + 1);
-        else if (children.length && !memory) play(children[0].san);
-      } else if (e.key === 'Home') setCursor(0);
-      else if (e.key === 'End') setCursor(line.length);
+      else if (e.key === 'ArrowRight') forward();
+      else if (e.key === 'Home') setCursor(0);
+      else if (e.key === 'End') goTo(display.length);
       else if (e.key === 'f') setFlipped((f) => !f);
       else return;
       e.preventDefault();
@@ -466,240 +491,297 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const orientation: Color = flipped ? (rep.color === 'white' ? 'black' : 'white') : rep.color;
   const myMovesHere = children.filter((c) => c.mine);
   const prob = coverage?.probs[key];
-  // Play from memory is "zen mode": just the board and the line — no explorer, arrows, notes or
-  // stats. If you can't find the move without the explorer, you don't really know it.
+  // Play from memory is "zen mode": just the board and the line — no explorer, arrows, notes,
+  // engine or stats. If you can't find the move without the explorer, you don't really know it.
   const zen = !!memory;
   const dueCount = (cards ?? []).filter((c) => isDue(c)).length;
-  const analysis = (
-    <>
-      <CoverageBox
-        reach={reach}
-        inRep={inRep}
-        score={coverage?.coverage?.[key]}
-        prob={prob}
-        oneInN={goalN}
-        source={sourceLabel(settings)}
-        running={live.running || live.stale}
-        error={live.error}
-      />
-      <EnginePanel fenKey={key} ply={cursor} onPlay={(san) => play(san)} />
-    </>
-  );
   const newCount = (cards ?? []).filter(isNew).length;
+  const nav = settings.builderNav;
+
+  // Side lines: the repertoire's other moves where the displayed line could have gone differently,
+  // each run ahead to its next choice.
+  const sideLines = (i: number): SideLine[] => {
+    const m = display[i];
+    if (!graph.has(m.fromKey)) return [];
+    return orderKids(graph.childrenOf(m.fromKey))
+      .filter((c) => c.san !== m.san)
+      .map((alt) => {
+        const run = [alt];
+        const seen = new Set([m.fromKey, alt.toKey]);
+        let k = alt.toKey;
+        for (let kids = graph.childrenOf(k); kids.length === 1 && run.length < 8 && !seen.has(kids[0].toKey); kids = graph.childrenOf(k)) {
+          run.push(kids[0]);
+          k = kids[0].toKey;
+          seen.add(k);
+        }
+        const more = graph.childrenOf(k).length;
+        return {
+          key: alt.id,
+          moves: run.map((x) => ({ san: x.san, note: !!x.comment, title: x.comment || undefined })),
+          onSelect: (j: number) => {
+            const l = [...display.slice(0, i), ...run.slice(0, j + 1).map((x) => ({ san: x.san, uci: x.uci, fromKey: x.fromKey, key: x.toKey }))];
+            setLine(l);
+            setCursor(l.length);
+          },
+          tail: more > 0 ? <span className="ml-more" title={`${more} choice${more === 1 ? '' : 's'} follow — click the line to see them`}>…</span> : undefined,
+        };
+      });
+  };
+
+  const header = (
+    <div className="builder-head">
+      <h1>{rep.name}</h1>
+      <ColorPill color={rep.color} />
+      <span className="muted small">
+        {plural(graph.myMoves().length, 'move')} · {plural(graph.leaves().length, 'line')}
+      </span>
+      <button
+        className="primary small"
+        onClick={startMemory}
+        disabled={reach.loading && cursor > 0}
+        title="It plays your opponents' most popular moves and you answer. Your moves are saved as already known (no need to learn them), until everything from here is filled in down to your 1-in-N goal."
+      >
+        ▶ Play from memory{cursor > 0 ? ' from here' : ''}
+      </button>
+      <span className="spacer" />
+      {onDone ? (
+        <button className="primary small" onClick={onDone}>
+          Continue training →
+        </button>
+      ) : (
+        <>
+          <a className="btn small" href={href('train', { rep: rep.id, mode: 'learn' })}>
+            Learn <span className="badge new">{newCount}</span>
+          </a>
+          <a className="btn small" href={href('train', { rep: rep.id, mode: 'review' })}>
+            Review <span className="badge due">{dueCount}</span>
+          </a>
+          <a className="btn small" href={href(`coverage/${rep.id}`)}>
+            Coverage
+          </a>
+          <a className="btn small" href={href(`insights/${rep.id}`)}>
+            Insights
+          </a>
+          <a className="btn small" href={href('repertoire')}>
+            All
+          </a>
+        </>
+      )}
+    </div>
+  );
+
+  const memoryPanel = memory && (
+    <div className="panel memory-panel">
+      <div className="row">
+        <h3 style={{ margin: 0 }}>Play from memory · {rep.name}</h3>
+        <span className="spacer" />
+        {memAdded > 0 && <span className="badge good">{plural(memAdded, 'move')} added</span>}
+        {memState.status === 'waiting' && (
+          <button className="small" onClick={skipMemory} title="Skip this position for now">
+            I don't know this
+          </button>
+        )}
+        <button className="small" onClick={stopMemory}>
+          Stop
+        </button>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        {memState.status === 'searching' && <span className="muted">Finding the next position…</span>}
+        {memState.status === 'waiting' && (
+          <>
+            <b>Your move.</b>{' '}
+            <span className="muted">
+              {myTurn ? '' : 'Go to the end of the line to answer. '}
+              {memState.prob === undefined || memState.prob >= 1 / 1.05
+                ? 'This position comes up in every game.'
+                : `This position comes up in ${oneIn(memState.prob)} games.`}{' '}
+              It saves as known — no need to learn it.
+            </span>
+          </>
+        )}
+        {memState.status === 'done' && (
+          <span>
+            <b>All done.</b> <span className="muted">Everything from here is filled in down to 1 in {goalN} games{memSkip.size ? ` (except ${plural(memSkip.size, 'position')} you skipped)` : ''}.</span>
+          </span>
+        )}
+        {memState.status === 'error' && <div className="error">{memState.error}</div>}
+      </div>
+    </div>
+  );
+
+  const movesPanel = (
+    <div className="panel moves-panel">
+      <div className="row moves-head">
+        <h3 style={{ margin: 0 }}>Moves</h3>
+        {opening && !zen && <span className="muted small moves-opening">{opening}</span>}
+        <span className="spacer" />
+        {!zen && (
+          <>
+            {missingUpToCursor && (
+              <button className="primary small" onClick={addLineToRep}>
+                + Add line
+              </button>
+            )}
+            {message && <span className="badge good">{message}</span>}
+            <button
+              className="small blue"
+              disabled={!inRep || (cursor === 0 && graph.size === 0)}
+              onClick={() => navigate('train', { rep: rep.id, mode: 'drill', at: key, t: String(Date.now()) })}
+              title={
+                inRep
+                  ? cursor === 0
+                    ? 'Train your whole repertoire now (learned and new moves, ignoring due dates)'
+                    : 'Train this line and everything after it now (learned and new moves, ignoring due dates)'
+                  : 'Add this line to your repertoire first'
+              }
+            >
+              Train this line
+            </button>
+            <button
+              className="small"
+              disabled={!biggestGap}
+              onClick={jumpToBiggestGap}
+              title={
+                biggestGap
+                  ? `Most common position you have no answer for: ${biggestGap.label} (${oneIn(biggestGap.prob)} games)`
+                  : live.running || live.stale
+                    ? 'Calculating coverage…'
+                    : `No gaps at 1 in ${goalN} games`
+              }
+            >
+              Biggest gap{biggestGap ? ` · ${oneIn(biggestGap.prob)}` : ''}
+            </button>
+            <span className="seg" title="How to show the moves">
+              <button className={`small ${nav === 'scoresheet' ? 'active' : ''}`} onClick={() => updateSettings({ builderNav: 'scoresheet' })}>
+                Scoresheet
+              </button>
+              <button className={`small ${nav === 'choices' ? 'active' : ''}`} onClick={() => updateSettings({ builderNav: 'choices' })}>
+                Next choices
+              </button>
+            </span>
+          </>
+        )}
+      </div>
+      <div className="moves-body">
+        {nav === 'scoresheet' || zen ? (
+          <MoveList
+            moves={display.map((m) => {
+              const e = graph.edge(m.fromKey, m.san);
+              return {
+                san: m.san,
+                // Only moves you've played that aren't saved stand out (grey, italic).
+                className: e ? undefined : 'out',
+                title: e ? (zen ? undefined : e.comment || undefined) : 'Not in your repertoire yet',
+                note: !zen && !!e?.comment,
+              };
+            })}
+            current={cursor}
+            onSelect={goTo}
+            sideLines={zen ? undefined : sideLines}
+          />
+        ) : (
+          <>
+            <LineView
+              items={line.map((m, i) => ({
+                san: m.san,
+                className: lineInRep[i] ? undefined : 'out',
+                title: lineInRep[i] ? undefined : 'Not in your repertoire yet',
+                note: graph.edge(m.fromKey, m.san)?.comment || undefined,
+              }))}
+              current={cursor}
+              onSelect={setCursor}
+            />
+            {inRep && (
+              <NextMoves
+                graph={graph}
+                fenKey={key}
+                ply={cursor}
+                probs={navProbs}
+                onGo={(moves) => {
+                  const l = [...line.slice(0, cursor), ...moves.map((m) => ({ san: m.san, uci: m.uci, fromKey: m.fromKey, key: m.toKey }))];
+                  setLine(l);
+                  setCursor(l.length);
+                }}
+              />
+            )}
+          </>
+        )}
+      </div>
+      {currentEdge && !zen && (
+        <div className="moves-note">
+          <MoveNote key={currentEdge.id} id={currentEdge.id} san={currentEdge.san} inline />
+        </div>
+      )}
+    </div>
+  );
 
   return (
-    <div className="board-layout">
-      <div className="board-col col">
-        <Board
-          pos={pos}
-          orientation={orientation}
-          interactive
-          lastMove={lastMove}
-          onMove={onBoardMove}
-          arrows={zen ? [] : children.map((c) => ({ uci: c.uci, brush: c.mine ? 'green' : 'paleBlue' }))}
-        />
-        <div className="row">
-          <button onClick={() => setCursor(0)} title="Start (Home)">
-            ⏮
-          </button>
-          <button onClick={() => setCursor(Math.max(0, cursor - 1))} title="Back (←)">
-            ◀
-          </button>
-          <button onClick={() => (cursor < line.length ? setCursor(cursor + 1) : !zen && children[0] && play(children[0].san))} title="Forward (→)">
-            ▶
-          </button>
-          <button onClick={() => setCursor(line.length)} title="End">
-            ⏭
-          </button>
-          <button onClick={() => setFlipped(!flipped)} title="Flip board (f)">
-            ⇅
-          </button>
-          {!zen && (
-            <a
-              className="btn small"
-              href={`https://lichess.org/analysis/standard/${`${key} 0 1`.replace(/ /g, '_')}?color=${orientation}`}
-              target="_blank"
-              rel="noreferrer"
-              title="Open this position on the Lichess analysis board (new tab)"
-            >
-              Analyze on Lichess ↗
-            </a>
-          )}
-          <span className="spacer" />
-          {!zen && (
-            <label className="check small" title="Every move you play on the board is saved into the repertoire immediately">
-              <input type="checkbox" checked={autoAdd} onChange={(e) => updateSettings({ builderAutoAdd: e.target.checked })} />
-              Auto-add moves
-            </label>
-          )}
-        </div>
-        {!zen && !stacked && analysis}
-      </div>
-
-      <div className="col">
-        {!zen && (
-          <div className="panel">
-            <div className="row">
-              <h1 style={{ margin: 0 }}>{rep.name}</h1>
-              <ColorPill color={rep.color} />
-              <span className="spacer" />
-              {onDone ? (
-                <button className="primary small" onClick={onDone}>
-                  Continue training →
-                </button>
-              ) : (
-                <>
-                  <a className="btn small" href={href('train', { rep: rep.id, mode: 'learn' })}>
-                    Learn <span className="badge new">{newCount}</span>
-                  </a>
-                  <a className="btn small" href={href('train', { rep: rep.id, mode: 'review' })}>
-                    Review <span className="badge due">{dueCount}</span>
-                  </a>
-                  <a className="btn small" href={href(`coverage/${rep.id}`)}>
-                    Coverage
-                  </a>
-                  <a className="btn small" href={href(`insights/${rep.id}`)}>
-                    Insights
-                  </a>
-                  <a className="btn small" href={href('repertoire')}>
-                    All
-                  </a>
-                </>
-              )}
-            </div>
-            <div className="muted small" style={{ marginTop: 4 }}>
-              {plural(graph.myMoves().length, 'move')} · {plural(graph.leaves().length, 'line')}
-            </div>
-          </div>
-        )}
-
-        {memory ? (
-          <div className="panel memory-panel">
-            <div className="row">
-              <h3 style={{ margin: 0 }}>Play from memory · {rep.name}</h3>
-              <span className="spacer" />
-              {memAdded > 0 && <span className="badge good">{plural(memAdded, 'move')} added</span>}
-              {memState.status === 'waiting' && (
-                <button className="small" onClick={skipMemory} title="Skip this position for now">
-                  I don't know this
-                </button>
-              )}
-              <button className="small" onClick={stopMemory}>
-                Stop
-              </button>
-            </div>
-            <div style={{ marginTop: 8 }}>
-              {memState.status === 'searching' && <span className="muted">Finding the next position…</span>}
-              {memState.status === 'waiting' && (
-                <>
-                  <b>Your move.</b>{' '}
-                  <span className="muted">
-                    {myTurn ? '' : 'Go to the end of the line to answer. '}
-                    {memState.prob === undefined || memState.prob >= 1 / 1.05
-                      ? 'This position comes up in every game.'
-                      : `This position comes up in ${oneIn(memState.prob)} games.`}{' '}
-                    It saves as known — no need to learn it.
-                  </span>
-                </>
-              )}
-              {memState.status === 'done' && (
-                <span>
-                  <b>All done.</b> <span className="muted">Everything from here is filled in down to 1 in {goalN} games{memSkip.size ? ` (except ${plural(memSkip.size, 'position')} you skipped)` : ''}.</span>
-                </span>
-              )}
-              {memState.status === 'error' && <div className="error">{memState.error}</div>}
-            </div>
-          </div>
-        ) : (
+    <div className="builder">
+      {!zen && header}
+      <div className="board-layout builder-grid">
+        <div className="board-col col">
+          <Board
+            pos={pos}
+            orientation={orientation}
+            interactive
+            lastMove={lastMove}
+            onMove={onBoardMove}
+            arrows={zen ? [] : children.map((c) => ({ uci: c.uci, brush: c.mine ? 'green' : 'paleBlue' }))}
+          />
           <div className="row">
-            <button
-              className="primary"
-              onClick={startMemory}
-              disabled={reach.loading && cursor > 0}
-              title="It plays your opponents' most popular moves and you answer. Your moves are saved as already known (no need to learn them), until everything from here is filled in down to your 1-in-N goal."
-            >
-              ▶ Play from memory{cursor > 0 ? ' from here' : ''}
+            <button onClick={() => setCursor(0)} title="Start (Home)">
+              ⏮
             </button>
-            <span className="muted small">Quickly enter lines you already know.</span>
-          </div>
-        )}
-
-        <div className="panel">
-          <div className="row" style={{ marginBottom: 6 }}>
-            <h3 style={{ margin: 0 }}>Line</h3>
+            <button onClick={() => setCursor(Math.max(0, cursor - 1))} title="Back (←)">
+              ◀
+            </button>
+            <button onClick={forward} title="Forward (→)">
+              ▶
+            </button>
+            <button onClick={() => goTo(display.length)} title="End of the line (End)">
+              ⏭
+            </button>
+            <button onClick={() => setFlipped(!flipped)} title="Flip board (f)">
+              ⇅
+            </button>
+            {!zen && (
+              <a
+                className="btn small"
+                href={`https://lichess.org/analysis/standard/${`${key} 0 1`.replace(/ /g, '_')}?color=${orientation}`}
+                target="_blank"
+                rel="noreferrer"
+                title="Open this position on the Lichess analysis board (new tab)"
+              >
+                Analyze on Lichess ↗
+              </a>
+            )}
             <span className="spacer" />
             {!zen && (
-              <>
-                {missingUpToCursor && !memory && (
-                  <button className="primary small" onClick={addLineToRep}>
-                    + Add line to repertoire
-                  </button>
-                )}
-                {message && <span className="badge good">{message}</span>}
-                <button
-                  className="small blue"
-                  disabled={!inRep || (cursor === 0 && graph.size === 0)}
-                  onClick={() => navigate('train', { rep: rep.id, mode: 'drill', at: key, t: String(Date.now()) })}
-                  title={
-                    inRep
-                      ? cursor === 0
-                        ? 'Train your whole repertoire now (learned and new moves, ignoring due dates)'
-                        : 'Train this line and everything after it now (learned and new moves, ignoring due dates)'
-                      : 'Add this line to your repertoire first'
-                  }
-                >
-                  Train this line
-                </button>
-                <button
-                  className="small"
-                  disabled={!biggestGap}
-                  onClick={jumpToBiggestGap}
-                  title={
-                    biggestGap
-                      ? `Most common position you have no answer for: ${biggestGap.label} (${oneIn(biggestGap.prob)} games)`
-                      : live.running || live.stale
-                        ? 'Calculating coverage…'
-                        : `No gaps at 1 in ${goalN} games`
-                  }
-                >
-                  Biggest gap{biggestGap ? ` · ${oneIn(biggestGap.prob)}` : ''}
-                </button>
-              </>
+              <label className="check small" title="Every move you play on the board is saved into the repertoire immediately">
+                <input type="checkbox" checked={autoAdd} onChange={(e) => updateSettings({ builderAutoAdd: e.target.checked })} />
+                Auto-add moves
+              </label>
             )}
           </div>
-          <LineView
-            items={line.map((m, i) => ({
-              san: m.san,
-              // Only moves you've played that aren't saved stand out (grey, italic).
-              className: lineInRep[i] ? undefined : 'out',
-              title: lineInRep[i] ? undefined : 'Not in your repertoire yet',
-              // Zen mode (Play from memory) hides notes: they'd give the answer away.
-              note: zen ? undefined : graph.edge(m.fromKey, m.san)?.comment || undefined,
-            }))}
-            editor={currentEdge && !zen ? <MoveNote key={currentEdge.id} id={currentEdge.id} san={currentEdge.san} inline /> : undefined}
-            current={cursor}
-            onSelect={setCursor}
-          />
-          {opening && !zen && <div className="muted small" style={{ marginTop: 6 }}>{opening}</div>}
-          {!zen && inRep && (
-            <NextMoves
-              graph={graph}
-              fenKey={key}
-              ply={cursor}
-              probs={freshCoverage?.probs}
-              onGo={(moves) => {
-                const l = [...line.slice(0, cursor), ...moves.map((m) => ({ san: m.san, uci: m.uci, fromKey: m.fromKey, key: m.toKey }))];
-                setLine(l);
-                setCursor(l.length);
-              }}
+          {!zen && (
+            <CoverageBox
+              reach={reach}
+              inRep={inRep}
+              score={coverage?.coverage?.[key]}
+              prob={prob}
+              oneInN={goalN}
+              source={sourceLabel(settings)}
+              running={live.running || live.stale}
+              error={live.error}
             />
           )}
         </div>
 
-        {!zen && (
-          <>
-            {stacked && analysis}
-
+        <div className="col builder-right">
+          {memoryPanel}
+          {!zen && <EnginePanel fenKey={key} ply={cursor} onPlay={(san) => play(san)} />}
+          {movesPanel}
+          {!zen && (
             <ExplorerPanel
               fenKey={key}
               color={rep.color}
@@ -728,7 +810,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               })}
               notes={
                 <>
-                  {!inRep && !memory && (
+                  {!inRep && (
                     <div className="note" style={{ marginBottom: 6 }}>
                       Not in your repertoire yet. Use <b>Add line</b> to save the line up to here{autoAdd ? '' : ' (or turn on Auto-add)'}.
                     </div>
@@ -751,8 +833,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               onOpening={setOpening}
               reachHere={reach.loading ? undefined : reach.prob}
             />
-          </>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

@@ -53,6 +53,10 @@ export interface AppSettings {
   /** Show Stockfish evaluations next to each move in the builder. */
   engineEnabled: boolean;
   engineDepth: number;
+  /** How many best lines the Stockfish box shows (1–5). */
+  engineLines: number;
+  /** Builder moves panel: a scoresheet with side lines (like a Lichess study), or the older "next choices" rows. */
+  builderNav: 'scoresheet' | 'choices';
   /** Which of your games count everywhere (Games, Insights, Home, "My games" explorer, coverage from your opponents). */
   gameRange: GameRange;
   /**
@@ -93,6 +97,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,
+  engineLines: 3,
+  builderNav: 'scoresheet',
   gameRange: '1m',
   opponentRange: '1y',
 };

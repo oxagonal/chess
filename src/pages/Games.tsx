@@ -205,13 +205,14 @@ function GamesOverview() {
           + Over-the-board game
         </a>
       </div>
-      <SyncPanel />
-
       {games.length === 0 ? (
-        <Empty>
-          No games yet. Enter your usernames above and press “Sync games”, or{' '}
-          <a href={href('games/new')}>add a game you played over the board</a>.
-        </Empty>
+        <>
+          <SyncPanel />
+          <Empty>
+            No games yet. Connect Lichess or enter your usernames above and press “Sync games”, or{' '}
+            <a href={href('games/new')}>add a game you played over the board</a>.
+          </Empty>
+        </>
       ) : (
         <>
           <div className="row">
@@ -236,6 +237,83 @@ function GamesOverview() {
             </select>
             <GameRangeSelect />
           </div>
+
+          <div className="panel">
+            <div className="row">
+              <h2 style={{ margin: 0 }}>Recent games</h2>
+              <span className="spacer" />
+              <select value={kind} onChange={(e) => setKind(e.target.value as never)}>
+                <option value="all">Any prep outcome</option>
+                {(Object.keys(PREP_LABEL) as PrepKind[]).map((k) => (
+                  <option key={k} value={k}>
+                    {PREP_LABEL[k]} ({summary.byKind[k]})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="recent-games">
+            <TableWrap>
+            <table className="data" style={{ marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th className="hide-sm" />
+                  <th>Opponent</th>
+                  <th>Result</th>
+                  <th className="hide-sm">Type</th>
+                  <th className="hide-sm">Opening</th>
+                  <th>Prep</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.slice(0, limit).map((g) => {
+                  const r = results.get(g.id);
+                  const opp = g.userColor === 'white' ? g.black : g.white;
+                  const oppElo = g.userColor === 'white' ? g.blackElo : g.whiteElo;
+                  return (
+                    <tr key={g.id} className="clickable" onClick={() => navigate(`games/${encodeURIComponent(g.id)}`)}>
+                      <td className="small nowrap">
+                        <span className="hide-sm">{fmtDate(g.playedAt)}</span>
+                        <span className="show-sm">{shortDate(g.playedAt)}</span>
+                      </td>
+                      <td className="hide-sm">
+                        <ColorPill color={g.userColor} />
+                      </td>
+                      <td>
+                        {opp} {oppElo ? <span className="muted small">({oppElo})</span> : null}
+                      </td>
+                      <td>
+                        <span className={`badge ${g.userScore === 1 ? 'good' : g.userScore === 0 ? 'bad' : ''}`}>
+                          {g.userScore === 1 ? 'Won' : g.userScore === 0 ? 'Lost' : g.userScore === 0.5 ? 'Draw' : '—'}
+                        </span>
+                      </td>
+                      <td className="small muted hide-sm">
+                        {g.source === 'otb' ? 'OTB' : sourceName(g.source)} · {g.timeClass}
+                      </td>
+                      <td className="small hide-sm">{g.opening ?? ''}</td>
+                      <td>
+                        {r && (
+                          <span className={`badge wrap ${KIND_BADGE[r.kind]}`} title={r.ply !== undefined ? `Move ${Math.floor(r.ply / 2) + 1}` : ''}>
+                            {PREP_LABEL[r.kind]}
+                            {r.ply !== undefined && r.kind !== 'other-opening' ? ` · m${Math.floor(r.ply / 2) + 1}` : ''}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            </TableWrap>
+            </div>
+            {shown.length > limit && (
+              <div style={{ textAlign: 'center', marginTop: 8 }}>
+                <button onClick={() => setLimit(limit + 200)}>Show more ({shown.length - limit} left)</button>
+              </div>
+            )}
+          </div>
+
+          <SyncPanel />
 
           <div className="grid3">
             <Stat value={summary.games} label="Games" />
@@ -363,78 +441,6 @@ function GamesOverview() {
             </div>
           </div>
 
-          <div className="panel">
-            <div className="row">
-              <h2 style={{ margin: 0 }}>All games</h2>
-              <span className="spacer" />
-              <select value={kind} onChange={(e) => setKind(e.target.value as never)}>
-                <option value="all">Any prep outcome</option>
-                {(Object.keys(PREP_LABEL) as PrepKind[]).map((k) => (
-                  <option key={k} value={k}>
-                    {PREP_LABEL[k]} ({summary.byKind[k]})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <TableWrap>
-            <table className="data" style={{ marginTop: 8 }}>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th className="hide-sm" />
-                  <th>Opponent</th>
-                  <th>Result</th>
-                  <th className="hide-sm">Type</th>
-                  <th className="hide-sm">Opening</th>
-                  <th>Prep</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.slice(0, limit).map((g) => {
-                  const r = results.get(g.id);
-                  const opp = g.userColor === 'white' ? g.black : g.white;
-                  const oppElo = g.userColor === 'white' ? g.blackElo : g.whiteElo;
-                  return (
-                    <tr key={g.id} className="clickable" onClick={() => navigate(`games/${encodeURIComponent(g.id)}`)}>
-                      <td className="small nowrap">
-                        <span className="hide-sm">{fmtDate(g.playedAt)}</span>
-                        <span className="show-sm">{shortDate(g.playedAt)}</span>
-                      </td>
-                      <td className="hide-sm">
-                        <ColorPill color={g.userColor} />
-                      </td>
-                      <td>
-                        {opp} {oppElo ? <span className="muted small">({oppElo})</span> : null}
-                      </td>
-                      <td>
-                        <span className={`badge ${g.userScore === 1 ? 'good' : g.userScore === 0 ? 'bad' : ''}`}>
-                          {g.userScore === 1 ? 'Won' : g.userScore === 0 ? 'Lost' : g.userScore === 0.5 ? 'Draw' : '—'}
-                        </span>
-                      </td>
-                      <td className="small muted hide-sm">
-                        {g.source === 'otb' ? 'OTB' : sourceName(g.source)} · {g.timeClass}
-                      </td>
-                      <td className="small hide-sm">{g.opening ?? ''}</td>
-                      <td>
-                        {r && (
-                          <span className={`badge wrap ${KIND_BADGE[r.kind]}`} title={r.ply !== undefined ? `Move ${Math.floor(r.ply / 2) + 1}` : ''}>
-                            {PREP_LABEL[r.kind]}
-                            {r.ply !== undefined && r.kind !== 'other-opening' ? ` · m${Math.floor(r.ply / 2) + 1}` : ''}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            </TableWrap>
-            {shown.length > limit && (
-              <div style={{ textAlign: 'center', marginTop: 8 }}>
-                <button onClick={() => setLimit(limit + 200)}>Show more ({shown.length - limit} left)</button>
-              </div>
-            )}
-          </div>
         </>
       )}
     </div>

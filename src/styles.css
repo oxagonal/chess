@@ -472,3 +472,55 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .tp-info .movenote-ask { display: none; }
 .tp-info .movenote textarea { min-height: 0; height: 58px; resize: none; }
 .train-phone .train-actions { flex: none; flex-wrap: nowrap; }
+
+/* ---------- builder: one screen on desktop ---------- */
+.builder { display: flex; flex-direction: column; gap: 12px; }
+.builder-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+.builder-head h1 { margin: 0; font-size: 22px; }
+.moves-head { margin-bottom: 6px; gap: 6px; }
+.moves-opening { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+.moves-note { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
+.moves-note .movenote.inline { margin: 0; }
+.seg { display: inline-flex; border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; }
+.seg button { border: none; border-radius: 0; background: transparent; color: var(--muted); }
+.seg button.active { background: var(--panel3); color: var(--text); }
+.engine-options { margin: 8px 0 4px; padding: 8px 10px; background: var(--panel2); border-radius: var(--radius-sm); gap: 8px 16px; }
+.inline-field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.inline-field select { padding: 3px 6px; }
+@media (min-width: 901px) {
+  /* Everything fits the window: the board sizes to the height left over, and the right column's
+     moves panel and explorer scroll inside themselves. */
+  .builder { height: calc(100vh - 56px - 48px); }
+  .builder-grid { flex: 1; min-height: 0; grid-template-columns: auto minmax(340px, 1fr); }
+  .builder .board-col { position: static; width: min(640px, max(320px, calc(100vh - 56px - 48px - 46px - 12px - 70px - 12px - 84px))); }
+  .builder-right { min-height: 0; height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
+  .builder-right > .engine, .builder-right > .memory-panel { flex: none; }
+  .builder-right > .moves-panel { flex: 1.4 1 0; min-height: 200px; display: flex; flex-direction: column; }
+  .moves-panel .moves-body { flex: 1; min-height: 0; overflow-y: auto; }
+  .builder-right > .explorer { flex: 1 1 0; min-height: 160px; overflow-y: auto; }
+  .builder-right > .explorer thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+}
+
+/* ---------- scoresheet (MoveList) ---------- */
+.movelist2 { display: grid; grid-template-columns: 38px 1fr 1fr; align-items: stretch; font-size: 15px; }
+.movelist2.empty { display: block; font-size: 14px; }
+.ml-num { color: var(--faint); font-size: 12.5px; text-align: right; padding: 4px 10px 4px 0; background: var(--panel2); border-bottom: 1px solid var(--bg2); }
+.ml-move { padding: 4px 10px; cursor: pointer; font-weight: 600; border-bottom: 1px solid var(--bg2); border-radius: 0; }
+.ml-move:hover { background: var(--panel3); }
+.ml-move.current { background: var(--accent2); color: #fff; }
+.ml-move.out { color: var(--muted); font-style: italic; }
+.ml-move.ml-empty { color: var(--faint); cursor: default; font-weight: 400; }
+.ml-move.ml-empty:hover { background: none; }
+.ml-move.has-note::after { content: '•'; color: var(--muted); margin-left: 3px; font-weight: 400; }
+.ml-move.current.has-note::after { color: #fff; }
+.ml-sides { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 1px; padding: 4px 8px 6px 20px; background: var(--bg2); border-bottom: 1px solid var(--border-soft); }
+.ml-side { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 2px; font-size: 13.5px; }
+.ml-side .num { color: var(--faint); margin: 0 2px 0 5px; font-size: 12px; }
+.ml-side .num:first-child { margin-left: 0; }
+.ml-side .mv { padding: 1px 5px; font-weight: 500; color: var(--muted); }
+.ml-side .mv:hover { color: var(--text); }
+.ml-more { color: var(--faint); padding: 0 4px; cursor: help; }
+
+/* Games page: the recent games list scrolls inside its box instead of stretching the page. */
+.recent-games { max-height: min(560px, 60vh); overflow-y: auto; }
+.recent-games thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }

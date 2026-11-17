@@ -54,7 +54,7 @@ export function MoveNote({
         <textarea
           rows={1}
           value={text ?? stored}
-          placeholder={`Note on ${san} — why this move? (shown when you miss it in training)`}
+          placeholder={`Note on ${san}`}
           aria-label={`Note on ${san}`}
           onChange={(e) => setText(e.target.value)}
           onBlur={save}
@@ -91,7 +91,7 @@ export function MoveNote({
         rows={compact ? 2 : 3}
         value={text ?? stored}
         autoFocus={autoFocus || (prompt && !stored)}
-        placeholder={asking ? `Why ${san}? The idea, the plan, the trap…` : 'Why this move? Plans, traps, ideas… (shown during training)'}
+        placeholder={asking ? `Why ${san}? The idea, the plan, the trap…` : `Note on ${san}`}
         onChange={(e) => setText(e.target.value)}
         onBlur={save}
         onKeyDown={keys}
