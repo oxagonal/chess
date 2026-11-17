@@ -3,14 +3,14 @@ import type { RepMove, ReviewCard } from './types';
 
 /**
  * quiz: graded (review) · show: shown then quizzed (learn) · auto: played for you ·
- * practice: you play it, but it isn't graded (your known moves further down the branch).
+ * practice: you play it, but it isn't graded (your known moves in a review line; Learn never asks them).
  */
 export type StepKind = 'quiz' | 'show' | 'auto' | 'practice';
 
 export interface PlannedStep {
   move: RepMove;
   kind: StepKind;
-  /** A practice move leading up to the trained one (asked even while a new line is being shown). */
+  /** A practice move leading up to the trained one (review lines, played from move 1). */
   leadIn?: boolean;
 }
 
@@ -59,15 +59,19 @@ export function moveOrders(graph: RepGraph, key: string, probs?: Record<string, 
  * Starting from the root, walk the path to the target card's position (`via`: one particular move
  * order, else the shortest), play the target move,
  * then keep extending the line through opponent replies whose continuation still contains pending
- * cards. Your moves along the way are quizzed (review) / shown (learn) if pending, else auto-played.
+ * cards. Your moves along the way are quizzed (review) / shown (learn) if pending.
  * This mirrors how a real game unfolds: you always see the position arise from the starting position.
+ *
+ * Review (and drills) then carry on to the end of the branch and, with `leadIn`, have you play your
+ * known moves from move 1 as ungraded practice. Learn only asks for the new moves: everything you
+ * already know is played for you, and the line stops after the last new move.
  */
 export function planLine(
   graph: RepGraph,
   target: RepMove,
   pending: ReadonlySet<string>,
   mode: TrainMode,
-  /** Also have you play your moves before the trained one, from move 1. */
+  /** Also have you play your moves before the trained one, from move 1 (review only). */
   leadIn = false,
   /** Which move order to reach the target by (see moveOrders); defaults to the shortest. */
   via?: RepMove[],
@@ -115,9 +119,9 @@ export function planLine(
     key = next.toKey;
   }
 
-  // Then carry on down the branch to its end, like a game would: your (first) move on your turn,
-  // the first saved reply on theirs.
-  for (let guard = 0; guard < 400; guard++) {
+  // Review: then carry on down the branch to its end, like a game would — your (first) move on your
+  // turn, the first saved reply on theirs. Learn stops here: the rest is moves you already know.
+  for (let guard = 0; guard < 400 && mode === 'review'; guard++) {
     const kids = graph.childrenOf(key).filter((m) => !onLine.has(m.toKey));
     const next = graph.isMyTurn(key) ? kids.find((m) => m.mine) : kids[0];
     if (!next) break;
@@ -133,6 +137,8 @@ export function planLine(
       asked.add(move.id);
       return { move, kind: mode === 'learn' ? 'show' : 'quiz' };
     }
+    // Learn: moves you already know are played for you, never asked.
+    if (mode === 'learn') return { move, kind: 'auto' };
     // Your moves after the one being trained: you play them, ungraded.
     if (move.mine && i > targetIndex) return { move, kind: 'practice' };
     // Lead-in: you also play your moves from the starting position.

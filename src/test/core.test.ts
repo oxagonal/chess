@@ -142,6 +142,24 @@ describe('trainer planning', () => {
     expect(steps.map((s) => s.kind)).toEqual(['auto', 'auto', 'quiz', 'auto', 'practice']);
   });
 
+  it('learn asks only the new moves: known moves are played for you and the line stops after the last new one', () => {
+    // Bb5 is new; e4 and Nf3 are already learned, and the line would otherwise go on past Bb5.
+    const lm = movesFromLines('r', 'white', ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4']);
+    const lg = new RepGraph('white', lm);
+    const bb5 = lm.find((m) => m.san === 'Bb5')!;
+    const steps = planLine(lg, bb5, new Set([bb5.id]), 'learn', true);
+    expect(steps.map((s) => s.move.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+    expect(steps.map((s) => s.kind)).toEqual(['auto', 'auto', 'auto', 'auto', 'show']);
+    // Known moves between new ones are played for you too.
+    const ba4 = lm.find((m) => m.san === 'Ba4')!;
+    const both = planLine(lg, bb5, new Set([bb5.id, ba4.id]), 'learn');
+    expect(both.map((s) => s.kind)).toEqual(['auto', 'auto', 'auto', 'auto', 'show', 'auto', 'show']);
+    // The same line in review: from move 1 to the end of the branch.
+    expect(planLine(lg, bb5, new Set([bb5.id]), 'review', true).map((s) => s.kind)).toEqual([
+      'practice', 'auto', 'practice', 'auto', 'quiz', 'auto', 'practice',
+    ]);
+  });
+
   it('with lead-in, asks your earlier moves from the starting position too', () => {
     const d4 = byLine(['e4', 'c5', 'Nf3', 'd6', 'd4']);
     const steps = planLine(g, d4, new Set([d4.id]), 'review', true);

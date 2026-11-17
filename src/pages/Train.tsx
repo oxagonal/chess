@@ -107,8 +107,9 @@ function TrainChooser() {
         })}
       </div>
       <p className="muted small">
-        <b>Learn</b> shows you new moves of your repertoire line by line, then has you replay the line from memory. <b>Review</b> quizzes
-        moves that are due, always starting from the initial position so you meet them as they arise in a game. Scheduling uses FSRS:
+        <b>Learn</b> shows you new moves of your repertoire line by line, then has you replay them from memory — moves you already know
+        are played for you. <b>Review</b> quizzes moves that are due: you play the whole line from move 1 to the end of the branch, so
+        you meet them as they arise in a game. Scheduling uses FSRS:
         correct on the first try counts as “Good”, anything else as “Again”.
       </p>
     </div>
@@ -254,9 +255,9 @@ interface LineState {
 
 type Feedback = { kind: 'good' | 'bad' | 'hint' | 'show' | 'info'; text: ReactNode } | null;
 
-/** Steps the app plays for you: opponent/earlier moves, and later known moves while a new line is being shown. */
-function playedForYou(step: PlannedStep, phase: 'show' | 'quiz'): boolean {
-  return step.kind === 'auto' || (step.kind === 'practice' && !step.leadIn && phase === 'show');
+/** Steps the app plays for you: the opponent's moves, and your moves that aren't being asked. */
+function playedForYou(step: PlannedStep): boolean {
+  return step.kind === 'auto';
 }
 
 function Session({ setup }: { setup: SessionSetup }) {
@@ -298,8 +299,10 @@ function Session({ setup }: { setup: SessionSetup }) {
       // so over time you practise reaching it every way your repertoire allows.
       const orders = moveOrders(graph, move.fromKey, setup.probs.get(card.repId));
       const index = orders.length ? card.reps % orders.length : 0;
-      // Every line is played from move 1 (your earlier moves too) through to the end of the branch.
-      const steps = planLine(graph, move, pending, mode === 'learn' ? 'learn' : 'review', true, orders[index]);
+      // Review and drills: every line is played from move 1 (your earlier moves too) to the end of the
+      // branch. Learn: only the new moves are asked; the moves you already know are played for you.
+      const learn = mode === 'learn';
+      const steps = planLine(graph, move, pending, learn ? 'learn' : 'review', !learn, orders[index]);
       if (!steps.some((s) => s.kind === 'quiz' || s.kind === 'show')) {
         pending.delete(card.id);
         continue;
@@ -368,8 +371,8 @@ function Session({ setup }: { setup: SessionSetup }) {
       return () => clearTimeout(t);
     }
     const step = line.steps[idx];
-    if (!playedForYou(step, line.phase)) return;
-    const beforeUser = line.steps[idx + 1] && !playedForYou(line.steps[idx + 1], line.phase);
+    if (!playedForYou(step)) return;
+    const beforeUser = line.steps[idx + 1] && !playedForYou(line.steps[idx + 1]);
     const delay = idx === 0 ? 350 : beforeUser ? settings.autoPlayDelayMs : Math.min(140, settings.autoPlayDelayMs);
     const t = setTimeout(() => {
       const r = playUci(pos, step.move.uci);
@@ -385,7 +388,7 @@ function Session({ setup }: { setup: SessionSetup }) {
   }, [line, idx, pos, finished, nextLine, settings.autoPlayDelayMs, holdAtEnd]);
 
   const step = line && idx < line.steps.length ? line.steps[idx] : undefined;
-  const waiting = !!step && !!line && !playedForYou(step, line.phase);
+  const waiting = !!step && !!line && !playedForYou(step);
   const rep = line ? reps.get(line.repId) : undefined;
   const graph = line ? graphsRef.current.get(line.repId) : undefined;
 
