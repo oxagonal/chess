@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createElement, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import type { Chess } from 'chessops/chess';
@@ -13,6 +13,7 @@ import { keyOf, opposite, playSan, playUci, startPos } from '../lib/chess';
 import { biggestSwingsFor, JUDGEMENT_GLYPH, swings } from '../lib/review';
 import { glyphClass, glyphName, moveGlyph, otherGlyphs, withLineNote, type SavedLine } from '../lib/annotations';
 import { clocksAt, formatClock, timeSpent } from '../lib/clocks';
+import { MATERIAL_ROLES, materialBalance } from '../lib/material';
 import { Board, type Arrow } from '../components/Board';
 import { MoveNote } from '../components/MoveNote';
 import { MoveList } from '../components/MoveList';
@@ -184,11 +185,23 @@ export function GameReview({ id }: { id: string }) {
   // Correspondence games (days per move) have no use for a clock.
   const clocks = game.clocks?.length && game.timeClass !== 'correspondence' ? game.clocks : undefined;
   const shownClocks = clocksAt(clocks, cur);
+  // Like Lichess: the pieces each side is up (shown as the captured pieces) and +points for the side ahead.
+  const material = materialBalance(pos);
   const strip = (color: 'white' | 'black') => (
     <div className={`player-strip ${pos.turn === color && cur < last ? 'to-move' : ''}`}>
       <span className={`strip-dot ${color}`} />
       <span className="keep-case strip-name">{color === 'white' ? game.white : game.black}</span>
       {(color === 'white' ? game.whiteElo : game.blackElo) ? <span className="muted small">{color === 'white' ? game.whiteElo : game.blackElo}</span> : null}
+      {(material[color].up.length > 0 || material[color].plus > 0) && (
+        <span className="material" title={material[color].plus ? `Up ${material[color].plus} in material` : 'Material'}>
+          {MATERIAL_ROLES.filter((role) => material[color].up.includes(role)).map((role) => (
+            <span key={role} className="cg-wrap mat-pieces">
+              {material[color].up.filter((r) => r === role).map((r, i) => createElement('piece', { key: i, className: `${r} white` }))}
+            </span>
+          ))}
+          {material[color].plus > 0 && <span className="mat-plus">+{material[color].plus}</span>}
+        </span>
+      )}
       <span className="spacer" />
       {shownClocks[color] !== undefined && <span className="strip-clock">{formatClock(shownClocks[color]!)}</span>}
     </div>
@@ -448,7 +461,7 @@ export function GameReview({ id }: { id: string }) {
       </div>
       <div className="studio-wrap">
         <Suspense fallback={<div className="muted small">Loading the studio…</div>}>
-          <Studio storageKey="review-studio-v1" panels={panels} defaultLayout={defaultReviewLayout} resetSignal={layoutVersion} />
+          <Studio storageKey="review-studio-v2" panels={panels} defaultLayout={defaultReviewLayout} resetSignal={layoutVersion} />
         </Suspense>
       </div>
       {annotationMenu}
@@ -490,18 +503,26 @@ function PrepActions({ game, r, graph }: { game: StoredGame; r: PrepResult; grap
   );
 }
 
-/** Board on the left with the computer review under it; Stockfish, the game and its moves on the right. */
+/**
+ * Like a Lichess study: the board in a full-height middle column, as big as the height allows; the
+ * game and the computer review on the left; Stockfish and the moves on the right.
+ */
 function defaultReviewLayout(api: DockviewApi) {
-  const add = (type: string, title: string, position?: Parameters<DockviewApi['addPanel']>[0]['position'], size?: { initialWidth?: number; initialHeight?: number }) =>
-    api.addPanel({ id: type, component: 'panel', title, params: { type }, ...(position ? { position } : {}), ...size });
+  const add = (type: string, title: string, position?: Parameters<DockviewApi['addPanel']>[0]['position']) =>
+    api.addPanel({ id: type, component: 'panel', title, params: { type }, ...(position ? { position } : {}) });
   add('board', 'Board');
-  add('stockfish', 'Stockfish', { referencePanel: 'board', direction: 'right' }, { initialWidth: Math.round(api.width * 0.5) });
-  add('game', 'Game', { referencePanel: 'stockfish', direction: 'below' });
-  add('moves', 'Moves', { referencePanel: 'game', direction: 'below' });
-  add('review', 'Computer review', { referencePanel: 'board', direction: 'below' });
+  add('game', 'Game', { referencePanel: 'board', direction: 'left' });
+  add('stockfish', 'Stockfish', { referencePanel: 'board', direction: 'right' });
+  add('moves', 'Moves', { referencePanel: 'stockfish', direction: 'below' });
+  add('review', 'Computer review', { referencePanel: 'game', direction: 'below' });
+  // The board's pane: as wide as the board can be tall (tab bar, two player bars and the buttons
+  // take ~130px), leaving at least 280px on each side.
+  const board = Math.max(320, Math.min(api.height - 130, api.width - 2 * 280 - 16));
+  const sides = api.width - (board + 16);
+  api.getPanel('board')?.group.api.setSize({ width: board + 16 });
+  api.getPanel('game')?.group.api.setSize({ width: Math.round(sides * 0.42) });
   api.getPanel('stockfish')?.group.api.setSize({ height: 160 });
-  api.getPanel('game')?.group.api.setSize({ height: 230 });
-  api.getPanel('review')?.group.api.setSize({ height: Math.round(api.height * 0.4) });
+  api.getPanel('game')?.group.api.setSize({ height: Math.round(api.height * 0.45) });
 }
 
 /** Snap the board's pane to the board (see the builder's Fit button). */

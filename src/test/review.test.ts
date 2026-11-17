@@ -5,6 +5,8 @@ import { saveAnnotation } from '../db/annotations';
 import { moveGlyph, otherGlyphs, sortGlyphs, toggleGlyph, withLineNote } from '../lib/annotations';
 import { biggestSwingsFor, type GameReview } from '../lib/review';
 import { clocksAt, formatClock, timeSpent } from '../lib/clocks';
+import { materialBalance } from '../lib/material';
+import { playSan, startPos } from '../lib/chess';
 import { emptySnapshot, mergeSync } from '../lib/syncMerge';
 import type { StoredGame } from '../lib/types';
 
@@ -97,3 +99,19 @@ describe('clocks', () => {
     expect(formatClock(9.44)).toBe('0:09.4');
   });
 });
+
+describe('material balance', () => {
+  const after = (sans: string[]) => sans.reduce((pos, san) => playSan(pos, san)!.pos, startPos());
+  it('shows the pieces each side is up and the points ahead', () => {
+    expect(materialBalance(startPos())).toEqual({ white: { up: [], plus: 0 }, black: { up: [], plus: 0 } });
+    // 1. e4 d5 2. exd5 Qxd5 3. Nc3 Qxg2: White took a pawn, Black took two.
+    const m = materialBalance(after(['e4', 'd5', 'exd5', 'Qxd5', 'Nc3', 'Qxg2']));
+    expect(m).toEqual({ white: { up: [], plus: 0 }, black: { up: ['pawn'], plus: 1 } });
+    // Trading a knight for a pawn and a bishop: pieces both ways, net points to one side.
+    const t = materialBalance(after(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'Nd4', 'Nxd4', 'exd4', 'Bxd7+', 'Bxd7']));
+    expect(t.white.up).toEqual(['pawn']);
+    expect(t.black.up).toEqual(['bishop']);
+    expect([t.white.plus, t.black.plus]).toEqual([0, 2]);
+  });
+});
+
