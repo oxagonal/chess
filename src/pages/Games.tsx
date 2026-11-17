@@ -20,9 +20,17 @@ import { href, navigate } from '../router';
 import { rangeCutoff } from '../lib/gameRange';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { LichessAccount } from '../components/LichessConnect';
+import { OtbGameEditor } from './OtbGame';
+
+/** "Lichess", "Chess.com" or "Over the board". */
+export function sourceName(source: GameSource): string {
+  return source === 'lichess' ? 'Lichess' : source === 'chesscom' ? 'Chess.com' : 'Over the board';
+}
 
 export function GamesPage({ route }: PageProps) {
   const id = route.path[1];
+  if (id === 'new') return <OtbGameEditor key="new" />;
+  if (id === 'edit' && route.path[2]) return <OtbGameEditor key={route.path[2]} editId={route.path[2]} />;
   if (id) return <GameViewer id={id} />;
   return <GamesOverview />;
 }
@@ -190,11 +198,20 @@ function GamesOverview() {
 
   return (
     <div className="col" style={{ gap: 16 }}>
-      <h1>Games</h1>
+      <div className="row">
+        <h1 style={{ margin: 0 }}>Games</h1>
+        <span className="spacer" />
+        <a className="btn" href={href('games/new')}>
+          + Over-the-board game
+        </a>
+      </div>
       <SyncPanel />
 
       {games.length === 0 ? (
-        <Empty>No games yet. Enter your usernames above and press “Sync games”.</Empty>
+        <Empty>
+          No games yet. Enter your usernames above and press “Sync games”, or{' '}
+          <a href={href('games/new')}>add a game you played over the board</a>.
+        </Empty>
       ) : (
         <>
           <div className="row">
@@ -202,6 +219,7 @@ function GamesOverview() {
               <option value="all">All sites</option>
               <option value="lichess">Lichess</option>
               <option value="chesscom">Chess.com</option>
+              <option value="otb">Over the board</option>
             </select>
             <select value={color} onChange={(e) => setColor(e.target.value as never)}>
               <option value="all">Both colors</option>
@@ -394,7 +412,7 @@ function GamesOverview() {
                         </span>
                       </td>
                       <td className="small muted hide-sm">
-                        {g.source === 'lichess' ? 'Lichess' : 'Chess.com'} · {g.timeClass}
+                        {g.source === 'otb' ? 'OTB' : sourceName(g.source)} · {g.timeClass}
                       </td>
                       <td className="small hide-sm">{g.opening ?? ''}</td>
                       <td>
@@ -512,13 +530,31 @@ function GameViewer({ id }: { id: string }) {
             </h2>
           </div>
           <div className="muted small" style={{ marginTop: 6 }}>
-            {fmtDate(game.playedAt)} · {game.source === 'lichess' ? 'Lichess' : 'Chess.com'} {game.timeClass} · {game.result} · {game.opening ?? ''}{' '}
+            {fmtDate(game.playedAt)} · {sourceName(game.source)} {game.timeClass}
+            {game.event ? ` · ${game.event}` : ''} · {game.result} · {game.opening ?? ''}{' '}
             {game.url && (
               <a href={game.url} target="_blank" rel="noreferrer">
                 open on site ↗
               </a>
             )}
           </div>
+          {game.source === 'otb' && (
+            <div className="row" style={{ marginTop: 8 }}>
+              <a className="btn small" href={href(`games/edit/${encodeURIComponent(game.id)}`)}>
+                Edit game
+              </a>
+              <button
+                className="small danger"
+                onClick={async () => {
+                  if (!confirm('Delete this game?')) return;
+                  await db.games.delete(game.id);
+                  navigate('games');
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          )}
         </div>
 
         <div className={`feedback ${r.kind === 'you-deviated' ? 'bad' : r.kind === 'opponent-deviated' ? 'hint' : 'good'}`}>

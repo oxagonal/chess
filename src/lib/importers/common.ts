@@ -45,6 +45,8 @@ export interface ImportOptions {
   onGames?: (games: StoredGame[]) => Promise<void>;
   /** Optional Lichess personal API token (raises rate limits). */
   token?: string;
+  /** Lichess only: just the newest `max` games (newest first) instead of everything since `since`. */
+  max?: number;
 }
 
 export class HttpError extends Error {

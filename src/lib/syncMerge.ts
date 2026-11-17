@@ -13,7 +13,7 @@ import { RepGraph } from './graph';
 import type { Color } from './chess';
 import type { RepMove } from './types';
 
-export const SYNC_TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv'] as const;
+export const SYNC_TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players'] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
 export type Row = Record<string, any>;
@@ -95,6 +95,7 @@ function rowBirth(table: SyncTable, row: Row): number {
     case 'repertoires':
     case 'moves':
     case 'cards':
+    case 'players':
       return row.createdAt ?? rowVersion(table, row);
     case 'reviewLog':
       return row.reviewedAt ?? 0;

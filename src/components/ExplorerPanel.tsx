@@ -5,14 +5,15 @@ import { fetchExplorer, onExplorerStatus, paramsLabel, type ExplorerParams } fro
 import { lichessParams, MASTERS } from '../services/coverage';
 import { GameStatsIndex } from '../lib/mygames';
 import { moveGames, type MoveStat, type PositionStats } from '../lib/types';
-import { turnOfKey, type Color } from '../lib/chess';
+import { opposite, turnOfKey, type Color } from '../lib/chess';
+import { PlayersBar, usePlayerGames, useScoutPlayerId } from './PlayersScout';
 import { useRecentGames } from '../hooks';
 import { GameRangeSelect } from './GameRangeSelect';
 import { TableWrap, WdlBar } from './ui';
 import { oneInNumber } from '../lib/coverage';
 import { evalScore, evaluateMoves, formatEval, type EvalMap } from '../services/engine';
 
-type Tab = 'lichess' | 'masters' | 'mine';
+type Tab = 'lichess' | 'masters' | 'mine' | 'players';
 
 /** A move saved in your repertoire at this position. */
 export interface SavedMove {
@@ -93,16 +94,22 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   const [waitUntil, setWaitUntil] = useState<number | undefined>();
   const games = useRecentGames('opponentRange');
   const mine = useMemo(() => (games ? new GameStatsIndex(games, { color }) : undefined), [games, color]);
+  // Players tab: what a scouted player plays here — by default with the color your opponents have.
+  const [playerId, setPlayerId] = useScoutPlayerId();
+  const [playerAs, setPlayerAs] = useState<Color>(opposite(color));
+  useEffect(() => setPlayerAs(opposite(color)), [color]);
+  const scout = usePlayerGames(tab === 'players' ? playerId : undefined);
+  const scoutIndex = useMemo(() => (scout ? new GameStatsIndex(scout.games, { color: playerAs }) : undefined), [scout, playerAs]);
   const params: ExplorerParams | undefined = tab === 'lichess' ? lichessParams(settings) : tab === 'masters' ? MASTERS : undefined;
-  const paramsKey = params ? paramsLabel(params) : 'mine';
+  const paramsKey = params ? paramsLabel(params) : tab;
 
   useEffect(() => onExplorerStatus((s) => setWaitUntil(s.waitingUntil)), []);
 
   useEffect(() => {
     setError(undefined);
     setNeedsLogin(false);
-    if (tab === 'mine') {
-      setData(mine?.get(fenKey));
+    if (tab === 'mine' || tab === 'players') {
+      setData((tab === 'mine' ? mine : scoutIndex)?.get(fenKey));
       setLoading(false);
       return;
     }
@@ -122,7 +129,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
       .finally(() => setLoading(false));
     return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fenKey, tab, paramsKey, mine, settings.loaded, settings.lichessToken]);
+  }, [fenKey, tab, paramsKey, mine, scoutIndex, settings.loaded, settings.lichessToken]);
 
   const total = data?.total ?? 0;
   // Database moves in popularity order, with your saved moves merged in; saved moves the database
@@ -156,12 +163,16 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
         <button className={tab === 'mine' ? 'active' : ''} onClick={() => setTab('mine')}>
           My games
         </button>
+        <button className={tab === 'players' ? 'active' : ''} onClick={() => setTab('players')}>
+          Players
+        </button>
         <span className="spacer" />
         <span className="muted small" style={{ alignSelf: 'center' }}>
           {tab === 'lichess' && params ? `${params.ratings.join('/')} · ${params.speeds.join(', ')}` : tab === 'mine' ? `as ${color}` : ''}
         </span>
         {tab === 'mine' && <GameRangeSelect setting="opponentRange" />}
       </div>
+      {tab === 'players' && <PlayersBar playerId={playerId} onSelect={setPlayerId} as={playerAs} onAs={setPlayerAs} scout={scout} />}
       {waitUntil && <div className="note">Lichess rate limit — pausing about a minute before the next lookup.</div>}
       {error && (
         <div className="error row" style={{ alignItems: 'center', gap: 10 }}>
@@ -177,7 +188,15 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
       )}
       {loading && !data && !saved.length && <div className="muted">Loading…</div>}
       {!loading && !error && !rows.length && (
-        <div className="muted">{tab === 'mine' ? 'You have not reached this position in your imported games.' : 'No games in this position.'}</div>
+        <div className="muted">
+          {tab === 'mine'
+            ? 'You have not reached this position in your imported games.'
+            : tab === 'players'
+              ? scout
+                ? `${scout.player.name} hasn't reached this position as ${playerAs} in the games we have.`
+                : null
+              : 'No games in this position.'}
+        </div>
       )}
       {rows.length > 0 && (
         <TableWrap>

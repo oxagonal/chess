@@ -214,6 +214,20 @@ describe('sync between two devices', () => {
     expect(s.lichessAccount).toBe('phone_account');
   });
 
+  it('syncs scouted players and over-the-board games', async () => {
+    await db.players.add({ id: 'p1', name: 'Anna Smith', lichess: 'anna', createdAt: clock });
+    await db.games.add({ id: 'otb:1', source: 'otb', account: 'otb', url: '', white: 'Me', black: 'Anna Smith', userColor: 'white', result: '1-0', timeClass: 'classical', rated: true, playedAt: clock, sans: ['e4'] });
+    await sync(db);
+    await sync(phone);
+    expect((await phone.players.get('p1'))?.lichess).toBe('anna');
+    expect((await phone.games.get('otb:1'))?.black).toBe('Anna Smith');
+    tick();
+    await phone.players.delete('p1');
+    await sync(phone);
+    await sync(db);
+    expect(await db.players.count()).toBe(0);
+  });
+
   it('a restored backup replaces the data on every device', async () => {
     const rep = await createRepertoire('W', 'white');
     await addLine(rep.id, ['e4', 'e5']);

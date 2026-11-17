@@ -26,7 +26,7 @@ function toggle<T>(list: T[], item: T): T[] {
 export function SettingsPage() {
   const s = useSettings();
   const cacheCount = useLiveQuery(() => db.explorerCache.count(), []);
-  const gameCount = useLiveQuery(() => db.games.count(), []);
+  const gameCount = useLiveQuery(() => db.games.where('source').anyOf('lichess', 'chesscom').count(), []);
   const [msg, setMsg] = useState<string | null>(null);
   const [detected, setDetected] = useState<string | null>(null);
   const synced = useSyncStatus().connected;
@@ -264,9 +264,11 @@ export function SettingsPage() {
           </button>
           <button
             className="danger"
-            onClick={async () => confirm(synced ? 'Delete all imported games on all your synced devices?' : 'Delete all imported games?') && (await deleteAllGames(), flash('Games deleted.'))}
+            onClick={async () => confirm(
+                  `Delete all games downloaded from Lichess and Chess.com${synced ? ' on all your synced devices' : ''}? Over-the-board games you entered are kept.`,
+                ) && (await deleteAllGames(), flash('Games deleted.'))}
           >
-            Delete games ({gameCount ?? 0})
+            Delete downloaded games ({gameCount ?? 0})
           </button>
           <button
             className="danger"

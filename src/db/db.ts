@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { CoverageResult, PositionStats, Repertoire, RepMove, ReviewCard, ReviewLogEntry, StoredGame } from '../lib/types';
+import type { CoverageResult, Player, PlayerGame, PositionStats, Repertoire, RepMove, ReviewCard, ReviewLogEntry, StoredGame } from '../lib/types';
 import { trackChanges } from './changes';
 
 export interface ExplorerCacheRow {
@@ -31,6 +31,8 @@ export type ChessDB = Dexie & {
   coverage: EntityTable<CoverageResult, 'repId'>;
   kv: EntityTable<KvRow, 'key'>;
   syncState: EntityTable<SyncStateRow, 'key'>;
+  players: EntityTable<Player, 'id'>;
+  playerGames: EntityTable<PlayerGame, 'id'>;
 };
 
 export function openDb(name = 'chess-prep'): ChessDB {
@@ -46,6 +48,7 @@ export function openDb(name = 'chess-prep'): ChessDB {
     kv: 'key',
   });
   db.version(2).stores({ syncState: 'key' });
+  db.version(3).stores({ players: 'id, name', playerGames: 'id, playerId, [playerId+source]' });
   trackChanges(db);
   return db;
 }
