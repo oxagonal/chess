@@ -117,6 +117,34 @@ export function glyphClass(symbol: string | undefined): string {
   }
 }
 
+/** Tidied for storage (symbols in order, comment trimmed), or undefined if nothing is left. */
+export function cleanAnnotation(a: MoveAnnotation | undefined): MoveAnnotation | undefined {
+  if (isEmpty(a)) return undefined;
+  return {
+    ...(a!.glyphs?.length ? { glyphs: sortGlyphs(a!.glyphs) } : {}),
+    ...(a!.comment?.trim() ? { comment: a!.comment.trim() } : {}),
+  };
+}
+
+/** A line you tried in a game review, saved with the game: moves from the position after `from` moves. */
+export interface SavedLine {
+  id: string;
+  from: number;
+  sans: string[];
+  /** Annotations of its moves, by index in `sans`. */
+  notes?: Record<string, MoveAnnotation>;
+}
+
+/** The line with move `index` annotated (or its annotation removed). */
+export function withLineNote(line: SavedLine, index: number, a: MoveAnnotation | undefined): SavedLine {
+  const notes = { ...(line.notes ?? {}) };
+  const clean = cleanAnnotation(a);
+  if (clean) notes[String(index)] = clean;
+  else delete notes[String(index)];
+  const { notes: _old, ...rest } = line;
+  return Object.keys(notes).length ? { ...rest, notes } : rest;
+}
+
 /** An annotation with nothing in it is removed rather than stored. */
 export function isEmpty(a: MoveAnnotation | undefined): boolean {
   return !a || (!a.glyphs?.length && !a.comment?.trim());

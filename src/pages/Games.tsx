@@ -165,9 +165,13 @@ function GamesOverview() {
   const expectedCardIds = (repId: string, key: string) =>
     (graphOf(repId)?.graph.childrenOf(key) ?? []).filter((m) => m.mine).map((m) => m.id);
 
+  /**
+   * Drill the line through the position you left prep in — new (never learned) moves included, which
+   * a review would skip. Moves you had learned count as forgotten first.
+   */
   const drill = async (repId: string, key: string) => {
     await markForgotten(expectedCardIds(repId, key));
-    navigate('train', { rep: repId, mode: 'review', t: String(Date.now()) });
+    navigate('train', { rep: repId, mode: 'drill', at: key, t: String(Date.now()) });
   };
 
   const applyAll = async () => {

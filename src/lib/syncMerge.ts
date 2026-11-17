@@ -128,7 +128,9 @@ function resolve(table: SyncTable, l: Row, r: Row): Row {
     const g = { ...newer };
     if (older.prepApplied && !g.prepApplied) g.prepApplied = true;
     if (!g.review && older.review) g.review = older.review;
-    if (!g.annotations && older.annotations) g.annotations = older.annotations;
+    // Cleared annotations / side lines are stored as {} / [], so only a copy that never had them takes the other's.
+    if (g.annotations === undefined && older.annotations) g.annotations = older.annotations;
+    if (g.lines === undefined && older.lines) g.lines = older.lines;
     return sameRow(g, newer) ? newer : g;
   }
   return newer;

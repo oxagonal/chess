@@ -3,10 +3,14 @@ import { createPortal } from 'react-dom';
 import { MOVE_GLYPHS, OBSERVATION_GLYPHS, POSITION_GLYPHS, glyphClass, toggleGlyph, type Glyph, type MoveAnnotation } from '../lib/annotations';
 
 export interface AnnotationTarget {
+  /** The move's ply from the start of the game (for its move number). */
   ply: number;
   san: string;
   x: number;
   y: number;
+  /** A move of a side line (its id, and the move's index in it) rather than of the game itself. */
+  lineId?: string;
+  index?: number;
 }
 
 /**

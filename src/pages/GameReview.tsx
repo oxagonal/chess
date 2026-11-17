@@ -4,13 +4,14 @@ import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import type { Chess } from 'chessops/chess';
 import { db } from '../db/db';
 import { markForgotten } from '../db/repertoire';
-import { saveAnnotation } from '../db/annotations';
+import { saveAnnotation, saveLines } from '../db/annotations';
+import { uid } from '../db/db';
 import { useAllGraphs, useMediaQuery } from '../hooks';
 import { analyzeGame, PREP_LABEL, type PrepResult } from '../lib/prep';
 import type { RepGraph } from '../lib/graph';
 import { keyOf, opposite, playSan, playUci, startPos } from '../lib/chess';
 import { biggestSwingsFor, JUDGEMENT_GLYPH, swings } from '../lib/review';
-import { glyphClass, glyphName, moveGlyph, otherGlyphs } from '../lib/annotations';
+import { glyphClass, glyphName, moveGlyph, otherGlyphs, withLineNote, type SavedLine } from '../lib/annotations';
 import { clocksAt, formatClock, timeSpent } from '../lib/clocks';
 import { Board, type Arrow } from '../components/Board';
 import { MoveNote } from '../components/MoveNote';
@@ -44,13 +45,13 @@ export function GameReview({ id }: { id: string }) {
   const [flipped, setFlipped] = useState(false);
   const [menu, setMenu] = useState<AnnotationTarget | null>(null);
   const [layoutVersion, setLayoutVersion] = useState(0);
-  /**
-   * A line you're trying on the board: moves from the game's position after `from` moves. It shows as
-   * a side line in the scoresheet; the game itself always stays the main line.
-   */
-  const [line, setLine] = useState<{ from: number; sans: string[] } | null>(null);
-  /** How far into that line the board is (0 = on the game's own moves). */
-  const [lineAt, setLineAt] = useState(0);
+  /** Where the board is in a side line (`at` = moves into it), or null when it's on the game itself. */
+  const [sel, setSel] = useState<{ id: string; at: number } | null>(null);
+  /** Side lines as just changed here, until the saved copy of the game catches up. */
+  const [localLines, setLocalLines] = useState<SavedLine[] | null>(null);
+  useEffect(() => {
+    if (localLines && JSON.stringify(game?.lines ?? []) === JSON.stringify(localLines)) setLocalLines(null);
+  }, [game?.lines, localLines]);
   const nav = useRef({ back: () => {}, forward: () => {}, start: () => {}, end: () => {} });
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -94,50 +95,64 @@ export function GameReview({ id }: { id: string }) {
   const devPly = r.ply;
   const last = replay.positions.length - 1;
   const cur = Math.min(cursor ?? devPly ?? Math.min(r.bookPlies, last), last);
-  /** Go to a move of the game itself (leaving any line you're trying; it stays in the scoresheet). */
+  /** Go to a move of the game itself (side lines stay in the scoresheet). */
   const goTo = (ply: number) => {
     setCursor(Math.max(0, Math.min(last, ply)));
-    setLineAt(0);
+    setSel(null);
   };
   const graph = r.repId ? graphs.find((x) => x.rep.id === r.repId)?.graph : undefined;
 
-  // The line you're trying, replayed from where it leaves the game.
-  const tried = (() => {
-    if (!line) return undefined;
-    const positions: Chess[] = [replay.positions[line.from]];
-    const ucis: string[] = [];
-    for (const san of line.sans) {
-      const p = playSan(positions[positions.length - 1], san);
-      if (!p) break;
-      positions.push(p.pos);
-      ucis.push(p.uci);
-    }
-    return { positions, ucis };
-  })();
-  const inLine = !!line && !!tried && lineAt > 0;
-  const pos = inLine ? tried.positions[Math.min(lineAt, tried.positions.length - 1)] : replay.positions[cur];
-  const lastMove = inLine ? tried.ucis[lineAt - 1] : cur > 0 ? replay.ucis[cur - 1] : undefined;
+  // Saved side lines (each leaves the game after `from` moves); the one the board is in, replayed.
+  const lines = (localLines ?? game.lines ?? []).filter((l) => l.from <= last);
+  const writeLines = (next: SavedLine[]) => {
+    setLocalLines(next);
+    void saveLines(game.id, next);
+  };
+  const selLine = sel ? lines.find((l) => l.id === sel.id) : undefined;
+  const tried = selLine ? replayLine(replay.positions[selLine.from], selLine.sans) : undefined;
+  const inLine = !!sel && !!selLine && !!tried && sel.at > 0;
+  const at = inLine ? Math.min(sel.at, tried.positions.length - 1) : 0;
+  const pos = inLine ? tried.positions[at] : replay.positions[cur];
+  const lastMove = inLine ? tried.ucis[at - 1] : cur > 0 ? replay.ucis[cur - 1] : undefined;
   /** Moves played to reach the board's position (for move numbers). */
-  const plyHere = inLine ? line.from + lineAt : cur;
+  const plyHere = inLine ? selLine.from + at : cur;
 
-  /** A move made on the board (or picked from Stockfish / the explorer). */
+  /**
+   * A move made on the board (or picked from Stockfish / the explorer). The game's own move steps
+   * forward; a move a side line already has follows it; at a line's end the line goes on; anything
+   * else becomes a new side line (sharing the moves before it) — nothing is ever thrown away.
+   */
   const play = (move: { uci?: string; san?: string }) => {
     const played = move.uci ? playUci(pos, move.uci) : move.san ? playSan(pos, move.san) : undefined;
     if (!played) return;
+    let from: number;
+    let prefix: string[];
     if (!inLine) {
-      // The game's own move just steps forward; anything else starts a line from here.
       if (replay.sans[cur] === played.san) return goTo(cur + 1);
-      setLine({ from: cur, sans: [played.san] });
-      setLineAt(1);
-      return;
+      from = cur;
+      prefix = [];
+    } else {
+      if (selLine.sans[at] === played.san) return setSel({ id: selLine.id, at: at + 1 });
+      if (at === selLine.sans.length) {
+        writeLines(lines.map((l) => (l.id === selLine.id ? { ...l, sans: [...l.sans, played.san] } : l)));
+        return setSel({ id: selLine.id, at: at + 1 });
+      }
+      from = selLine.from;
+      prefix = selLine.sans.slice(0, at);
     }
-    if (line.sans[lineAt] === played.san) return setLineAt(lineAt + 1);
-    setLine({ from: line.from, sans: [...line.sans.slice(0, lineAt), played.san] });
-    setLineAt(lineAt + 1);
+    const want = [...prefix, played.san];
+    setCursor(from);
+    const existing = lines.find((l) => l.from === from && want.every((san, k) => l.sans[k] === san));
+    if (existing) return setSel({ id: existing.id, at: want.length });
+    // The shared moves keep their annotations in the new line.
+    const notes = inLine ? Object.fromEntries(Object.entries(selLine.notes ?? {}).filter(([k]) => Number(k) < prefix.length)) : {};
+    const added: SavedLine = { id: uid(), from, sans: want, ...(Object.keys(notes).length ? { notes } : {}) };
+    writeLines([...lines, added]);
+    setSel({ id: added.id, at: want.length });
   };
   nav.current = {
-    back: () => (inLine ? setLineAt(lineAt - 1) : goTo(cur - 1)),
-    forward: () => (inLine ? lineAt < line.sans.length && setLineAt(lineAt + 1) : goTo(cur + 1)),
+    back: () => (inLine ? setSel({ id: selLine.id, at: at - 1 }) : goTo(cur - 1)),
+    forward: () => (inLine ? at < selLine.sans.length && setSel({ id: selLine.id, at: at + 1 }) : goTo(cur + 1)),
     start: () => goTo(0),
     end: () => goTo(last),
   };
@@ -254,31 +269,41 @@ export function GameReview({ id }: { id: string }) {
           current={inLine ? -1 : cur}
           onSelect={goTo}
           sideLines={(i) =>
-            line && i === line.from
-              ? [
-                  {
-                    key: 'tried',
-                    moves: line.sans.map((san, j) => ({ san, className: inLine && j === lineAt - 1 ? 'current' : undefined })),
-                    onSelect: (j) => {
-                      setCursor(line.from);
-                      setLineAt(j + 1);
-                    },
-                    tail: (
-                      <button
-                        className="ghost small tried-remove"
-                        title="Remove this line"
-                        aria-label="Remove this line"
-                        onClick={() => {
-                          setLine(null);
-                          setLineAt(0);
-                        }}
-                      >
-                        ✕
-                      </button>
-                    ),
-                  },
-                ]
-              : []
+            lines
+              .filter((l) => l.from === i)
+              .map((l) => ({
+                key: l.id,
+                moves: l.sans.map((san, j) => {
+                  const a = l.notes?.[String(j)];
+                  const mg = moveGlyph(a);
+                  const others = otherGlyphs(a);
+                  return {
+                    san: `${san}${mg ?? ''}${others.length ? ` ${others.join(' ')}` : ''}`,
+                    className: [inLine && sel?.id === l.id && j === at - 1 ? 'current' : '', glyphClass(mg)].join(' '),
+                    title: [mg ? glyphName(mg) : '', ...others.map(glyphName)].filter(Boolean).join(' · ') || undefined,
+                    comment: a?.comment,
+                    menu: annotateProps((x, y) => setMenu({ ply: l.from + j, san, x, y, lineId: l.id, index: j })),
+                  };
+                }),
+                onSelect: (j: number) => {
+                  setCursor(l.from);
+                  setSel({ id: l.id, at: j + 1 });
+                },
+                tail: (
+                  <button
+                    className="ghost small tried-remove"
+                    title="Remove this line"
+                    aria-label="Remove this line"
+                    onClick={() => {
+                      if (!confirm('Remove this side line?')) return;
+                      writeLines(lines.filter((x) => x.id !== l.id));
+                      if (sel?.id === l.id) setSel(null);
+                    }}
+                  >
+                    ✕
+                  </button>
+                ),
+              }))
           }
         />
       </div>
@@ -370,12 +395,17 @@ export function GameReview({ id }: { id: string }) {
   const engine = <EnginePanel fenKey={key} ply={plyHere} onPlay={(san) => play({ san })} />;
   // The explorer shows what's played here; picking a move plays it like a move on the board.
   const explorer = <ExplorerPanel fenKey={key} color={game.userColor} onPlay={(san) => play({ san })} />;
-  const annotationMenu = menu && (
+  const menuLine = menu?.lineId ? lines.find((l) => l.id === menu.lineId) : undefined;
+  const annotationMenu = menu && (!menu.lineId || menuLine) && (
     <AnnotationMenu
-      key={menu.ply}
+      key={`${menu.lineId ?? 'game'}:${menu.ply}`}
       target={menu}
-      annotation={annotation(menu.ply)}
-      onChange={(next) => void saveAnnotation(game.id, menu.ply, next)}
+      annotation={menuLine ? menuLine.notes?.[String(menu.index)] : annotation(menu.ply)}
+      onChange={(next) =>
+        menuLine
+          ? writeLines(lines.map((l) => (l.id === menuLine.id ? withLineNote(l, menu.index!, next) : l)))
+          : void saveAnnotation(game.id, menu.ply, next)
+      }
       onClose={closeMenu}
     />
   );
@@ -438,8 +468,9 @@ function PrepActions({ game, r, graph }: { game: StoredGame; r: PrepResult; grap
         <button
           className="primary small"
           onClick={async () => {
+            // A drill (not a review) so a move you never learned is included too; learned ones count as forgotten.
             await markForgotten(graph.childrenOf(r.key!).filter((m) => m.mine).map((m) => m.id), game.id);
-            navigate('train', { rep: r.repId, mode: 'review', t: String(Date.now()) });
+            navigate('train', { rep: r.repId, mode: 'drill', at: r.key, t: String(Date.now()) });
           }}
         >
           Drill this move now
@@ -480,4 +511,17 @@ function fitBoard(from: HTMLElement) {
   if (!fit || !api) return;
   const { clientWidth: w, clientHeight: h } = fit;
   if (Math.abs(w - h) > 2) api.group.api.setSize({ width: api.group.api.width + (h - w) });
+}
+
+/** A side line's positions and moves, from where it leaves the game (stops at an illegal move). */
+function replayLine(start: Chess, sans: string[]): { positions: Chess[]; ucis: string[] } {
+  const positions: Chess[] = [start];
+  const ucis: string[] = [];
+  for (const san of sans) {
+    const p = playSan(positions[positions.length - 1], san);
+    if (!p) break;
+    positions.push(p.pos);
+    ucis.push(p.uci);
+  }
+  return { positions, ucis };
 }

@@ -107,6 +107,11 @@ export function MoveList({
                     <span className={`mv ${sm.note ? 'has-note' : ''} ${sm.className ?? ''}`} title={sm.title} onClick={() => s.onSelect(j)} {...sm.menu}>
                       {sm.san}
                     </span>
+                    {sm.comment && (
+                      <span className="ml-side-comment" {...sm.menu}>
+                        {sm.comment}
+                      </span>
+                    )}
                   </span>
                 );
               })}

@@ -1,20 +1,23 @@
 import { db } from './db';
-import { isEmpty, sortGlyphs, type MoveAnnotation } from '../lib/annotations';
+import { cleanAnnotation, type MoveAnnotation, type SavedLine } from '../lib/annotations';
 
-/** Save (or with nothing left in it, remove) the annotation of move `ply` of a game. */
+/**
+ * Save (or with nothing left in it, remove) the annotation of move `ply` of a game. With none left the
+ * game keeps an empty {} rather than nothing, so sync can't bring old annotations back.
+ */
 export async function saveAnnotation(gameId: string, ply: number, a: MoveAnnotation | undefined) {
-  const value: MoveAnnotation | undefined = isEmpty(a)
-    ? undefined
-    : {
-        ...(a!.glyphs?.length ? { glyphs: sortGlyphs(a!.glyphs) } : {}),
-        ...(a!.comment?.trim() ? { comment: a!.comment.trim() } : {}),
-      };
+  const value = cleanAnnotation(a);
   await db.transaction('rw', db.games, async () => {
     const game = await db.games.get(gameId);
     if (!game) return;
     const annotations = { ...(game.annotations ?? {}) };
     if (value) annotations[String(ply)] = value;
     else delete annotations[String(ply)];
-    await db.games.update(gameId, { annotations: Object.keys(annotations).length ? annotations : undefined });
+    await db.games.update(gameId, { annotations });
   });
+}
+
+/** Save the game's side lines (an empty list stays [] for the same reason). */
+export async function saveLines(gameId: string, lines: SavedLine[]) {
+  await db.games.update(gameId, { lines });
 }

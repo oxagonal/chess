@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { db } from '../db/db';
 import { saveAnnotation } from '../db/annotations';
-import { moveGlyph, otherGlyphs, sortGlyphs, toggleGlyph } from '../lib/annotations';
+import { moveGlyph, otherGlyphs, sortGlyphs, toggleGlyph, withLineNote } from '../lib/annotations';
 import { biggestSwingsFor, type GameReview } from '../lib/review';
 import { clocksAt, formatClock, timeSpent } from '../lib/clocks';
 import { emptySnapshot, mergeSync } from '../lib/syncMerge';
@@ -34,7 +34,15 @@ describe('annotations', () => {
     expect((await db.games.get('g1'))!.annotations).toEqual({ '0': { glyphs: ['!!', 'N'], comment: 'The big idea' }, '2': { glyphs: ['?!'] } });
     await saveAnnotation('g1', 2, { glyphs: [], comment: ' ' });
     await saveAnnotation('g1', 0, undefined);
-    expect((await db.games.get('g1'))!.annotations).toBeUndefined();
+    // Kept as an empty {} (not removed), so sync can't bring the old annotations back.
+    expect((await db.games.get('g1'))!.annotations).toEqual({});
+  });
+
+  it('annotates side-line moves', () => {
+    let line = { id: 'l1', from: 6, sans: ['Nxd4', 'exd4', 'O-O'] };
+    line = withLineNote(line, 1, { glyphs: ['!', 'N'], comment: ' only move ' });
+    expect(line).toEqual({ id: 'l1', from: 6, sans: ['Nxd4', 'exd4', 'O-O'], notes: { '1': { glyphs: ['!', 'N'], comment: 'only move' } } });
+    expect(withLineNote(line, 1, { glyphs: [] })).toEqual({ id: 'l1', from: 6, sans: ['Nxd4', 'exd4', 'O-O'] });
   });
 
   it('survives sync when the newer copy of the game has none', () => {
@@ -46,6 +54,17 @@ describe('annotations', () => {
     const [g] = mergeSync({ local, remote, base: null, now: 10 }).doc.tables.games.rows;
     expect(g.annotations).toEqual({ '0': { glyphs: ['!'] } });
     expect(g.prepApplied).toBe(true);
+  });
+
+  it('doesn’t bring back annotations or side lines you cleared', () => {
+    const base = { id: 'g', source: 'lichess', playedAt: 1, sans: ['e4'] };
+    const local = emptySnapshot();
+    local.games.set('g', { ...base, annotations: {}, lines: [], modifiedAt: 9 });
+    const remote = mergeSync({ local: emptySnapshot(), remote: null, base: null, now: 0 }).doc;
+    remote.tables.games.rows = [{ ...base, annotations: { '0': { glyphs: ['!'] } }, lines: [{ id: 'l', from: 0, sans: ['d4'] }], modifiedAt: 5 }];
+    const [g] = mergeSync({ local, remote, base: null, now: 10 }).doc.tables.games.rows;
+    expect(g.annotations).toEqual({});
+    expect(g.lines).toEqual([]);
   });
 });
 

@@ -1,5 +1,5 @@
 import type { GameReview } from './review';
-import type { MoveAnnotation } from './annotations';
+import type { MoveAnnotation, SavedLine } from './annotations';
 import type { Color } from './chess';
 
 export interface Repertoire {
@@ -102,6 +102,8 @@ export interface StoredGame {
   event?: string;
   /** Your annotations (symbols, comments), by the move's index in `sans` (as a string key). */
   annotations?: Record<string, MoveAnnotation>;
+  /** Lines you tried in the review (side lines off the game's moves), with their own annotations. */
+  lines?: SavedLine[];
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;
 }
