@@ -46,6 +46,16 @@ describe('names', () => {
     expect(sameName('', '')).toBe(false);
   });
 
+  it('matches names with middle names and initials, but not a lone first or last name', () => {
+    // The five ways Lumbra's Gigabase spells one player.
+    for (const n of ['Iinuma, Paul Y', 'Paul Iinuma', 'Paul Yuu Iinuma', 'Paul Y Iinuma', 'Paul Yuu-RE Iinuma']) expect(sameName('Paul Iinuma', n)).toBe(true);
+    expect(sameName('Iinuma, Paul Y', 'Paul Yuu Iinuma')).toBe(false); // Y vs Yuu: neither contains the other
+    expect(sameName('Iinuma', 'Iinuma, Paul Y')).toBe(false);
+    expect(sameName('Paul', 'Paul Iinuma')).toBe(false);
+    expect(sameName('Paul Y', 'Iinuma, Paul Y')).toBe(false); // only one real word
+    expect(sameName('Paul Iinuma', 'Paul Smith')).toBe(false);
+  });
+
   it('suggests names that share a word, for typos and nicknames', () => {
     const names = ['Iinuma, Paul', 'Paul Smith', 'Anna Iinuma', 'Bob Jones'];
     expect(similarNames('Paul Inuma', names)).toEqual(['Iinuma, Paul', 'Paul Smith']);

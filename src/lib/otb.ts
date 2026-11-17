@@ -23,10 +23,19 @@ export function normalizeName(name: string): string {
     .join(' ');
 }
 
+/**
+ * The same person, allowing for middle names and initials: one name's words all appear in the other
+ * ("Paul Iinuma" = "Iinuma, Paul Y" = "Paul Yuu Iinuma"). The shorter name needs at least two real
+ * words (not just initials), so "Paul" or "Iinuma" alone doesn't match everyone with that name.
+ */
 export function sameName(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
   const na = normalizeName(a);
-  return na !== '' && na === normalizeName(b);
+  const nb = normalizeName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  const [short, long] = na.length <= nb.length ? [na.split(' '), new Set(nb.split(' '))] : [nb.split(' '), new Set(na.split(' '))];
+  return short.filter((w) => w.length >= 2).length >= 2 && short.every((w) => long.has(w));
 }
 
 /** Names that share a word with `query` (e.g. the same surname) but aren't the same name — for "did you mean". */
