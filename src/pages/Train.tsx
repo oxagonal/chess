@@ -188,7 +188,9 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
         graphs.set(rep.id, graph);
         const cards = await db.cards.where('repId').equals(rep.id).toArray();
         // A line you picked yourself trains every move in it, learned or not.
-        let pool = cards.filter((c) => (mode === 'review' ? isDue(c, now) : mode === 'learn' ? isNew(c) : at ? true : !isNew(c)));
+        // Drilling a chosen line or move takes every move in it, learned or not (drilling one counts as
+        // learning it); the weakest-moves drill only has learned moves to choose from.
+        let pool = cards.filter((c) => (mode === 'review' ? isDue(c, now) : mode === 'learn' ? isNew(c) : at || under ? true : !isNew(c)));
         const cov = await db.coverage.get(rep.id);
         if (cov) probs.set(rep.id, cov.probs);
         if (mode === 'drill') {
@@ -284,6 +286,8 @@ function Session({ setup }: { setup: SessionSetup }) {
   skipRepeatsRef.current = live.trainSkipRepeats;
   // Your moves played so far in this session (Skip repeats). A new session starts empty.
   const seenRef = useRef(new Set<string>());
+  // Moves graded this session: a drill grades each move you play once, wherever it comes up.
+  const gradedRef = useRef(new Set<string>());
 
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const flashFor = (f: 'good' | 'bad' | 'hint') => {
@@ -432,12 +436,21 @@ function Session({ setup }: { setup: SessionSetup }) {
         return;
       }
       if (step.kind === 'practice') {
-        // Further down the branch: you play it, but it doesn't count toward your schedule.
-        if (wrong > 0 || hint) setNoteMove({ id: expected.id, san: expected.san });
+        const missed = wrong > 0 || hint;
+        if (missed) setNoteMove({ id: expected.id, san: expected.san });
         feedbackToken.current++;
-        setFeedback({ kind: wrong > 0 || hint ? 'hint' : 'good', text: <b>{wrong > 0 || hint ? `${expected.san} — keep it in mind.` : `✓ ${expected.san}`}</b> });
+        setFeedback({ kind: missed ? 'hint' : 'good', text: <b>{missed ? `${expected.san} — keep it in mind.` : `✓ ${expected.san}`}</b> });
+        // A drill counts every move you play as reviewed — ahead of time if it wasn't due yet — so its
+        // next review is scheduled from today. In a review line the moves around the due ones are
+        // practice only.
+        if (mode === 'drill' && !gradedRef.current.has(expected.id)) {
+          gradedRef.current.add(expected.id);
+          setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (missed ? 0 : 1), failed: s.failed + (missed ? 1 : 0) }));
+          void gradeCard(expected.id, missed ? Rating.Again : Rating.Good, 'review');
+        }
         return;
       }
+      gradedRef.current.add(expected.id);
       const failed = wrong > 0 || hint;
       if (failed) setNoteMove({ id: expected.id, san: expected.san });
       pendingRef.current.delete(expected.id);
@@ -513,7 +526,7 @@ function Session({ setup }: { setup: SessionSetup }) {
         <div className="hero">
           <h1>Session complete</h1>
           <p className="muted">
-            {mode === 'learn' ? 'New moves are scheduled for their first reviews shortly.' : mode === 'drill' ? 'Drill finished — results feed into your schedule.' : 'All due reviews done.'}
+            {mode === 'learn' ? 'New moves are scheduled for their first reviews shortly.' : mode === 'drill' ? 'Drill finished — every move you played counts as reviewed, so its next review is scheduled from today.' : 'All due reviews done.'}
           </p>
           <div className="grid3" style={{ marginTop: 12 }}>
             <Stat value={stats.done} label="Moves" />
