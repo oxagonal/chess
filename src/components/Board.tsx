@@ -32,6 +32,7 @@ interface BoardProps {
  */
 export function Board({ pos, orientation, interactive = false, lastMove, arrows, onMove, flash, markSquare }: BoardProps) {
   const el = useRef<HTMLDivElement>(null);
+  const pendingShapes = useRef<DrawShape[] | null>(null);
   const api = useRef<Api | null>(null);
   const onMoveRef = useRef(onMove);
   onMoveRef.current = onMove;
@@ -69,7 +70,16 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
       draggable: { showGhost: true },
       drawable: { enabled: true, visible: true },
     });
-    const ro = new ResizeObserver(() => api.current?.redrawAll());
+    // Skip redraws while the board has no size (e.g. a studio pane being moved): chessground would
+    // draw arrows at NaN coordinates. Arrows set meanwhile are applied once it's visible again.
+    const ro = new ResizeObserver(() => {
+      if (!node.clientWidth) return;
+      if (pendingShapes.current) {
+        api.current?.setAutoShapes(pendingShapes.current);
+        pendingShapes.current = null;
+      }
+      api.current?.redrawAll();
+    });
     ro.observe(node);
     return () => {
       ro.disconnect();
@@ -106,6 +116,10 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
       return sq ? [{ orig: sq[0] as Key, dest: sq[1] as Key, brush: a.brush ?? 'green' }] : [];
     });
     if (markSquare) shapes.push({ orig: markSquare as Key, brush: 'red' });
+    if (!el.current?.clientWidth) {
+      pendingShapes.current = shapes;
+      return;
+    }
     cg.setAutoShapes(shapes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shapesKey, tick]);

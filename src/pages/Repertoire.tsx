@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
@@ -14,7 +14,10 @@ import {
 } from '../db/repertoire';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
 import { useCards, useCoverage, useMediaQuery, useRepertoires, useRepGraph } from '../hooks';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import type { StudioPanelDef } from '../components/Studio';
+// The studio (dockview) loads only when the desktop builder opens it — phones never download it.
+const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
+import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { MoveNote } from '../components/MoveNote';
@@ -276,7 +279,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const freshCoverage = rep && settings.loaded && isCoverageFresh(coverage, rep, settings) ? coverage : undefined;
   const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings, freshCoverage);
   const [flipped, setFlipped] = useState(false);
-  // Desktop: a resizable "studio" (drag the borders between panes; remembered per device).
+  // Desktop: a dockable "studio" (tabs, rows and columns you arrange; remembered per device).
   // Phones and narrow windows: everything stacked, the page scrolls.
   const stacked = useMediaQuery('(max-width: 900px)');
   const [layoutVersion, setLayoutVersion] = useState(0);
@@ -502,15 +505,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const dueCount = (cards ?? []).filter((c) => isDue(c)).length;
   const newCount = (cards ?? []).filter(isNew).length;
   const nav = settings.builderNav;
-  // Forget the saved pane sizes (react-resizable-panels keeps them in localStorage, per device).
-  const resetLayout = () => {
-    try {
-      for (const k of Object.keys(localStorage)) if (k.startsWith('react-resizable-panels:builder')) localStorage.removeItem(k);
-    } catch {
-      /* storage unavailable: nothing saved anyway */
-    }
-    setLayoutVersion((v) => v + 1);
-  };
+  // Back to the default studio layout (the Studio forgets the saved one).
+  const resetLayout = () => setLayoutVersion((v) => v + 1);
 
   // Side lines: the repertoire's other moves where the displayed line could have gone differently,
   // each run ahead to its next choice.
@@ -763,6 +759,11 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
         <button onClick={() => setFlipped(!flipped)} title="Flip board (f)">
           ⇅
         </button>
+        {!stacked && (
+          <button onClick={(e) => fitBoard(e.currentTarget)} title="Snap this pane to the board: no spare space around it">
+            Fit
+          </button>
+        )}
         {!zen && (
           <a
             className="btn small"
@@ -782,7 +783,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           </label>
         )}
       </div>
-      {!zen && (
+      {!zen && stacked && (
         <CoverageBox
           reach={reach}
           inRep={inRep}
@@ -866,44 +867,80 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
       </div>
     );
 
+  const hidden = <div className="muted small studio-hidden">Hidden while you play from memory.</div>;
+  const studioPanels: StudioPanelDef[] = [
+    { type: 'board', title: 'Board', render: () => <div className="board-pane">{boardPane}</div> },
+    { type: 'stockfish', title: 'Stockfish', fitHeight: true, render: () => (zen ? hidden : engine) },
+    {
+      type: 'moves',
+      title: 'Moves',
+      render: () => (
+        <>
+          {memoryPanel}
+          {movesPanel}
+        </>
+      ),
+    },
+    { type: 'explorer', title: 'Explorer', multiple: true, render: () => (zen ? hidden : explorer) },
+    {
+      type: 'coverage',
+      title: 'Coverage',
+      fitHeight: true,
+      render: () =>
+        zen ? (
+          hidden
+        ) : (
+          <CoverageBox
+            reach={reach}
+            inRep={inRep}
+            score={coverage?.coverage?.[key]}
+            prob={prob}
+            oneInN={goalN}
+            source={sourceLabel(settings)}
+            running={live.running || live.stale}
+            error={live.error}
+          />
+        ),
+    },
+  ];
+
   return (
     <div className="builder studio">
       {!zen && header}
-      <PanelGroup key={layoutVersion} direction="horizontal" autoSaveId="builder-cols" className="studio-group">
-        <Panel id="board" order={1} defaultSize={42} minSize={22}>
-          <div className="studio-pane board-pane">{boardPane}</div>
-        </Panel>
-        <PanelResizeHandle className="resize-handle" />
-        <Panel id="side" order={2} defaultSize={58} minSize={25}>
-          {zen ? (
-            <PanelGroup key={layoutVersion} direction="vertical" autoSaveId="builder-side-zen">
-              <Panel id="memory" order={1} defaultSize={30} minSize={15}>
-                <div className="studio-pane">{memoryPanel}</div>
-              </Panel>
-              <PanelResizeHandle className="resize-handle" />
-              <Panel id="moves" order={2} defaultSize={70} minSize={15}>
-                <div className="studio-pane">{movesPanel}</div>
-              </Panel>
-            </PanelGroup>
-          ) : (
-            <PanelGroup key={layoutVersion} direction="vertical" autoSaveId="builder-side">
-              <Panel id="stockfish" order={1} defaultSize={16} minSize={8}>
-                <div className="studio-pane">{engine}</div>
-              </Panel>
-              <PanelResizeHandle className="resize-handle" />
-              <Panel id="moves" order={2} defaultSize={42} minSize={12}>
-                <div className="studio-pane">{movesPanel}</div>
-              </Panel>
-              <PanelResizeHandle className="resize-handle" />
-              <Panel id="explorer" order={3} defaultSize={42} minSize={12}>
-                <div className="studio-pane">{explorer}</div>
-              </Panel>
-            </PanelGroup>
-          )}
-        </Panel>
-      </PanelGroup>
+      {zen && <div className="builder-head" />}
+      <div className="studio-wrap">
+        <Suspense fallback={<div className="muted small">Loading the studio…</div>}>
+          <Studio storageKey="builder-studio-v1" panels={studioPanels} defaultLayout={defaultBuilderLayout} resetSignal={layoutVersion} />
+        </Suspense>
+      </div>
     </div>
   );
+}
+
+/** Board on the left (coverage under it); Stockfish, moves and the explorer stacked on the right. */
+function defaultBuilderLayout(api: DockviewApi) {
+  const add = (type: string, title: string, position?: Parameters<DockviewApi['addPanel']>[0]['position'], size?: { initialWidth?: number; initialHeight?: number }) =>
+    api.addPanel({ id: type, component: 'panel', title, params: { type }, ...(position ? { position } : {}), ...size });
+  add('board', 'Board');
+  add('stockfish', 'Stockfish', { referencePanel: 'board', direction: 'right' }, { initialWidth: Math.round(api.width * 0.56) });
+  add('moves', 'Moves', { referencePanel: 'stockfish', direction: 'below' });
+  add('explorer', 'Explorer', { referencePanel: 'moves', direction: 'below' });
+  add('coverage', 'Coverage', { referencePanel: 'board', direction: 'below' }, { initialHeight: 96 });
+  // Stockfish starts at the height of a header and three lines (it snaps to its content anyway).
+  api.getPanel('stockfish')?.group.api.setSize({ height: 160 });
+  api.getPanel('moves')?.group.api.setSize({ height: Math.round((api.height - 160) * 0.5) });
+}
+
+/**
+ * Snap the board's pane to the board: make its width match the board's height, so the board is as
+ * big as the pane's height allows with no spare space beside it (or the pane narrows if too wide).
+ */
+function fitBoard(from: HTMLElement) {
+  const fit = from.closest('.studio-body')?.querySelector('.board-fit') as HTMLElement | null;
+  const api = (from.closest('.studio-body') as (HTMLElement & { __dvPanelApi?: DockviewPanelApi }) | null)?.__dvPanelApi;
+  if (!fit || !api) return;
+  const { clientWidth: w, clientHeight: h } = fit;
+  if (Math.abs(w - h) > 2) api.group.api.setSize({ width: api.group.api.width + (h - w) });
 }
 
 function CardBadge({ state, due }: { state: number; due: number }) {
