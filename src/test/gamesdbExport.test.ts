@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
-import { BUCKETS, dateNumber, encodeSans, movetextSans, playerId, runExport } from '../../gamesdb/export';
+import { BUCKETS, dateNumber, encodeSans, encodeUcis, movetextSans, playerId, runExport } from '../../gamesdb/export';
 import { bucketGames, decodeMoves, encodeMoves, matchNames, type GameBucket, type NameEntry } from '../lib/gamesdb';
 
 describe('exporter pieces', () => {
@@ -28,6 +28,19 @@ describe('exporter pieces', () => {
     expect(playerId('Paul Iinuma')).toBe(8114831744130966);
     expect(playerId('Carlsen, Magnus') % BUCKETS).toBe(3555);
     expect(playerId('Müller, Jörg')).toBe(6483172313183628);
+  });
+
+  it('encodes the Scid 5 reader’s UCI moves to the same vectors (castling as e1g1, promotions e7e8q)', () => {
+    // The spec's vectors in UCI, as gamesdb/scid5.py prints them (python-chess move.uci()).
+    for (const [ucis, encoded] of [
+      ['e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3 a7a6', 'DBwyIgYVMysLGyIbFRs-LQESMCg'],
+      ['e2e4 e7e5 g1f3 b8c6 f1c4 g8f6 e1g1 f8e7 d2d4 e5d4 e4e5 f6e4', 'DBw0JAYVOSoFGj4tBAY9NAsbJBscJC0c'],
+      ['a2a4 h7h5 a4a5 h5h4 a5a6 h4h3 a6b7 h3g2 b7a8n g2h1q', 'CBg3JxggJx8gKB8XKDEXDjF4Dgc'],
+    ]) {
+      expect(encodeUcis(ucis.split(' ')).mv).toBe(encoded);
+      expect(decodeMoves(encoded).length).toBe(ucis.split(' ').length);
+    }
+    expect(encodeUcis(Array(80).fill('g1f3')).plies).toBe(60);
   });
 
   it('stops at an illegal move and caps at 30 moves', () => {

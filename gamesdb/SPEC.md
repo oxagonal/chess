@@ -38,6 +38,20 @@ The Gigabase OTB database in Scid 5 format (`.si5` / `.sn5` / `.sg5`), decoded g
 line only — ignore variations and comments). Skip games that start from a set-up position (FEN) or
 have no moves.
 
+### Running the export
+
+`gamesdb/export.ts` implements this spec. It reads the PGN download, or the Scid 5 download directly
+through `gamesdb/scid5.py` (Python 3 with python-chess; it decodes the main line's first 60 plies
+with a fast 64-square decoder and checks every 50th game against python-chess):
+
+```bash
+npm run export:gamesdb -- --release 2026-11-11 --since 2000 database/…/LumbrasGigaBase_OTB.si5
+```
+
+`--since 2000` leaves out games from before 2000 (games with an unknown year are kept); the reader
+skips them before decoding. `GAMESDB_WORKERS` sets the number of decoding processes. The 2026-11-11
+release took about 17 minutes: 10,471,918 games from 2000 on, 612,134 players, 9,120 files, 2.25 GB.
+
 ## Output: `gamesdb/dist/`
 
 ```

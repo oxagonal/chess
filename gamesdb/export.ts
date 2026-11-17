@@ -1,8 +1,10 @@
 /**
- * Exports Lumbra's Gigabase (the OTB PGN download) into the static games database described in
- * SPEC.md — run on your computer:
+ * Exports Lumbra's Gigabase into the static games database described in SPEC.md — run on your
+ * computer, from the PGN download or the Scid 5 download (.si5, read by gamesdb/scid5.py — needs
+ * Python 3 with python-chess):
  *
  *   npm run export:gamesdb -- --release 2026-11-02 path/to/LumbrasGigaBase_OTB.pgn [more.pgn …]
+ *   npm run export:gamesdb -- --release 2026-11-11 path/to/LumbrasGigaBase_OTB.si5
  *
  * One streaming pass over the PGN writes every game (twice, once per player) into 256 temporary
  * files by bucket; a second pass turns each into the final bucket files; then the name index.
@@ -12,6 +14,7 @@ import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, 
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { Chess } from 'chessops/chess';
@@ -47,6 +50,18 @@ export function encodeSans(sans: readonly string[]): { mv: string; plies: number
     n++;
   }
   return { mv: bytes.subarray(0, n * 2).toString('base64url'), plies: n };
+}
+
+/** The same encoding from UCI moves (e2e4, e1g1, e7e8q) — what the Scid 5 reader gives. */
+export function encodeUcis(ucis: readonly string[]): { mv: string; plies: number } {
+  const n = Math.min(ucis.length, MAX_PLIES);
+  const bytes = Buffer.alloc(n * 2);
+  for (let i = 0; i < n; i++) {
+    const u = ucis[i];
+    bytes[i * 2] = sq(u);
+    bytes[i * 2 + 1] = sq(u.slice(2)) | ((u.length > 4 ? PROMOS.indexOf(u[4]) : 0) << 6);
+  }
+  return { mv: bytes.toString('base64url'), plies: n };
 }
 
 const RESULT_TOKENS = new Set(['1-0', '0-1', '1/2-1/2', '½-½', '*']);
@@ -112,6 +127,41 @@ interface Totals {
 interface Pgn {
   headers: Record<string, string>;
   movetext: string;
+  /** Main-line moves already in UCI (the Scid 5 reader) — used instead of movetext. */
+  ucis?: string[];
+}
+
+/**
+ * Streams the games of a Scid 5 database (base.si5 / .sn5 / .sg5) through gamesdb/scid5.py, which
+ * prints one JSON line per game: [white, black, date, result, event, tc, whiteElo, blackElo,
+ * whiteFideId, blackFideId, "uci uci …"].
+ */
+export async function* readScid5(si5: string, log: (msg: string) => void, onGame?: () => void, sinceYear?: number): AsyncGenerator<Pgn> {
+  const base = si5.replace(/\.si5$/i, '');
+  const script = join(dirname(fileURLToPath(import.meta.url)), 'scid5.py');
+  const args = ['-I', script, base];
+  if (process.env.GAMESDB_WORKERS) args.push('--workers', process.env.GAMESDB_WORKERS);
+  if (process.env.GAMESDB_LIMIT) args.push('--limit', process.env.GAMESDB_LIMIT); // trial runs: the first N games
+  // Older games are dropped by the reader before it decodes them (the exporter checks again anyway).
+  if (sinceYear) args.push('--since', String(sinceYear));
+  const child = spawn(process.env.PYTHON ?? 'python', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  createInterface({ input: child.stderr }).on('line', (line) => log(`  ${line}`));
+  const exited = new Promise<number>((res, rej) => {
+    child.on('error', rej);
+    child.on('close', (code) => res(code ?? 1));
+  });
+  for await (const line of createInterface({ input: child.stdout, crlfDelay: Infinity })) {
+    if (!line) continue;
+    const [white, black, date, result, event, tc, we, be, wf, bf, moves] = JSON.parse(line) as [string, string, string, string, string, string, number, number, string, string, string];
+    onGame?.();
+    yield {
+      headers: { White: white, Black: black, Date: date, Result: result, Event: event, TimeControl: tc, WhiteElo: String(we), BlackElo: String(be), WhiteFideId: wf, BlackFideId: bf },
+      movetext: '',
+      ucis: moves ? moves.split(' ') : [],
+    };
+  }
+  const code = await exited;
+  if (code !== 0) throw new Error(`gamesdb/scid5.py exited with code ${code}`);
 }
 
 /** Streams the games of a PGN file. */
@@ -195,6 +245,7 @@ export async function runExport({ inputs, out, release, headersFile, sinceYear, 
     });
     buffered = 0;
   };
+  // Progress: PGN by bytes read; a Scid 5 database by games (56-byte index records).
   const totalBytes = inputs.reduce((s, f) => s + statSync(f).size, 0);
   let readBytes = 0;
   let games = 0;
@@ -202,14 +253,15 @@ export async function runExport({ inputs, out, release, headersFile, sinceYear, 
   const started = Date.now();
   let lastLog = started;
   for (const file of inputs) {
-    for await (const { headers: h, movetext } of readPgnFile(file, (n) => (readBytes += n))) {
+    const source = /\.si5$/i.test(file) ? readScid5(file, log, () => (readBytes += 56), sinceYear) : readPgnFile(file, (n) => (readBytes += n));
+    for await (const { headers: h, movetext, ucis } of source) {
       const white = h.White?.trim();
       const black = h.Black?.trim();
       if (!white || !black || white === '?' || black === '?' || h.FEN || (h.SetUp && h.SetUp !== '0')) {
         skipped++;
         continue;
       }
-      const { mv, plies } = encodeSans(movetextSans(movetext));
+      const { mv, plies } = ucis ? encodeUcis(ucis) : encodeSans(movetextSans(movetext));
       if (!plies) {
         skipped++;
         continue;

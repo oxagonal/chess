@@ -202,5 +202,5 @@ describe.runIf(!!DIR)('a built games database', () => {
       console.log(`"${probe}":`, found.slice(0, 10).map((e) => `${e[0]} (${e[2]})`).join(', '));
     }
     console.log(`OK — ${all.length} files, ${(bytes / 1e9).toFixed(2)} GB; sampled ${names} names and ${games} games.`);
-  });
+  }, 15 * 60_000); // a full database is ~2 GB: allow well beyond the default 5 s
 });
