@@ -240,7 +240,7 @@ export function PlayersBar({ playerId, onSelect, as, onAs, source, onSource, sco
         <div className="note col" style={{ gap: 6 }}>
           <b>No games for {p.name} yet.</b>
           <span>
-            There’s no public database of club and school over-the-board games, so a name on its own only finds games you add yourself:
+            Chess Prep doesn’t search over-the-board game databases, so a name on its own only finds games you add yourself:
           </span>
           <ul className="steps">
             <li>
@@ -327,8 +327,8 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
             </span>
           ) : (
             <span className="muted">
-              No over-the-board games against this name yet. A name only finds games you’ve entered or paste below — there’s no public
-              database of over-the-board games to search.
+              No over-the-board games against this name yet. A name only finds games you’ve entered or paste below — Chess Prep doesn’t
+              search over-the-board game databases.
             </span>
           )}
         </div>
@@ -345,7 +345,7 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
       </div>
       <label className="field">
         <span>Their games as PGN (optional)</span>
-        <textarea rows={3} value={pgn} onChange={(e) => setPgn(e.target.value)} placeholder="Paste games from a tournament bulletin, chess-results, etc." />
+        <textarea rows={3} value={pgn} onChange={(e) => setPgn(e.target.value)} placeholder="Paste their games — exported from a games database, a tournament bulletin…" />
       </label>
       {pgnInfo && <div className="muted small">{pgnInfo}</div>}
       <div className="row">
