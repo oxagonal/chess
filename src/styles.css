@@ -218,6 +218,9 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .menu-pop button { width: 100%; justify-content: flex-start; background: transparent; border-color: transparent; padding: 9px 11px; }
 .menu-pop button:hover:not(:disabled) { background: var(--panel3); border-color: transparent; }
 
+/* ---------- about ---------- */
+.credits { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+
 /* ---------- sync ---------- */
 .sync-dot { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--good); opacity: .75; }
 .topbar .sync-dot { margin: 0 4px 0 12px; }

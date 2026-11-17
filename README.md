@@ -136,8 +136,13 @@ entry there. Games are stored with full move lists and, when available, clock ti
 and `GameViewer` in `src/pages/Games.tsx` already replays games on a board — a Stockfish (WASM) review
 would plug into that viewer or a new `review` tab.
 
-## Credits
+## License & credits
+
+Chess Prep is free software, licensed under the **GNU GPL v3 or later** (see `LICENSE`); the app shows the
+notice, the license and a link to this repository under Settings → About & credits.
 
 Board: [chessground](https://github.com/lichess-org/chessground); chess logic:
-[chessops](https://github.com/niklasf/chessops) (both GPL-3.0-or-later — fine for personal use; a
-publicly distributed build would need a GPL-compatible licence). Piece images: Colin M.L. Burnett.
+[chessops](https://github.com/niklasf/chessops); engine: [Stockfish](https://github.com/nmrugg/stockfish.js)
+(all GPL-3.0). Piece images: Colin M.L. Burnett (GPL-2.0-or-later). Scheduling:
+[ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs) (MIT); storage: Dexie (Apache-2.0); UI: React (MIT);
+font: Inter (OFL).

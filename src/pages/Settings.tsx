@@ -14,6 +14,7 @@ import { deleteAllGames } from '../services/sync';
 import { download, exportBackup, importBackup, wipeEverything } from '../services/backup';
 import type { ProbabilitySource } from '../lib/types';
 import { SyncPanel } from '../components/SyncPanel';
+import { AboutPanel } from '../components/AboutPanel';
 import { useSyncStatus } from '../services/cloudSync';
 
 const SPEEDS = ['ultraBullet', 'bullet', 'blitz', 'rapid', 'classical', 'correspondence'];
@@ -287,9 +288,7 @@ export function SettingsPage() {
         </p>
       </div>
 
-      <p className="muted small" style={{ textAlign: 'center' }}>
-        Version {__BUILD_COMMIT__} · built {new Date(__BUILD_TIME__).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-      </p>
+      <AboutPanel />
     </div>
   );
 }
