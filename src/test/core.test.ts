@@ -114,6 +114,33 @@ describe('PGN', () => {
   });
 });
 
+describe('drilling ahead of time', () => {
+  it('restarts the interval from today instead of growing it, however often you drill', async () => {
+    const { gradeAhead } = await import('../lib/srs');
+    const DAY = 86_400_000;
+    const t0 = Date.UTC(2026, 0, 1);
+    // A learned move reviewed on Jan 1 with a 46-day interval.
+    let c = grade(newCard({ id: 'x', repId: 'r', fromKey: 'k', san: 'e4' }, t0 - 3 * DAY), Rating.Good, undefined, t0 - 3 * DAY);
+    c = { ...c, state: State.Review, stability: 46, lastReview: t0, due: t0 + 46 * DAY };
+    // Drilled 23 days early, then nine more times that day and once a day for a week.
+    let now = t0 + 23 * DAY;
+    c = gradeAhead(c, Rating.Good, undefined, now);
+    expect(c.due).toBe(now + 46 * DAY);
+    expect(c.stability).toBe(46);
+    for (let i = 0; i < 9; i++) c = gradeAhead(c, Rating.Good, undefined, (now += 30 * 60_000));
+    for (let d = 0; d < 7; d++) c = gradeAhead(c, Rating.Good, undefined, (now += DAY));
+    expect(c.due).toBe(now + 46 * DAY);
+    expect(c.stability).toBe(46);
+
+    // A miss counts in full; a move that's due gets a normal review (which can grow the interval).
+    const missed = gradeAhead(c, Rating.Again, undefined, now);
+    expect(missed.lapses).toBe(c.lapses + 1);
+    expect(missed.due - now).toBeLessThan(46 * DAY);
+    const due = gradeAhead(c, Rating.Good, undefined, c.due + DAY);
+    expect(due.due - (c.due + DAY)).toBeGreaterThan(46 * DAY);
+  });
+});
+
 describe('trainer planning', () => {
   const moves = movesFromLines('r', 'white', ['e4 c5 Nf3 d6 d4', 'e4 c5 Nf3 Nc6 d4', 'e4 e5 Nf3 Nc6 Bb5']);
   const g = new RepGraph('white', moves);

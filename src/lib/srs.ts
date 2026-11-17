@@ -64,6 +64,21 @@ export function grade(card: ReviewCard, rating: Grade, settings: SrsSettings = D
   return { ...card, ...fromFsrs(next) };
 }
 
+/**
+ * A drill: you practise a move whether or not it's due. A correct answer on a move that isn't due
+ * yet restarts its current interval from today — as if its last review had been today — instead of
+ * growing it: an early review proves little, and drilling a move again and again (even on different
+ * days) must not push it months away. Only real reviews, when it's due, lengthen the interval.
+ * Misses, moves that are due anyway, and moves still in their (re)learning steps are graded as usual.
+ */
+export function gradeAhead(card: ReviewCard, rating: Grade, settings: SrsSettings = DEFAULT_SRS, now = Date.now()): ReviewCard {
+  if (rating !== Rating.Good || card.state !== State.Review || card.due <= now || card.lastReview === undefined) {
+    return grade(card, rating, settings, now);
+  }
+  const interval = card.due - card.lastReview;
+  return { ...card, due: now + interval, lastReview: now, elapsedDays: 0, reps: card.reps + 1 };
+}
+
 /** Predicted next interval (ms) for each grade — used for "next review in …" hints. */
 export function previewIntervals(card: ReviewCard, settings: SrsSettings = DEFAULT_SRS, now = Date.now()) {
   const preview = scheduler(settings).repeat(toFsrs(card), new Date(now));

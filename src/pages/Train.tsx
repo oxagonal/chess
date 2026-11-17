@@ -440,13 +440,13 @@ function Session({ setup }: { setup: SessionSetup }) {
         if (missed) setNoteMove({ id: expected.id, san: expected.san });
         feedbackToken.current++;
         setFeedback({ kind: missed ? 'hint' : 'good', text: <b>{missed ? `${expected.san} — keep it in mind.` : `✓ ${expected.san}`}</b> });
-        // A drill counts every move you play as reviewed — ahead of time if it wasn't due yet — so its
-        // next review is scheduled from today. In a review line the moves around the due ones are
-        // practice only.
+        // A drill counts every move you play as reviewed: one that isn't due yet has its interval
+        // restarted from today (never grown — see gradeAhead). In a review line the moves around the
+        // due ones are practice only.
         if (mode === 'drill' && !gradedRef.current.has(expected.id)) {
           gradedRef.current.add(expected.id);
           setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (missed ? 0 : 1), failed: s.failed + (missed ? 1 : 0) }));
-          void gradeCard(expected.id, missed ? Rating.Again : Rating.Good, 'review');
+          void gradeCard(expected.id, missed ? Rating.Again : Rating.Good, 'review', undefined, { ahead: true });
         }
         return;
       }
@@ -464,7 +464,9 @@ function Session({ setup }: { setup: SessionSetup }) {
       );
       const token = ++feedbackToken.current;
       setFeedback({ kind: failed ? 'hint' : 'good', text: body() });
-      const updated = await gradeCard(expected.id, failed ? Rating.Again : Rating.Good, mode === 'learn' ? 'learn' : 'review');
+      const updated = await gradeCard(expected.id, failed ? Rating.Again : Rating.Good, mode === 'learn' ? 'learn' : 'review', undefined, {
+        ahead: mode === 'drill',
+      });
       if (updated && token === feedbackToken.current) {
         setFeedback({ kind: failed ? 'hint' : 'good', text: body(formatInterval(updated.due - Date.now())) });
       }
@@ -526,7 +528,7 @@ function Session({ setup }: { setup: SessionSetup }) {
         <div className="hero">
           <h1>Session complete</h1>
           <p className="muted">
-            {mode === 'learn' ? 'New moves are scheduled for their first reviews shortly.' : mode === 'drill' ? 'Drill finished — every move you played counts as reviewed, so its next review is scheduled from today.' : 'All due reviews done.'}
+            {mode === 'learn' ? 'New moves are scheduled for their first reviews shortly.' : mode === 'drill' ? 'Drill finished — each move you got right restarts its review interval from today (drilling early never pushes it further away); misses come back soon.' : 'All due reviews done.'}
           </p>
           <div className="grid3" style={{ marginTop: 12 }}>
             <Stat value={stats.done} label="Moves" />
