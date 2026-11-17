@@ -22,7 +22,7 @@ export function AboutPanel() {
     <div className="panel col about">
       <h2>About &amp; credits</h2>
       <p className="small" style={{ margin: 0 }}>
-        <b>Chess Prep</b> · Copyright © 2026 the Chess Prep authors
+        <b>Chess Prep</b> · Copyright © 2026 oxagonal
       </p>
       <p className="muted small" style={{ margin: 0 }}>
         Chess Prep is free software: you can use, share and change it under the terms of the GNU General Public License, version 3 or
