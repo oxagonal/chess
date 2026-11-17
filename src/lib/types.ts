@@ -172,6 +172,13 @@ export interface CoverageResult {
   modifiedAt?: number;
 }
 
+/** A player in the over-the-board games database (gamesdb). */
+export interface DbLink {
+  id: number;
+  name: string;
+  games: number;
+}
+
 /** Someone you want to prepare against (Builder → Players). */
 export interface Player {
   id: string;
@@ -180,6 +187,8 @@ export interface Player {
   chesscom?: string;
   /** Their games added by hand as PGN (tournament bulletins and the like). */
   pgn?: string;
+  /** Names in the over-the-board games database that are this player (often several spellings). */
+  dbLinks?: DbLink[];
   createdAt: number;
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;

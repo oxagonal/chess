@@ -1,0 +1,9 @@
+// The over-the-board games database: a separate static site (https://otbdb.oxagon.workers.dev).
+// Built on your computer from Lumbra's Gigabase (see SPEC.md) into ./dist, then: npx wrangler deploy
+{
+  "name": "otbdb",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}

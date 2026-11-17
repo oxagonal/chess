@@ -12,15 +12,18 @@ import type { StoredGame } from './types';
  * "Carlsen, Magnus", "magnus carlsen" and "Carlsen Magnus" are the same person.
  */
 export function normalizeName(name: string): string {
+  return nameWords(name).sort().join(' ');
+}
+
+/** A name's words in the order written: accents, case and punctuation removed. */
+export function nameWords(name: string): string[] {
   return name
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[.,;:'"()_-]+/g, ' ')
     .split(/\s+/)
-    .filter(Boolean)
-    .sort()
-    .join(' ');
+    .filter(Boolean);
 }
 
 /**
