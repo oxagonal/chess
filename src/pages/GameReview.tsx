@@ -113,7 +113,8 @@ export function GameReview({ id }: { id: string }) {
   }
 
   const annotation = (ply: number) => game.annotations?.[String(ply)];
-  const clocks = game.clocks?.length ? game.clocks : undefined;
+  // Correspondence games (days per move) have no use for a clock.
+  const clocks = game.clocks?.length && game.timeClass !== 'correspondence' ? game.clocks : undefined;
   const shownClocks = clocksAt(clocks, cur);
   const strip = (color: 'white' | 'black') => (
     <div className={`player-strip ${pos.turn === color && cur < last ? 'to-move' : ''}`}>
