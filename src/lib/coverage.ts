@@ -27,10 +27,33 @@ export interface CoverageOptions {
   signal?: AbortSignal;
 }
 
-export async function computeCoverage(graph: RepGraph, provider: StatsProvider, opts: CoverageOptions): Promise<CoverageResult> {
+export interface ForwardOptions {
+  threshold: number;
+  /** Opponent positions less likely than this are not looked up (defaults to threshold). */
+  queryCutoff?: number;
+  onProgress?: (queried: number, current: string) => void;
+  signal?: AbortSignal;
+}
+
+export interface ForwardResult {
+  /** How often each position comes up, summed over every move order that reaches it. */
+  prob: Map<string, number>;
+  gaps: CoverageGap[];
+  unfinished: CoverageNode[];
+  noData: string[];
+  queried: number;
+  statsAt: Map<string, PositionStats>;
+  kidsOf: (key: string) => Edge[];
+  order: string[];
+}
+
+/**
+ * Forward pass: walks the repertoire in topological order so each position's probability is the sum
+ * over all the ways it can arise (transpositions included) before it's used. Shared by the coverage
+ * analysis and Play from memory, so both agree on how often a position comes up.
+ */
+export async function reachProbabilities(graph: RepGraph, provider: StatsProvider, opts: ForwardOptions): Promise<ForwardResult> {
   const { threshold } = opts;
-  // Stamp with the start time: an edit made while this runs must make the result look stale.
-  const startedAt = Date.now();
   const cutoff = opts.queryCutoff ?? threshold;
   const { kidsOf, order } = withTranspositions(graph);
   const prob = new Map<string, number>([[graph.root, 1]]);
@@ -79,6 +102,14 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
       }
     }
   }
+  return { prob, gaps, unfinished, noData, queried, statsAt, kidsOf, order };
+}
+
+export async function computeCoverage(graph: RepGraph, provider: StatsProvider, opts: CoverageOptions): Promise<CoverageResult> {
+  const { threshold } = opts;
+  // Stamp with the start time: an edit made while this runs must make the result look stale.
+  const startedAt = Date.now();
+  const { prob, gaps, unfinished, noData, queried, statsAt, kidsOf, order } = await reachProbabilities(graph, provider, opts);
 
   // Backward pass: coverage of each position = share of games reaching it that stay in book until
   // they get rarer than the threshold. Consistent with the forward pass: at the root it equals

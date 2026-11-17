@@ -2,9 +2,14 @@
  * "Play from memory": walk the opening tree the way your games would go — your saved moves on your
  * turn, opponent replies in order of popularity — and find the first position (depth-first, most
  * common line first) where it's your move and nothing is saved yet. That's where you get asked next.
+ *
+ * How often a position comes up is taken from the coverage analysis's forward pass, which adds up
+ * every move order that reaches it. Following just the current line would undercount transpositions
+ * (1.d4 Nf6 2.c4 e6 = 1.d4 e6 2.c4 Nf6), leaving gaps that coverage reports but this never asks.
  */
 import { playUci, posFromFen, turnOfKey, type Color } from './chess';
 import type { RepGraph } from './graph';
+import { reachProbabilities } from './coverage';
 import { moveGames, type PositionStats } from './types';
 
 export interface MemoryStep {
@@ -36,9 +41,13 @@ export async function nextMemoryTarget(opts: {
 }): Promise<MemoryTarget | undefined> {
   const { graph, color, threshold, provider, skip, signal } = opts;
   const visited = new Set<string>();
+  // Positions in the repertoire: probability over all move orders. Elsewhere (off-repertoire
+  // positions, or a start position the repertoire doesn't reach) fall back to the line's own.
+  const { prob: total } = await reachProbabilities(graph, provider, { threshold, signal });
 
-  const explore = async (key: string, path: MemoryStep[], p: number): Promise<MemoryTarget | undefined> => {
+  const explore = async (key: string, path: MemoryStep[], linePr: number): Promise<MemoryTarget | undefined> => {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    const p = Math.max(linePr, total.get(key) ?? 0);
     if (p < threshold || visited.has(key) || skip.has(key)) return undefined;
     visited.add(key);
     const pos = posFromFen(key);

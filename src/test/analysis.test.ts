@@ -296,6 +296,31 @@ describe('play from memory', () => {
     t = await nextMemoryTarget({ ...base, graph: g, skip: new Set([k('e4 e5 Nf3 Nc6')]) });
     expect(t?.path.map((m) => m.san)).toEqual(['e4', 'c5']);
   });
+
+  it('counts every move order into a position, like coverage does', async () => {
+    const { nextMemoryTarget } = await import('../lib/fromMemory');
+    const { edgesForLine } = await import('../lib/lines');
+    const { START_KEY } = await import('../lib/chess');
+    const k = (l: string) => edgesForLine(l.split(' '))!.at(-1)!.toKey;
+    // 1.d4 Nf6 2.c4 e6 and 1.d4 e6 2.c4 Nf6 reach the same position, each half the time, so it comes
+    // up in every game. After 3.Nc3, 3...Bb4 (30%) is a gap at 1 in 4 — but only 15% along either line.
+    const db: Record<string, PositionStats> = {
+      [k('d4')]: stat([['Nf6', 'g8f6', 50], ['e6', 'e7e6', 50]]),
+      [k('d4 Nf6 c4')]: stat([['e6', 'e7e6', 100]]),
+      [k('d4 e6 c4')]: stat([['Nf6', 'g8f6', 100]]),
+      [k('d4 Nf6 c4 e6 Nc3')]: stat([['d5', 'd7d5', 70], ['Bb4', 'f8b4', 30]]),
+    };
+    const provider = async (key: string) => db[key];
+    const g = new RepGraph('white', movesFromLines('r', 'white', ['d4 Nf6 c4 e6 Nc3 d5 cxd5', 'd4 e6 c4 Nf6']));
+    const threshold = 1 / 4;
+
+    const coverage = await computeCoverage(g, provider, { repId: 'r', threshold, source: 'lichess', paramsLabel: '' });
+    expect(coverage.gaps.map((x) => [x.san, x.prob])).toEqual([['Bb4', expect.closeTo(0.3)]]);
+
+    const t = await nextMemoryTarget({ graph: g, color: 'white', startKey: START_KEY, startPath: [], startProb: 1, threshold, provider, skip: new Set() });
+    expect(t?.path.map((m) => m.san)).toEqual(['d4', 'Nf6', 'c4', 'e6', 'Nc3', 'Bb4']);
+    expect(t?.prob).toBeCloseTo(0.3);
+  });
 });
 describe('game review swings', () => {
   it('finds the moves that lost the most winning chances, from the mover\'s side', async () => {
