@@ -50,8 +50,8 @@ export function continuations(graph: RepGraph, key: string, probs?: Record<strin
 
 /**
  * The navigator under the current line: one row per move from here. A row runs ahead to the next
- * choice ("1…Nf6 2.c4 → e6 · g6"); click or tap anywhere on it to jump there. (To stop partway, step
- * back with ◀ or click the move in the line above.)
+ * choice ("1…Nf6 2.c4 → e6 · g6"): click or tap the row to jump to that choice, or click one of the
+ * choices to play it too. (To stop partway, step back with ◀ or click the move in the line above.)
  */
 export function NextMoves({
   graph,
@@ -70,16 +70,12 @@ export function NextMoves({
 }) {
   const rows = continuations(graph, fenKey, probs);
   if (!rows.length) return null;
-  const here = probs?.[fenKey];
   return (
     <div className="next-moves">
       {rows.map(({ run, next, lines }) => {
         const first = run[0];
-        // Share of games from here that go this way (the opponent's choice), when coverage knows.
-        const share = !first.mine && here && probs?.[first.toKey] !== undefined ? Math.min(1, probs[first.toKey] / here) : undefined;
         return (
           <div key={first.id} className="next-row" role="button" tabIndex={0} onClick={() => onGo(run)} onKeyDown={(e) => e.key === 'Enter' && onGo(run)} title="Go to the next choice in this line">
-            <span className="next-share">{share !== undefined ? `${Math.round(share * 100)}%` : ''}</span>
             <span className="next-run">
               {run.map((m, i) => {
                 const prefix = moveNumberPrefix(ply + i, i === 0);
@@ -93,8 +89,21 @@ export function NextMoves({
                 );
               })}
               {next.length > 0 ? (
-                <span className="next-choices" title="The choices waiting at the end of this stretch">
-                  → {next.map((m) => m.san).join(' · ')}
+                <span className="next-choices">
+                  →
+                  {next.map((m) => (
+                    <button
+                      key={m.id}
+                      className={`next-choice ${m.comment ? 'has-note' : ''}`}
+                      title={m.comment || `Play ${m.san}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onGo([...run, m]);
+                      }}
+                    >
+                      {m.san}
+                    </button>
+                  ))}
                 </span>
               ) : (
                 <span className="next-choices">· end</span>
