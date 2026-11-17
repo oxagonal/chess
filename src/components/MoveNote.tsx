@@ -83,7 +83,7 @@ export function MoveNote({
         {dirty && <span className="muted small">unsaved</span>}
       </div>
       {asking && (
-        <div className="small" style={{ marginTop: 6, color: 'var(--warn)' }}>
+        <div className="small movenote-ask" style={{ marginTop: 6, color: 'var(--warn)' }}>
           No note yet — write down why <b className="keep-case">{san}</b> is the move (the idea, the plan, the trap), so it sticks next time.
         </div>
       )}
@@ -91,7 +91,7 @@ export function MoveNote({
         rows={compact ? 2 : 3}
         value={text ?? stored}
         autoFocus={autoFocus || (prompt && !stored)}
-        placeholder="Why this move? Plans, traps, ideas… (shown during training)"
+        placeholder={asking ? `Why ${san}? The idea, the plan, the trap — so it sticks next time.` : 'Why this move? Plans, traps, ideas… (shown during training)'}
         onChange={(e) => setText(e.target.value)}
         onBlur={save}
         onKeyDown={keys}

@@ -387,3 +387,32 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
   .stat { padding: 12px 14px; }
   .stat .v { font-size: 22px; }
 }
+
+/* ---------- training session ---------- */
+.line-panel .line-head { margin-bottom: 8px; }
+/* Phones: the whole session fits between the header and the tab bar — status, board, note, line,
+   feedback and buttons in one column, the board taking whatever height is left (up to the full
+   width), so Continue / Show move are always on screen. Taller content (a long note) just scrolls. */
+@media (max-width: 700px) {
+  .main:has(> .train-layout) { padding-top: 8px; padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+  .board-layout.train-layout {
+    display: flex; flex-direction: column; align-items: stretch; gap: 8px; container-type: inline-size;
+    min-height: calc(100dvh - 48px - env(safe-area-inset-top) - 8px - 62px - env(safe-area-inset-bottom));
+  }
+  .train-layout > .col, .train-layout > .board-col { display: contents; }
+  .train-layout .panel { margin-top: 0; padding: 8px 12px; }
+  .train-layout .train-head { order: 1; }
+  .train-layout .train-head h2 { font-size: 16px; }
+  .train-layout .train-head .progress { height: 4px; }
+  .train-layout .train-head > div[style] { margin-top: 6px !important; }
+  .train-layout .board-slot { order: 2; flex: 1 1 0; min-height: 160px; max-height: 100cqw; container-type: size; }
+  .train-layout .board-slot .board-wrap { width: 100%; width: min(100cqw, 100cqh); margin: 0 auto; }
+  .train-layout .movenote { order: 3; }
+  .train-layout .movenote-ask { display: none; }
+  .train-layout .movenote textarea { min-height: 0; height: 52px; resize: none; }
+  .train-layout .line-panel { order: 4; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+  .train-layout .line-panel .line-head { margin-bottom: 0; }
+  .train-layout .line-panel .mono { min-height: 0 !important; font-size: 14px; }
+  .train-layout .feedback { order: 5; min-height: 0; padding: 9px 12px; font-size: 14px; }
+  .train-layout .train-actions { order: 6; }
+}

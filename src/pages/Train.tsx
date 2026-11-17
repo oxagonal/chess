@@ -522,14 +522,18 @@ function Session({ setup }: { setup: SessionSetup }) {
 
   if (editing) return <Builder key={editing.line} repId={editing.repId} initialLine={editing.line} onDone={() => void finishEditing()} />;
 
+  // On phones (styles.css, .train-layout) this becomes one screen-high column — status, board, note,
+  // line, feedback, buttons — with the board shrinking to fit so Continue never needs a scroll.
   return (
-    <div className="board-layout">
+    <div className="board-layout train-layout">
       <div className="board-col col">
-        <Board pos={pos} orientation={rep?.color ?? 'white'} interactive={waiting} lastMove={lastMove} onMove={onMove} arrows={arrows} flash={flash} />
+        <div className="board-slot">
+          <Board pos={pos} orientation={rep?.color ?? 'white'} interactive={waiting} lastMove={lastMove} onMove={onMove} arrows={arrows} flash={flash} />
+        </div>
         {noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" prompt />}
       </div>
       <div className="col">
-        <div className="panel">
+        <div className="panel train-head">
           <div className="row">
             <h2 style={{ margin: 0 }}>{mode === 'learn' ? 'Learn' : mode === 'drill' ? 'Drill' : 'Review'}</h2>
             {rep && <span className="muted">{rep.name}</span>}
@@ -551,8 +555,8 @@ function Session({ setup }: { setup: SessionSetup }) {
           ))}
         </div>
 
-        <div className="panel">
-          <div className="row" style={{ marginBottom: 8 }}>
+        <div className="panel line-panel">
+          <div className="row line-head">
             <h3 style={{ margin: 0 }}>{line?.phase === 'show' ? 'New line' : 'Line'}</h3>
             {line?.order && (
               <span
@@ -584,13 +588,13 @@ function Session({ setup }: { setup: SessionSetup }) {
           )}
           {!waiting && !feedback && <span className="muted">…</span>}
           {holdAtEnd && (
-            <div className="muted small" style={{ marginTop: 6 }}>
+            <div className="muted small hide-sm" style={{ marginTop: 6 }}>
               Line finished. {noteMove ? 'Write or edit the note under the board, or edit' : 'Edit'} the line in the builder, then press Continue.
             </div>
           )}
         </div>
 
-        <div className="row">
+        <div className="row train-actions">
           {holdAtEnd ? (
             <>
               <button className="primary" onClick={continueAfterLine} autoFocus={false}>
