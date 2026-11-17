@@ -17,6 +17,7 @@ import { useCards, useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { MoveNote } from '../components/MoveNote';
+import { RepTree } from '../components/RepTree';
 import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
 import { href, navigate } from '../router';
 import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
@@ -24,7 +25,7 @@ import { formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Co
 import { oneIn } from '../lib/coverage';
 import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
 import type { AppSettings } from '../db/settings';
-import { type CoverageResult, type PositionStats, type Repertoire } from '../lib/types';
+import { type CoverageResult, type PositionStats, type RepMove, type Repertoire } from '../lib/types';
 import { isDue, isNew } from '../lib/srs';
 import { download } from '../services/backup';
 import type { RepGraph } from '../lib/graph';
@@ -298,6 +299,16 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const lineInRep = line.map((m) => !!graph?.edge(m.fromKey, m.san));
   const missingUpToCursor = line.slice(0, cursor).some((_, i) => !lineInRep[i]);
   const currentEdge = cursor > 0 && graph ? graph.edge(line[cursor - 1].fromKey, line[cursor - 1].san) : undefined;
+  // The repertoire moves up to the board's position (stops where the line leaves the repertoire).
+  const repPath = useMemo(() => {
+    const out: RepMove[] = [];
+    for (const m of line.slice(0, cursor)) {
+      const e = graph?.edge(m.fromKey, m.san);
+      if (!e) break;
+      out.push(e);
+    }
+    return out;
+  }, [line, cursor, graph]);
 
   const play = async (san: string, add = false) => {
     const r = playSan(pos, san);
@@ -513,6 +524,18 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
             </label>
           )}
         </div>
+        {!zen && (
+          <RepTree
+            graph={graph}
+            path={repPath}
+            probs={freshCoverage?.probs}
+            onSelect={(sans) => {
+              const l = lineFromSans(sans);
+              setLine(l);
+              setCursor(l.length);
+            }}
+          />
+        )}
       </div>
 
       <div className="col">
