@@ -276,16 +276,39 @@ a.list-title:hover { color: var(--accent2); text-decoration: none; }
 .mv.deviation { outline: 2px solid var(--bad); }
 .mv.book { color: var(--mine); }
 .mv.book.current { color: #fff; }
-/* Repertoire tree (builder): main line inline, other moves folded behind toggles. */
-.tree-panel { max-height: 420px; display: flex; flex-direction: column; }
-.tree-panel .tree { overflow-y: auto; min-height: 0; }
-.tree .mv.onpath { background: var(--panel3); }
-.tree .mv.has-note::after { content: '•'; color: var(--muted); margin-left: 2px; font-weight: 400; }
-.tree-toggle { padding: 1px 7px; font-size: 12px; font-weight: 500; border-radius: 6px; background: transparent; border: 1px dashed var(--border-soft); color: var(--muted); margin: 0 2px; }
-.tree-toggle:hover { color: var(--text); border-style: solid; }
-.tree-vars { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; margin: 3px 0 5px 4px; padding-left: 10px; border-left: 2px solid var(--border-soft); }
-.tree-var { display: flex; flex-wrap: wrap; gap: 3px 2px; align-items: baseline; font-size: 14px; }
-.tree-transpose { color: var(--muted); padding: 0 4px; cursor: help; }
+/* Builder navigator: one row per move from here, running ahead to the next choice. */
+.next-moves { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
+.next-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; }
+.next-row:hover, .next-row:focus-visible { background: var(--panel2); outline: none; }
+.next-share { flex: 0 0 34px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.next-run { flex: 1; display: flex; flex-wrap: wrap; gap: 2px 2px; align-items: baseline; min-width: 0; }
+.next-run .num { color: var(--faint); margin: 0 2px 0 6px; font-size: 12px; }
+.next-run .num:first-child { margin-left: 0; }
+.next-run .mv { padding: 1px 5px; cursor: inherit; }
+.next-run .mv:hover { background: none; }
+.next-choices { color: var(--muted); font-size: 13px; margin-left: 6px; }
+.next-count { color: var(--faint); font-size: 12px; white-space: nowrap; }
+.mv.has-note::after { content: '•'; color: var(--muted); margin-left: 2px; font-weight: 400; }
+
+/* Coverage box: two numbers. */
+.coverage-box { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; }
+.cov-stat { display: flex; flex-direction: column; cursor: help; }
+.cov-stat b { font-size: 24px; line-height: 1.1; }
+.cov-stat span { color: var(--muted); font-size: 12px; }
+.cov-error { color: var(--warn); max-width: 260px; }
+
+/* Engine box. */
+.engine .engine-eval { font-size: 20px; padding: 0 8px; border-radius: 6px; }
+.engine .engine-eval.white { background: #e8e6e1; color: #161512; }
+.engine .engine-eval.black { background: #0c0b0a; color: #e8e6e1; border: 1px solid var(--border-soft); }
+.evalbar { height: 6px; border-radius: 3px; background: #0c0b0a; border: 1px solid var(--border-soft); overflow: hidden; margin: 8px 0 6px; }
+.evalbar > div { height: 100%; background: #e8e6e1; transition: width .3s; }
+.engine-lines { display: flex; flex-direction: column; gap: 2px; }
+.engine-line { display: flex; gap: 10px; align-items: baseline; justify-content: flex-start; text-align: left; background: transparent; border: none; padding: 5px 6px; border-radius: var(--radius-sm); font-weight: 400; white-space: nowrap; overflow: hidden; }
+.engine-line:hover { background: var(--panel2); }
+.engine-line-eval { flex: 0 0 52px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.engine-line-moves { overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.switch { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--muted); }
 /* Notes inline in a line of moves, like PGN comments; the current move's note is an editable box. */
 .mv-note { color: var(--muted); font-style: italic; font-size: 13px; padding: 2px 4px; cursor: pointer; white-space: pre-wrap; }
 .mv-note:hover { color: var(--text); }

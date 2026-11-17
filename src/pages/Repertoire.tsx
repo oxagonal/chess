@@ -13,11 +13,12 @@ import {
   renameRepertoire,
 } from '../db/repertoire';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
-import { useCards, useCoverage, useRepertoires, useRepGraph } from '../hooks';
+import { useCards, useCoverage, useMediaQuery, useRepertoires, useRepGraph } from '../hooks';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { MoveNote } from '../components/MoveNote';
-import { RepTree } from '../components/RepTree';
+import { NextMoves } from '../components/NextMoves';
+import { EnginePanel } from '../components/EnginePanel';
 import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
 import { href, navigate } from '../router';
 import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
@@ -25,7 +26,7 @@ import { formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Co
 import { oneIn } from '../lib/coverage';
 import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
 import type { AppSettings } from '../db/settings';
-import { type CoverageResult, type PositionStats, type RepMove, type Repertoire } from '../lib/types';
+import { type CoverageResult, type PositionStats, type Repertoire } from '../lib/types';
 import { isDue, isNew } from '../lib/srs';
 import { download } from '../services/backup';
 import type { RepGraph } from '../lib/graph';
@@ -273,6 +274,9 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const freshCoverage = rep && settings.loaded && isCoverageFresh(coverage, rep, settings) ? coverage : undefined;
   const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings, freshCoverage);
   const [flipped, setFlipped] = useState(false);
+  // Wide screens: board on the left with the engine and coverage under it; stacked (phones, narrow
+  // windows): they come after the line and its navigator instead.
+  const stacked = useMediaQuery('(max-width: 900px)');
   const [opening, setOpening] = useState<string | undefined>();
   const [message, setMessage] = useState<string | null>(null);
   const autoAdd = settings.builderAutoAdd;
@@ -299,16 +303,6 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const lineInRep = line.map((m) => !!graph?.edge(m.fromKey, m.san));
   const missingUpToCursor = line.slice(0, cursor).some((_, i) => !lineInRep[i]);
   const currentEdge = cursor > 0 && graph ? graph.edge(line[cursor - 1].fromKey, line[cursor - 1].san) : undefined;
-  // The repertoire moves up to the board's position (stops where the line leaves the repertoire).
-  const repPath = useMemo(() => {
-    const out: RepMove[] = [];
-    for (const m of line.slice(0, cursor)) {
-      const e = graph?.edge(m.fromKey, m.san);
-      if (!e) break;
-      out.push(e);
-    }
-    return out;
-  }, [line, cursor, graph]);
 
   const play = async (san: string, add = false) => {
     const r = playSan(pos, san);
@@ -476,6 +470,21 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // stats. If you can't find the move without the explorer, you don't really know it.
   const zen = !!memory;
   const dueCount = (cards ?? []).filter((c) => isDue(c)).length;
+  const analysis = (
+    <>
+      <CoverageBox
+        reach={reach}
+        inRep={inRep}
+        score={coverage?.coverage?.[key]}
+        prob={prob}
+        oneInN={goalN}
+        source={sourceLabel(settings)}
+        running={live.running || live.stale}
+        error={live.error}
+      />
+      <EnginePanel fenKey={key} ply={cursor} onPlay={(san) => play(san)} />
+    </>
+  );
   const newCount = (cards ?? []).filter(isNew).length;
 
   return (
@@ -524,18 +533,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
             </label>
           )}
         </div>
-        {!zen && (
-          <RepTree
-            graph={graph}
-            path={repPath}
-            probs={freshCoverage?.probs}
-            onSelect={(sans) => {
-              const l = lineFromSans(sans);
-              setLine(l);
-              setCursor(l.length);
-            }}
-          />
-        )}
+        {!zen && !stacked && analysis}
       </div>
 
       <div className="col">
@@ -672,8 +670,9 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           <LineView
             items={line.map((m, i) => ({
               san: m.san,
-              className: lineInRep[i] ? 'book' : 'out',
-              title: lineInRep[i] ? 'In repertoire' : 'Not in repertoire',
+              // Only moves you've played that aren't saved stand out (grey, italic).
+              className: lineInRep[i] ? undefined : 'out',
+              title: lineInRep[i] ? undefined : 'Not in your repertoire yet',
               // Zen mode (Play from memory) hides notes: they'd give the answer away.
               note: zen ? undefined : graph.edge(m.fromKey, m.san)?.comment || undefined,
             }))}
@@ -682,25 +681,24 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
             onSelect={setCursor}
           />
           {opening && !zen && <div className="muted small" style={{ marginTop: 6 }}>{opening}</div>}
+          {!zen && inRep && (
+            <NextMoves
+              graph={graph}
+              fenKey={key}
+              ply={cursor}
+              probs={freshCoverage?.probs}
+              onGo={(moves) => {
+                const l = [...line.slice(0, cursor), ...moves.map((m) => ({ san: m.san, uci: m.uci, fromKey: m.fromKey, key: m.toKey }))];
+                setLine(l);
+                setCursor(l.length);
+              }}
+            />
+          )}
         </div>
 
         {!zen && (
           <>
-            <div className={inRep ? 'metric-pair' : undefined}>
-              <ReachPanel reach={reach} source={sourceLabel(settings)} atStart={cursor === 0} />
-              {inRep && (
-                <CoverageStrip
-                  atStart={cursor === 0}
-                  score={coverage?.coverage?.[key]}
-                  prob={prob}
-                  oneInN={goalN}
-                  source={coverage?.paramsLabel}
-                  running={live.running || live.stale}
-                  queried={live.queried}
-                  error={live.error}
-                />
-              )}
-            </div>
+            {stacked && analysis}
 
             <ExplorerPanel
               fenKey={key}
@@ -832,66 +830,6 @@ function coverColor(c: number): string {
   return 'var(--bad)';
 }
 
-function CoverageStrip({
-  atStart,
-  score,
-  prob,
-  oneInN,
-  source,
-  running,
-  queried,
-  error,
-}: {
-  atStart: boolean;
-  score?: number;
-  prob?: number;
-  oneInN: number;
-  source?: string;
-  running: boolean;
-  queried: number;
-  error?: string;
-}) {
-  const rare = prob === undefined || prob < 1 / oneInN;
-  const explain = `Of the games that reach this position, the share that stays inside your repertoire until positions get rarer than 1 in ${oneInN} games${source ? ` (opponent moves: ${source})` : ''}.`;
-  return (
-    <div className="panel">
-      <div className="row" style={{ alignItems: 'baseline' }}>
-        <h3 style={{ margin: 0 }} title={explain}>
-          Prepared {atStart ? 'overall' : 'from here'}
-        </h3>
-        <span className="spacer" />
-        {running && <span className="muted small">updating… {queried ? `${queried} positions looked up` : ''}</span>}
-      </div>
-      {error && <div className="error" style={{ marginTop: 6 }}>{error}</div>}
-      {!error && score === undefined && (
-        <div className="muted small" style={{ marginTop: 6 }}>
-          {running ? 'Calculating…' : 'Not calculated yet.'}
-        </div>
-      )}
-      {score !== undefined && !rare && (
-        <div className="row" style={{ marginTop: 8, flexWrap: 'nowrap', opacity: running ? 0.5 : 1 }} title={explain}>
-          <div className="progress" style={{ flex: 1, height: 10 }}>
-            <div style={{ width: `${score * 100}%`, background: coverColor(score) }} />
-          </div>
-          <b style={{ fontSize: 20, color: coverColor(score), minWidth: 52, textAlign: 'right' }}>{Math.round(score * 100)}%</b>
-        </div>
-      )}
-      {score !== undefined && !rare && (
-        <div className="muted small" style={{ marginTop: 4 }}>
-          {score >= 0.999
-            ? `Fully prepared down to 1-in-${oneInN} positions.`
-            : `${Math.round((1 - score) * 100)}% of games from here leave your prep while still common — see the gaps on the Coverage tab.`}
-        </div>
-      )}
-      {rare && score !== undefined && (
-        <div className="muted small" style={{ marginTop: 6 }}>
-          This position is rarer than 1 in {oneInN} games, so nothing below it counts as required. Raise this repertoire's target on the Coverage page to dig deeper.
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ------------------------------------------------- how often you reach it */
 
 interface LineReach {
@@ -960,37 +898,58 @@ function useLineReach(
   return state;
 }
 
-
-function ReachPanel({ reach, source, atStart }: { reach: LineReach; source: string; atStart: boolean }) {
+/**
+ * How often you reach this position, and how much of what follows is prepared — two numbers; the
+ * explanations live in the tooltips.
+ */
+function CoverageBox({
+  reach,
+  inRep,
+  score,
+  prob,
+  oneInN,
+  source,
+  running,
+  error,
+}: {
+  reach: LineReach;
+  inRep: boolean;
+  score?: number;
+  prob?: number;
+  oneInN: number;
+  source: string;
+  running: boolean;
+  error?: string;
+}) {
   const p = reach.prob;
+  const rare = prob === undefined || prob < 1 / oneInN;
+  const err = reach.error ?? error;
   return (
-    <div className="panel">
-      <div className="row" style={{ alignItems: 'baseline' }}>
-        <h3 style={{ margin: 0 }} title="If you play your moves and opponents answer like the selected database, the share of your games in which this position appears on the board.">
-          Coverage
-        </h3>
-        <span className="spacer" />
-        <span className="muted small">{source}</span>
+    <div className="panel coverage-box">
+      <div
+        className="cov-stat"
+        title={`How often this position appears in your games, if you play your moves and opponents answer like ${source}. Every move order in your repertoire counts.`}
+      >
+        <b style={{ opacity: reach.loading ? 0.5 : 1 }}>{reach.error ? '—' : p === undefined ? '…' : p === 0 ? 'never' : oneIn(p)}</b>
+        <span>{p !== undefined && p >= 1 / 1.05 ? 'you reach this position' : 'games reach here'}</span>
       </div>
-      {reach.error && <div className="error" style={{ marginTop: 6 }}>{reach.error}</div>}
-      {!reach.error && (
-        <div className="row" style={{ marginTop: 6, alignItems: 'baseline', opacity: reach.loading ? 0.5 : 1 }}>
-          <b style={{ fontSize: 26 }}>{p === undefined ? '…' : p === 0 ? 'never' : oneIn(p)}</b>
-          <span className="muted">
-            {p === undefined
-              ? 'calculating…'
-              : p === 0
-                ? '— this line doesn\'t occur in the database'
-                : atStart || p >= 1 / 1.05
-                  ? '— you reach this position'
-                  : 'games reach this position'}
-          </span>
+      {inRep && (
+        <div
+          className="cov-stat"
+          title={`Of the games that reach this position, the share that stays in your prep until positions get rarer than 1 in ${oneInN} games.`}
+        >
+          <b style={{ color: score !== undefined && !rare ? coverColor(score) : undefined, opacity: running ? 0.5 : 1 }}>
+            {score === undefined ? (running ? '…' : '—') : rare ? '—' : `${Math.round(score * 100)}%`}
+          </b>
+          <span>{score !== undefined && rare ? `rarer than 1 in ${oneInN}` : 'prepared from here'}</span>
         </div>
       )}
-      {!reach.loading && reach.viaRepertoire && !atStart && (
-        <div className="muted small" style={{ marginTop: 4 }}>
-          Counts every move order in your repertoire that reaches this position.
-        </div>
+      <span className="spacer" />
+      {running && <span className="muted small">updating…</span>}
+      {err && (
+        <span className="cov-error small" title={err}>
+          ⚠ {err.length > 60 ? `${err.slice(0, 57)}…` : err}
+        </span>
       )}
     </div>
   );

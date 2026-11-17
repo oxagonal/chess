@@ -11,7 +11,6 @@ import { useRecentGames } from '../hooks';
 import { GameRangeSelect } from './GameRangeSelect';
 import { TableWrap, WdlBar } from './ui';
 import { oneInNumber } from '../lib/coverage';
-import { evalScore, evaluateMoves, formatEval, type EvalMap } from '../services/engine';
 
 type Tab = 'lichess' | 'masters' | 'mine' | 'players';
 
@@ -27,41 +26,7 @@ export interface SavedMove {
   extras?: ReactNode;
 }
 
-const MAX_EVAL_MOVES = 10;
-const TIE_CP = 10;
 const TOP_ROWS = 12;
-
-function useMoveEvals(key: string, moves: string[], enabled: boolean, depth: number) {
-  const [evals, setEvals] = useState<EvalMap>(new Map());
-  const [status, setStatus] = useState('');
-  const sig = moves.join(',');
-  useEffect(() => {
-    setEvals(new Map());
-    setStatus('');
-    if (!enabled || !moves.length) return;
-    let stop: (() => void) | undefined;
-    // Small delay so stepping quickly through a line doesn't start (and abort) a search per move.
-    const t = setTimeout(() => {
-      stop = evaluateMoves(key, moves, depth, (e, s) => {
-        setEvals(e);
-        const cloudDepth = Math.max(0, ...[...e.values()].filter((x) => x.source === 'cloud').map((x) => x.depth));
-        setStatus(
-          s.source === 'cloud'
-            ? `Lichess cloud · depth ${cloudDepth}`
-            : s.done
-              ? `Stockfish · depth ${depth}${cloudDepth ? ` (cloud depth ${cloudDepth} where deeper)` : ''}`
-              : `Stockfish thinking… depth ${s.depth}/${depth}`,
-        );
-      });
-    }, 200);
-    return () => {
-      clearTimeout(t);
-      stop?.();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, sig, enabled, depth]);
-  return { evals, status };
-}
 
 interface Props {
   fenKey: string;
@@ -141,15 +106,6 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   // Most positions list dozens of rare moves; show the popular ones plus anything you've saved.
   const visibleRows = showAll ? rows : rows.filter((r, i) => i < TOP_ROWS || r.rep);
   const hiddenCount = rows.length - visibleRows.length;
-  const rowUci = (r: (typeof rows)[number]) => r.stat?.uci ?? r.rep?.uci;
-  // Evaluate the moves people actually play (top of the table) plus everything you've saved.
-  const evalMoves = [...new Set(rows.filter((r, i) => i < MAX_EVAL_MOVES || r.rep).map(rowUci).filter((u): u is string => !!u))];
-  const { evals, status } = useMoveEvals(fenKey, evalMoves, settings.loaded && settings.engineEnabled, settings.engineDepth);
-  const sideToMove: Color = turnOfKey(fenKey);
-  const moverScores = [...evals.values()].map((e) => evalScore(e) * (sideToMove === 'white' ? 1 : -1));
-  const best = Math.max(...moverScores);
-  // Moves within TIE_CP of the best are all "best" (engines can't separate them meaningfully).
-  const bestCount = moverScores.filter((s) => best - s <= TIE_CP).length;
   return (
     <div className="panel explorer">
       {title && <h3>{title}</h3>}
@@ -181,11 +137,6 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
         </div>
       )}
       {notes}
-      {settings.engineEnabled && bestCount > 1 && evals.size > 1 && (
-        <div className="muted small" style={{ marginBottom: 4 }}>
-          {bestCount} moves are equally best here (within 0.1).
-        </div>
-      )}
       {loading && !data && !saved.length && <div className="muted">Loading…</div>}
       {!loading && !error && !rows.length && (
         <div className="muted">
@@ -211,11 +162,6 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   1 in
                 </th>
               )}
-              {settings.engineEnabled && (
-                <th className="num" title={`Stockfish evaluation after the move (White's point of view). ${status}`}>
-                  Eval
-                </th>
-              )}
               <th>Result</th>
               <th />
             </tr>
@@ -224,10 +170,6 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
             {visibleRows.map((row) => {
               const { san, stat, rep } = row;
               const n = stat ? moveGames(stat) : 0;
-              const uci = rowUci(row);
-              const ev = uci ? evals.get(uci) : undefined;
-              // Loss vs the best move, from the mover's side — highlights mistakes in red.
-              const loss = ev ? best - evalScore(ev) * (sideToMove === 'white' ? 1 : -1) : 0;
               return (
                 <tr key={san} className={`clickable ${rep ? `inrep ${rep.mine ? 'mine' : 'theirs'}` : ''}`} onClick={() => onPlay(san)}>
                   <td>
@@ -242,31 +184,6 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   <td className="num">{stat ? n.toLocaleString() : '—'}</td>
                   <td className="num">{stat && total ? ((n / total) * 100).toFixed(1) : '—'}</td>
                   {showReach && <td className="num">{stat && total ? <b>{n ? oneInNumber((reachHere! * n) / total) : 'never'}</b> : '—'}</td>}
-                  {settings.engineEnabled && (
-                    <td
-                      className="num"
-                      title={
-                        ev
-                          ? `${ev.source === 'cloud' ? 'Lichess cloud' : 'Stockfish'} depth ${ev.depth} · ${
-                              loss <= TIE_CP ? (bestCount > 1 ? `one of ${bestCount} equally best moves` : 'best move') : loss >= 100 ? `mistake (${(loss / 100).toFixed(1)} worse than best)` : loss >= 40 ? `inaccuracy (${(loss / 100).toFixed(1)} worse than best)` : `${(loss / 100).toFixed(2)} worse than best`
-                            }`
-                          : 'Not evaluated'
-                      }
-                    >
-                      {ev ? (
-                        <span
-                          className={`evalbox ${
-                            loss <= TIE_CP ? 'best' : loss >= 100 ? 'mistake' : loss >= 40 ? 'inaccuracy' : evalScore(ev) < 0 ? 'black' : 'white'
-                          }`}
-                        >
-                          {formatEval(ev)}
-                          {loss <= TIE_CP && bestCount > 1 && <sup>=</sup>}
-                        </span>
-                      ) : (
-                        <span className="muted">…</span>
-                      )}
-                    </td>
-                  )}
                   <td>{stat ? <WdlBar white={stat.white} draws={stat.draws} black={stat.black} /> : <span className="muted small">not in database</span>}</td>
                   <td>
                     <div className="list-actions" style={{ justifyContent: 'flex-end', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
@@ -300,16 +217,12 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
           Show fewer
         </button>
       )}
-      {((data && total > 0) || (settings.engineEnabled && status)) && (
+      {data && total > 0 && (
         <div className="row muted small" style={{ marginTop: 6 }}>
-          {data && total > 0 && (
-            <span>
-              {total.toLocaleString()} games
-              {data.opening ? ` · ${data.opening.eco} ${data.opening.name}` : ''}
-            </span>
-          )}
-          <span className="spacer" />
-          {settings.engineEnabled && status && <span title="Engine evaluation depth — change it in Settings → Engine">{status}</span>}
+          <span>
+            {total.toLocaleString()} games
+            {data.opening ? ` · ${data.opening.eco} ${data.opening.name}` : ''}
+          </span>
         </div>
       )}
     </div>

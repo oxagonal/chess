@@ -1,9 +1,9 @@
 /**
- * Move evaluations for the builder.
+ * Position analysis for the builder's Engine box (and game review).
  *
- *  1. Lichess cloud eval — instant, deep evals for common positions (top few moves).
- *  2. Stockfish 19 (lite NNUE, single-threaded WASM) running in a Web Worker — evaluates exactly the
- *     moves you're looking at (`go searchmoves …` with one MultiPV line per move), offline too.
+ *  1. Lichess cloud eval — instant, deep analysis of common positions (several best lines).
+ *  2. Stockfish 19 (lite NNUE, single-threaded WASM) running in a Web Worker — offline too, deepening
+ *     until the depth set in Settings.
  *
  * Scores are reported from White's point of view, like every chess site.
  */
@@ -18,7 +18,11 @@ export interface MoveEval {
   source: 'cloud' | 'local';
 }
 
-export type EvalMap = Map<string, MoveEval>; // keyed by standard UCI
+/** One of the engine's best lines: its evaluation and the moves (standard UCI) from the position. */
+export interface EngineLine {
+  eval: MoveEval;
+  moves: string[];
+}
 
 /** "+0.35", "−1.20", "#4", "#-2" */
 export function formatEval(e: MoveEval): string {
@@ -27,7 +31,7 @@ export function formatEval(e: MoveEval): string {
   return `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}`;
 }
 
-/** Better for the side that just moved = higher. Used to rank/color evals. */
+/** Better for White = higher (mates beyond any centipawn score). */
 export function evalScore(e: MoveEval): number {
   if (e.mate !== undefined) return e.mate > 0 ? 100000 - e.mate : -100000 - e.mate;
   return e.cp ?? 0;
@@ -35,9 +39,10 @@ export function evalScore(e: MoveEval): number {
 
 /* ------------------------------------------------------------- cloud eval */
 
-const cloudCache = new Map<string, EvalMap | null>();
+const cloudCache = new Map<string, EngineLine[] | null>();
 
-export async function cloudEval(key: string, signal?: AbortSignal): Promise<EvalMap | undefined> {
+/** Lichess's cloud analysis of a position (its best lines), if it has one. */
+export async function cloudLines(key: string, signal?: AbortSignal): Promise<EngineLine[] | undefined> {
   if (cloudCache.has(key)) return cloudCache.get(key) ?? undefined;
   const fen = `${key} 0 1`;
   try {
@@ -48,35 +53,42 @@ export async function cloudEval(key: string, signal?: AbortSignal): Promise<Eval
     }
     if (!res.ok) return undefined; // rate limited etc. — the local engine covers it
     const data = (await res.json()) as { depth: number; pvs: { moves: string; cp?: number; mate?: number }[] };
-    const pos = posFromFen(key);
-    const out: EvalMap = new Map();
-    for (const pv of data.pvs) {
-      const first = pv.moves.split(' ')[0];
-      const uci = (pos && playUci(pos, first)?.uci) || first; // normalises e1h1-style castling
-      out.set(uci, { cp: pv.cp, mate: pv.mate, depth: data.depth, source: 'cloud' });
-    }
-    cloudCache.set(key, out);
-    return out;
+    const lines = data.pvs.map((pv) => ({ eval: { cp: pv.cp, mate: pv.mate, depth: data.depth, source: 'cloud' as const }, moves: normalise(key, pv.moves.split(' ')) }));
+    cloudCache.set(key, lines);
+    return lines;
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e;
     return undefined;
   }
 }
 
+/** Standard UCI for each move of a line (e.g. e1h1-style castling → e1g1); stops at an illegal move. */
+function normalise(key: string, ucis: string[]): string[] {
+  let pos = posFromFen(key);
+  const out: string[] = [];
+  for (const u of ucis) {
+    const r = pos && playUci(pos, u);
+    if (!r) break;
+    out.push(r.uci);
+    pos = r.pos;
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------ local engine */
 
 interface Job {
   fen: string;
-  moves: string[];
+  multiPv: number;
   depth: number;
-  onUpdate: (evals: EvalMap, depth: number) => void;
-  resolve: (evals: EvalMap) => void;
+  onUpdate: (lines: EngineLine[], depth: number) => void;
+  resolve: (lines: EngineLine[]) => void;
 }
 
 class Stockfish {
   private worker?: Worker;
   private ready?: Promise<void>;
-  private current?: Job & { evals: EvalMap; whiteToMove: boolean };
+  private current?: Job & { lines: Map<number, EngineLine>; whiteToMove: boolean };
   private queued?: Job;
 
   private start(): Promise<void> {
@@ -98,20 +110,26 @@ class Stockfish {
     return this.ready;
   }
 
+  private sorted(job: NonNullable<typeof this.current>): EngineLine[] {
+    return [...job.lines.entries()].sort((a, b) => a[0] - b[0]).map(([, l]) => l);
+  }
+
   private onLine(line: string) {
     const job = this.current;
     if (!job) return;
     if (line.startsWith('info ') && line.includes(' pv ') && !/ (lower|upper)bound/.test(line)) {
       const depth = Number(/ depth (\d+)/.exec(line)?.[1] ?? 0);
       const score = / score (cp|mate) (-?\d+)/.exec(line);
-      const first = / pv (\S+)/.exec(line)?.[1];
-      if (!score || !first || depth < 1) return;
+      const slot = Number(/ multipv (\d+)/.exec(line)?.[1] ?? 1);
+      const pv = / pv (.+)$/.exec(line)?.[1]?.trim().split(/\s+/);
+      if (!score || !pv?.length || depth < 1) return;
       const v = Number(score[2]) * (job.whiteToMove ? 1 : -1); // engine reports side-to-move POV
-      job.evals.set(first, score[1] === 'cp' ? { cp: v, depth, source: 'local' } : { mate: v, depth, source: 'local' });
-      job.onUpdate(new Map(job.evals), depth);
+      const ev: MoveEval = score[1] === 'cp' ? { cp: v, depth, source: 'local' } : { mate: v, depth, source: 'local' };
+      job.lines.set(slot, { eval: ev, moves: pv });
+      job.onUpdate(this.sorted(job), depth);
     } else if (line.startsWith('bestmove')) {
       this.current = undefined;
-      job.resolve(job.evals);
+      job.resolve(this.sorted(job));
       if (this.queued) {
         const next = this.queued;
         this.queued = undefined;
@@ -122,18 +140,18 @@ class Stockfish {
 
   private run(job: Job) {
     const w = this.worker!;
-    this.current = { ...job, evals: new Map(), whiteToMove: job.fen.split(' ')[1] !== 'b' };
+    this.current = { ...job, lines: new Map(), whiteToMove: job.fen.split(' ')[1] !== 'b' };
     w.postMessage('ucinewgame');
-    w.postMessage(`setoption name MultiPV value ${Math.max(1, job.moves.length)}`);
+    w.postMessage(`setoption name MultiPV value ${Math.max(1, job.multiPv)}`);
     w.postMessage(`position fen ${job.fen}`);
-    w.postMessage(job.moves.length ? `go depth ${job.depth} searchmoves ${job.moves.join(' ')}` : `go depth ${job.depth}`);
+    w.postMessage(`go depth ${job.depth}`);
   }
 
   async analyse(job: Job) {
     await this.start();
     if (this.current) {
       // Replace whatever was waiting and stop the running search; its bestmove starts this one.
-      this.queued?.resolve(new Map());
+      this.queued?.resolve([]);
       this.queued = job;
       this.worker!.postMessage('stop');
     } else {
@@ -142,72 +160,64 @@ class Stockfish {
   }
 
   stop() {
-    this.queued?.resolve(new Map());
+    this.queued?.resolve([]);
     this.queued = undefined;
     if (this.current) this.worker?.postMessage('stop');
   }
 }
 
 const engine = new Stockfish();
-const localCache = new Map<string, EvalMap>();
+const localCache = new Map<string, EngineLine[]>();
+
+export interface AnalysisStatus {
+  depth: number;
+  done: boolean;
+  source: 'cloud' | 'local';
+}
 
 /**
- * Evaluate each of `moves` (standard UCI) in the position `key`. Calls `onUpdate` as results arrive:
- * cloud evals first (if any), then Stockfish's, deepening until `depth`.
+ * The best `multiPv` lines in position `key`. Calls `onUpdate` as results arrive: Lichess's cloud
+ * analysis first (if it has the position), then Stockfish's, deepening until `depth` — a deeper
+ * cloud result is kept until the engine catches up. Returns a function that cancels the search.
  */
-export function evaluateMoves(
-  key: string,
-  moves: string[],
-  depth: number,
-  onUpdate: (evals: EvalMap, status: { depth: number; done: boolean; source: 'cloud' | 'local' }) => void,
-): () => void {
+export function analysePosition(key: string, depth: number, multiPv: number, onUpdate: (lines: EngineLine[], status: AnalysisStatus) => void): () => void {
   let cancelled = false;
   const ctrl = new AbortController();
-  const cacheKey = `${key}|${depth}|${[...moves].sort().join(',')}`;
-  const merged: EvalMap = new Map();
+  const cacheKey = `${key}|${depth}|${multiPv}`;
 
   (async () => {
     const cached = localCache.get(cacheKey);
     if (cached) {
-      onUpdate(new Map(cached), { depth, done: true, source: 'local' });
+      onUpdate(cached, { depth, done: true, source: 'local' });
       return;
     }
+    let cloud: EngineLine[] | undefined;
     try {
-      const cloud = await cloudEval(key, ctrl.signal);
+      cloud = (await cloudLines(key, ctrl.signal))?.slice(0, multiPv);
       if (cancelled) return;
-      if (cloud) {
-        for (const m of moves) {
-          const e = cloud.get(m);
-          if (e) merged.set(m, e);
-        }
-        onUpdate(new Map(merged), { depth: 0, done: false, source: 'cloud' });
-      }
+      if (cloud?.length) onUpdate(cloud, { depth: cloud[0].eval.depth, done: false, source: 'cloud' });
     } catch {
       return; // aborted
     }
-    if (!moves.length || cancelled) return;
+    const cloudDepth = cloud?.[0]?.eval.depth ?? 0;
     try {
-      const final = await new Promise<EvalMap>((resolve) =>
+      const final = await new Promise<EngineLine[]>((resolve) =>
         engine.analyse({
           fen: `${key} 0 1`,
-          moves,
+          multiPv,
           depth,
           resolve,
-          onUpdate: (local, d) => {
-            if (cancelled) return;
-            // Keep a deeper cloud eval until the engine catches up.
-            for (const [m, e] of local) {
-              const c = merged.get(m);
-              if (!c || c.source === 'local' || e.depth >= c.depth) merged.set(m, e);
-            }
-            onUpdate(new Map(merged), { depth: d, done: false, source: 'local' });
+          onUpdate: (lines, d) => {
+            if (cancelled || (cloud?.length && d < cloudDepth)) return;
+            onUpdate(lines, { depth: d, done: false, source: 'local' });
           },
         }),
       );
       if (cancelled) return;
-      if (final.size) {
-        localCache.set(cacheKey, new Map(merged));
-        onUpdate(new Map(merged), { depth, done: true, source: 'local' });
+      if (final.length) {
+        const best = cloud?.length && cloudDepth > depth ? cloud : final;
+        localCache.set(cacheKey, best);
+        onUpdate(best, { depth: best[0].eval.depth, done: true, source: best[0].eval.source });
       }
     } catch (e) {
       console.warn(e);
@@ -231,21 +241,24 @@ export interface PositionEval {
 }
 
 /**
- * Evaluate one position (no move restriction). The engine reports a best line per depth; we keep the
- * deepest one. Resolves `undefined` if the position is over (mate/stalemate) or the search was replaced.
+ * Evaluate one position. Resolves `undefined` if the position is over (mate/stalemate) or the search
+ * was replaced.
  */
 export function evaluatePosition(fen: string, depth: number): Promise<PositionEval | undefined> {
   return new Promise((resolve) => {
-    let best: { uci: string; e: MoveEval } | undefined;
+    let best: EngineLine | undefined;
     engine
       .analyse({
         fen,
-        moves: [],
+        multiPv: 1,
         depth,
-        onUpdate: (evals) => {
-          for (const [uci, e] of evals) if (!best || e.depth >= best.e.depth) best = { uci, e };
+        onUpdate: (lines) => {
+          if (lines[0]) best = lines[0];
         },
-        resolve: () => resolve(best ? { eval: best.e, best: best.uci } : undefined),
+        resolve: (lines) => {
+          const top = lines[0] ?? best;
+          resolve(top ? { eval: top.eval, best: top.moves[0] } : undefined);
+        },
       })
       .catch(() => resolve(undefined));
   });
