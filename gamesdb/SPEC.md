@@ -4,9 +4,29 @@ Chess Prep's **Players** tab can search a player by name and use their over-the-
 come from **Lumbra's Gigabase** (OTB, CC BY-NC 4.0), exported on your computer into static files and
 deployed as a separate Cloudflare site, `https://otbdb.oxagon.workers.dev`.
 
-This document is for whoever runs the export (e.g. a Claude Code session on your computer). The app
-side — `src/lib/gamesdb.ts` (format, decoder) and `src/services/gamesdb.ts` (fetching) — is the
-reference: if this text and that code disagree, the code wins.
+The app side — `src/lib/gamesdb.ts` (format, decoder) and `src/services/gamesdb.ts` (fetching) — is
+the reference: if this text and that code disagree, the code wins.
+
+## Quick start: the exporter in this repo
+
+`gamesdb/export.ts` implements everything below. It reads the Gigabase **PGN** download (the "OTB
+database as PGN" file on the download page, extracted from its .7z):
+
+```bash
+npm ci                                                     # once
+npm run export:gamesdb -- --release 2026-11-02 ~/Downloads/LumbrasGigaBase_OTB.pgn
+GAMESDB_DIR=gamesdb/dist GAMESDB_PROBE="Paul Iinuma" npm run check:gamesdb
+cd gamesdb && npx wrangler login && npx wrangler deploy    # login once
+```
+
+- `--release` is the Gigabase version you downloaded (it must change with every new deploy).
+- Several PGN files can be given at once. `--since 1990` leaves out older games if the output turns
+  out too big for Cloudflare.
+- Expect about 50 minutes for 13.5 million games, roughly 7 GB of temporary files while it runs, and
+  2–4 GB of output (fewer if games compress well). It prints progress every 10 seconds.
+
+The rest of this document is the format, for checking the output or writing another exporter (e.g.
+straight from the Scid files).
 
 **Do not commit the database or upload it anywhere other than the Cloudflare deploy below.** Lumbra's
 Gigabase is downloaded by hand from <https://lumbrasgigabase.com> (the site doesn't allow automated

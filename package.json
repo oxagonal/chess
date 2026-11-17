@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "predev": "node scripts/copy-engine.mjs",
     "prebuild": "node scripts/copy-engine.mjs",
-    "check:gamesdb": "vitest run src/test/gamesdb.test.ts"
+    "check:gamesdb": "vitest run src/test/gamesdb.test.ts",
+    "export:gamesdb": "tsx gamesdb/export.ts"
   },
   "dependencies": {
     "chessground": "^9.2.1",
@@ -33,6 +34,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
     "fake-indexeddb": "^6.2.8",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
