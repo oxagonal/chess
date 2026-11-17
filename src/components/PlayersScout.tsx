@@ -6,7 +6,9 @@ import { otbGamesVs, pgnGamesOf } from '../lib/players';
 import { readPgnGames, sameName, similarNames } from '../lib/otb';
 import { href } from '../router';
 import type { Color } from '../lib/chess';
-import type { Player, StoredGame } from '../lib/types';
+import type { DbLink, Player, StoredGame } from '../lib/types';
+import type { NameEntry } from '../lib/gamesdb';
+import { searchPlayers } from '../services/gamesdb';
 import { MoreMenu, timeAgo } from './ui';
 
 const STORE_KEY = 'chess-prep:scoutPlayer';
@@ -36,23 +38,31 @@ export interface ScoutGames {
   player: Player;
   /** Every known game, `userColor` = the player's color. */
   games: StoredGame[];
-  counts: { online: number; otb: number; pgn: number };
+  /** online = downloaded from Lichess / Chess.com, db = from the over-the-board database, otb = yours vs them, pgn = pasted. */
+  counts: { online: number; db: number; otb: number; pgn: number };
   newest?: number;
 }
 
 /** All games we know of a player: downloaded, your over-the-board games against them, pasted PGN. */
 export function usePlayerGames(playerId: string | undefined): ScoutGames | undefined | null {
   const player = useLiveQuery(async () => (playerId ? ((await db.players.get(playerId)) ?? null) : null), [playerId]);
-  const online = useLiveQuery(() => (playerId ? db.playerGames.where('playerId').equals(playerId).toArray() : []), [playerId]);
+  const cached = useLiveQuery(() => (playerId ? db.playerGames.where('playerId').equals(playerId).toArray() : []), [playerId]);
   const myOtb = useLiveQuery(() => db.games.where('source').equals('otb').toArray(), []);
   return useMemo(() => {
     if (player === null) return null;
-    if (!player || !online || !myOtb) return undefined;
+    if (!player || !cached || !myOtb) return undefined;
+    const online = cached.filter((g) => g.source !== 'otb');
+    const fromDb = cached.filter((g) => g.source === 'otb');
     const otb = otbGamesVs(player, myOtb);
     const pgn = pgnGamesOf(player).games;
     const newest = online.reduce((m, g) => Math.max(m, g.playedAt), 0) || undefined;
-    return { player, games: [...online, ...otb, ...pgn], counts: { online: online.length, otb: otb.length, pgn: pgn.length }, newest };
-  }, [player, online, myOtb]);
+    return {
+      player,
+      games: [...cached, ...otb, ...pgn],
+      counts: { online: online.length, db: fromDb.length, otb: otb.length, pgn: pgn.length },
+      newest,
+    };
+  }, [player, cached, myOtb]);
 }
 
 /** Which of a player's games to show: everything, their online games, or over-the-board ones (yours vs them + PGN). */
@@ -94,7 +104,7 @@ export function PlayersBar({ playerId, onSelect, as, onAs, source, onSource, sco
   }, [players, playerId, onSelect]);
 
   const update = async (p: Player) => {
-    if (!p.lichess && !p.chesscom) return;
+    if (!hasSources(p)) return;
     ctrl.current?.abort();
     const c = new AbortController();
     ctrl.current = c;
@@ -104,7 +114,8 @@ export function PlayersBar({ playerId, onSelect, as, onAs, source, onSource, sco
     try {
       const r = await refreshPlayerGames(p, {
         signal: c.signal,
-        onProgress: (x) => setProgress(`${x.source === 'lichess' ? 'Lichess' : 'Chess.com'}: ${x.games} games${x.detail ? ` (${x.detail})` : ''}`),
+        onProgress: (x) =>
+          setProgress(`${x.source === 'lichess' ? 'Lichess' : x.source === 'chesscom' ? 'Chess.com' : 'games database'}: ${x.games} games${x.detail ? ` (${x.detail})` : ''}`),
       });
       setErrors(r.errors);
     } catch (e) {
@@ -117,7 +128,7 @@ export function PlayersBar({ playerId, onSelect, as, onAs, source, onSource, sco
   // Fetch new games once per visit for the selected player.
   useEffect(() => {
     const p = scout?.player;
-    if (p && !refreshed.has(p.id) && (p.lichess || p.chesscom)) void update(p);
+    if (p && !refreshed.has(p.id) && hasSources(p)) void update(p);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scout?.player.id]);
   useEffect(() => () => ctrl.current?.abort(), []);
@@ -154,7 +165,7 @@ export function PlayersBar({ playerId, onSelect, as, onAs, source, onSource, sco
   }
   const p = scout?.player;
   const c = scout?.counts;
-  const otbCount = c ? c.otb + c.pgn : 0;
+  const otbCount = c ? c.db + c.otb + c.pgn : 0;
   const total = c ? c.online + otbCount : 0;
   const accounts = p ? [p.lichess && `Lichess ${p.lichess}`, p.chesscom && `Chess.com ${p.chesscom}`].filter(Boolean).join(', ') : '';
   return (
@@ -177,7 +188,7 @@ export function PlayersBar({ playerId, onSelect, as, onAs, source, onSource, sco
         <MoreMenu label="Player actions">
           <button onClick={() => setEditing('new')}>Add a player…</button>
           {p && <button onClick={() => setEditing(p)}>Edit {p.name}…</button>}
-          {p && (p.lichess || p.chesscom) && (
+          {p && hasSources(p) && (
             <button disabled={!!progress} onClick={() => update(p)}>
               Download new games
             </button>
@@ -226,8 +237,17 @@ export function PlayersBar({ playerId, onSelect, as, onAs, source, onSource, sco
               )}
             </div>
             <div>
-              <b>Over the board:</b> {c.otb} game{c.otb === 1 ? '' : 's'} you entered against “{p.name}”
+              <b>Over the board:</b> {c.db ? `${c.db} from the games database, ` : ''}
+              {c.otb} game{c.otb === 1 ? '' : 's'} you entered against “{p.name}”
               {c.pgn ? `, ${c.pgn} from pasted PGN` : ''}
+              {!p.dbLinks?.length && (
+                <>
+                  {' · '}
+                  <button className="linklike" onClick={() => setEditing(p)}>
+                    find them in the games database
+                  </button>
+                </>
+              )}
               {' · '}
               <a href={href('games/new', { opponent: p.name })}>add a game vs {p.name}</a>
             </div>
@@ -240,9 +260,15 @@ export function PlayersBar({ playerId, onSelect, as, onAs, source, onSource, sco
         <div className="note col" style={{ gap: 6 }}>
           <b>No games for {p.name} yet.</b>
           <span>
-            Chess Prep doesn’t search over-the-board game databases, so a name on its own only finds games you add yourself:
+            Their games can come from:
           </span>
           <ul className="steps">
+            <li>
+              the over-the-board games database (13 million games) —{' '}
+              <button className="linklike" onClick={() => setEditing(p)}>
+                find {p.name}
+              </button>
+            </li>
             <li>
               games you played against them — <a href={href('games/new', { opponent: p.name })}>add one</a> (Games → + Over-the-board game)
             </li>
@@ -277,6 +303,7 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
   const [chesscom, setChesscom] = useState(player?.chesscom ?? '');
   const [pgn, setPgn] = useState(player?.pgn ?? '');
   const [busy, setBusy] = useState(false);
+  const [links, setLinks] = useState<DbLink[]>(player?.dbLinks ?? []);
   const opponents = useLiveQuery(async () => {
     const games = await db.games.where('source').equals('otb').toArray();
     return games.map((g) => (g.userColor === 'white' ? g.black : g.white));
@@ -296,7 +323,7 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
   }, [pgn, name, lichess, chesscom]);
   const save = async () => {
     setBusy(true);
-    onDone(await savePlayer({ id: player?.id, name: name.trim() || lichess.trim() || chesscom.trim(), lichess, chesscom, pgn }));
+    onDone(await savePlayer({ id: player?.id, name: name.trim() || lichess.trim() || chesscom.trim(), lichess, chesscom, pgn, dbLinks: links }));
   };
   return (
     <div className="col scout-editor" style={{ gap: 10 }}>
@@ -309,7 +336,7 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
         <div className="small" style={{ marginTop: -4 }}>
           {match.count > 0 ? (
             <span style={{ color: 'var(--good)' }}>
-              ✓ {match.count} of your over-the-board games {match.count === 1 ? 'is' : 'are'} against this name.
+              ✓ {match.count} of the over-the-board games you entered {match.count === 1 ? 'is' : 'are'} against this name.
             </span>
           ) : match.suggestions.length ? (
             <span className="muted">
@@ -327,8 +354,7 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
             </span>
           ) : (
             <span className="muted">
-              No over-the-board games against this name yet. A name only finds games you’ve entered or paste below — Chess Prep doesn’t
-              search over-the-board game databases.
+              You haven’t entered any over-the-board games against this name (Games → + Over-the-board game).
             </span>
           )}
         </div>
@@ -343,6 +369,7 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
           <input value={chesscom} onChange={(e) => setChesscom(e.target.value)} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
         </label>
       </div>
+      <DbLinker name={name} links={links} onChange={setLinks} />
       <label className="field">
         <span>Their games as PGN (optional)</span>
         <textarea rows={3} value={pgn} onChange={(e) => setPgn(e.target.value)} placeholder="Paste their games — exported from a games database, a tournament bulletin…" />
@@ -359,3 +386,105 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
     </div>
   );
 }
+
+const hasSources = (p: Player) => !!(p.lichess || p.chesscom || p.dbLinks?.length);
+
+/** Search the over-the-board games database and tick the names that are this player. */
+function DbLinker({ name, links, onChange }: { name: string; links: DbLink[]; onChange: (l: DbLink[]) => void }) {
+  const [query, setQuery] = useState(name);
+  const [edited, setEdited] = useState(false);
+  const [results, setResults] = useState<NameEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [preselected, setPreselected] = useState(false);
+  const linksRef = useRef(links);
+  linksRef.current = links;
+  // Follow the name field until the search box is edited.
+  useEffect(() => {
+    if (!edited) setQuery(name);
+  }, [name, edited]);
+  // Search as you type (shards are cached, so most keystrokes cost nothing).
+  useEffect(() => {
+    if (!query.trim() || !/\p{L}{3}/u.test(query)) {
+      setResults(null);
+      return;
+    }
+    let stale = false;
+    const t = setTimeout(async () => {
+      setBusy(true);
+      try {
+        const found = (await searchPlayers(query)).slice(0, 40);
+        if (stale) return;
+        setResults(found);
+        setError(null);
+        // First search for a player with no links: tick the spellings that are clearly the same name.
+        if (!linksRef.current.length && !preselected) {
+          const same = found.filter(([n]) => sameName(n, name));
+          if (same.length) {
+            onChange(same.map(([n, id, games]) => ({ id, name: n, games })));
+            setPreselected(true);
+          }
+        }
+      } catch (e) {
+        if (!stale) setError((e as Error).message);
+      } finally {
+        if (!stale) setBusy(false);
+      }
+    }, 450);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+  const linked = new Set(links.map((l) => l.id));
+  const toggle = ([n, id, games]: NameEntry) =>
+    onChange(linked.has(id) ? links.filter((l) => l.id !== id) : [...links, { id, name: n, games }]);
+  const total = links.reduce((s, l) => s + l.games, 0);
+  return (
+    <div className="field db-linker">
+      <span>Over-the-board games database</span>
+      <input
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setEdited(true);
+        }}
+        placeholder="Search a name, e.g. Iinuma"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+      />
+      {busy && !results && <div className="muted small">Searching…</div>}
+      {error && <div className="muted small">{error}</div>}
+      {results && !results.length && <div className="muted small">No players with that name in the database.</div>}
+      {results && results.length > 0 && (
+        <div className="db-results">
+          {results.map((r) => (
+            <label key={r[1]} className="check db-result">
+              <input type="checkbox" checked={linked.has(r[1])} onChange={() => toggle(r)} />
+              <span>
+                <b>{r[0]}</b>{' '}
+                <span className="muted">
+                  {r[2]} game{r[2] === 1 ? '' : 's'}
+                  {r[3] ? ` · ${r[3] === r[4] ? r[3] : `${r[3]}–${r[4]}`}` : ''}
+                  {r[5] ? ` · FIDE ${r[5]}` : ''}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+      {links.length > 0 && (
+        <div className="small" style={{ color: 'var(--good)' }}>
+          ✓ {links.length === 1 ? links[0].name : `${links.length} names`} linked · {total} game{total === 1 ? '' : 's'}
+          {preselected && ' — the spellings matching the name are ticked; untick any that are someone else.'}
+        </div>
+      )}
+      <div className="muted small">
+        From Lumbra’s Gigabase (13 million over-the-board games). Tick every spelling of this player’s name.
+      </div>
+    </div>
+  );
+}
+

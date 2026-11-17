@@ -59,7 +59,11 @@ export function AboutPanel() {
         </ul>
         <p className="muted small" style={{ margin: '8px 0 0' }}>
           Opening statistics and cloud evaluations come from the Lichess opening explorer; games are downloaded from the Lichess and
-          Chess.com public APIs. Not affiliated with Lichess or Chess.com.
+          Chess.com public APIs. Over-the-board games of other players come from{' '}
+          <a href="https://lumbrasgigabase.com" target="_blank" rel="noreferrer">
+            Lumbra’s Gigabase
+          </a>{' '}
+          (CC BY-NC 4.0). Not affiliated with Lichess, Chess.com or Lumbra’s Gigabase.
         </p>
       </div>
       <p className="muted small" style={{ margin: 0 }}>

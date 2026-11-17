@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "predev": "node scripts/copy-engine.mjs",
-    "prebuild": "node scripts/copy-engine.mjs"
+    "prebuild": "node scripts/copy-engine.mjs",
+    "check:gamesdb": "vitest run src/test/gamesdb.test.ts"
   },
   "dependencies": {
     "chessground": "^9.2.1",
