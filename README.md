@@ -29,7 +29,7 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   builder at that position so you can prepare an answer.
 - **Insights** — a 0–100 *mastery* score per move and per line, blending training accuracy, FSRS recall
   and difficulty, and slips in real games. Lines are shown as a tree (weakest first), plus a list of your
-  trickiest moves; *Drill* practises any line or your weakest moves on demand.
+  trickiest moves; *Drill* practices any line or your weakest moves on demand.
 
 - **Sync between devices** — optional: keep your phone and computer in step through a secret gist in your
   own GitHub account (see below).

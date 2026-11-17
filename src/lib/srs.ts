@@ -65,7 +65,7 @@ export function grade(card: ReviewCard, rating: Grade, settings: SrsSettings = D
 }
 
 /**
- * A drill: you practise a move whether or not it's due. A correct answer on a move that isn't due
+ * A drill: you practice a move whether or not it's due. A correct answer on a move that isn't due
  * yet restarts its current interval from today — as if its last review had been today — instead of
  * growing it: an early review proves little, and drilling a move again and again (even on different
  * days) must not push it months away. Only real reviews, when it's due, lengthen the interval.

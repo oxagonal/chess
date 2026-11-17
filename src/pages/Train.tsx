@@ -307,7 +307,7 @@ function Session({ setup }: { setup: SessionSetup }) {
         continue;
       }
       // A transposed position: each review takes the next move order into it (most common first),
-      // so over time you practise reaching it every way your repertoire allows.
+      // so over time you practice reaching it every way your repertoire allows.
       const orders = moveOrders(graph, move.fromKey, setup.probs.get(card.repId));
       let index = orders.length ? card.reps % orders.length : 0;
       const learn = mode === 'learn';
@@ -457,7 +457,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (failed ? 0 : 1), failed: s.failed + (failed ? 1 : 0) }));
       const body = (interval?: string) => (
         <>
-          <b>{failed ? `${expected.san} — keep practising it.` : `✓ ${expected.san}`}</b>
+          <b>{failed ? `${expected.san} — keep practicing it.` : `✓ ${expected.san}`}</b>
           {interval && <span className="muted"> · next review in {interval}</span>}
           {/* No note after a correct answer: a missed move opens its note under the board instead. */}
         </>
@@ -604,7 +604,7 @@ function Session({ setup }: { setup: SessionSetup }) {
   const orderBadge = line?.order && (
     <span
       className="badge"
-      title="This position can be reached by more than one move order. Each review takes the next one (most common first), so you practise them all."
+      title="This position can be reached by more than one move order. Each review takes the next one (most common first), so you practice them all."
     >
       {phone ? 'Order' : 'Move order'} {line.order.index + 1} {phone ? '/' : 'of'} {line.order.count}
     </span>
