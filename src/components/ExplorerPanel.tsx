@@ -114,7 +114,11 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
     <div className="panel explorer">
       {title && <h3>{title}</h3>}
       <div className="tabs">
-        <button className={tab === 'lichess' ? 'active' : ''} onClick={() => setTab('lichess')} title={params && tab === 'lichess' ? paramsKey : ''}>
+        <button
+          className={tab === 'lichess' ? 'active' : ''}
+          onClick={() => setTab('lichess')}
+          title={`Lichess games at your rating: ${lichessParams(settings).ratings.join('/')} · ${lichessParams(settings).speeds.join(', ')} (change in Settings)`}
+        >
           Lichess
         </button>
         <button className={tab === 'masters' ? 'active' : ''} onClick={() => setTab('masters')}>
@@ -127,9 +131,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
           Players
         </button>
         <span className="spacer" />
-        <span className="muted small" style={{ alignSelf: 'center' }}>
-          {tab === 'lichess' && params ? `${params.ratings.join('/')} · ${params.speeds.join(', ')}` : tab === 'mine' ? `as ${color}` : ''}
-        </span>
+        {/* The rating bands and speeds are in the Lichess tab's tooltip, to keep this row to one line. */}
         {tab === 'mine' && <GameRangeSelect setting="opponentRange" />}
       </div>
       {tab === 'players' && <PlayersBar
