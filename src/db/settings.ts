@@ -4,6 +4,7 @@ import type { ProbabilitySource } from '../lib/types';
 import type { RatingPool } from '../lib/ratings';
 import type { TimeClass } from '../lib/importers/common';
 import type { GameRange } from '../lib/gameRange';
+import type { Repertoire } from '../lib/types';
 
 export interface AppSettings {
   lichessUsername: string;
@@ -26,7 +27,10 @@ export interface AppSettings {
   /** Lichess explorer speeds used for probabilities. */
   speeds: string[];
   probabilitySource: ProbabilitySource;
-  /** Study positions you'd meet at least once in N games. */
+  /**
+   * Default coverage target (1 in N games) for repertoires that haven't set their own. Each
+   * repertoire's target is set on the Coverage page — use repTarget() rather than reading this.
+   */
   oneInN: number;
 
   newPerDay: number;
@@ -94,6 +98,13 @@ export const ONE_IN_N_PRESETS: { n: number; label: string }[] = [
   { n: 300, label: 'Tournament ready' },
   { n: 800, label: 'Overkill' },
 ];
+
+const clampN = (n: number) => Math.min(ONE_IN_N_MAX, Math.max(ONE_IN_N_MIN, Math.round(n)));
+
+/** A repertoire's coverage target N ("positions reached in at least 1 in N games"). */
+export function repTarget(rep: Pick<Repertoire, 'oneInN'> | undefined, s: Pick<AppSettings, 'oneInN'>): number {
+  return clampN(rep?.oneInN ?? s.oneInN);
+}
 
 export async function getSettings(): Promise<AppSettings> {
   const row = await db.kv.get(KEY);

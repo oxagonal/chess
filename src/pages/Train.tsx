@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import type { Chess } from 'chessops/chess';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
-import { getSettings, useSettings, type AppSettings } from '../db/settings';
+import { getSettings, repTarget, useSettings, type AppSettings } from '../db/settings';
 import { gradeCard } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
 import { Board, type Arrow } from '../components/Board';
@@ -52,14 +52,13 @@ function TrainChooser() {
   if (!reps.length) return <Empty>Create a repertoire first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
 
   const newLeft = Math.max(0, settings.newPerDay - (learnedToday ?? 0));
-  const threshold = 1 / settings.oneInN;
   const countsFor = (repIds: string[]) => {
     let rc = cards.filter((c) => repIds.includes(c.repId));
     if (settings.trainOnlyLikely) {
       rc = repIds.flatMap((id) => {
         const cov = coverage?.find((c) => c.repId === id);
         const mine = rc.filter((c) => c.repId === id);
-        return cov ? filterByProbability(mine, cov.probs, threshold) : mine;
+        return cov ? filterByProbability(mine, cov.probs, 1 / repTarget(reps.find((r) => r.id === id), settings)) : mine;
       });
     }
     return { due: rc.filter((c) => isDue(c, now)).length, fresh: rc.filter(isNew).length };
@@ -76,7 +75,8 @@ function TrainChooser() {
       </div>
       {settings.trainOnlyLikely && (
         <div className="note">
-          Only training positions reached in at least 1 in {settings.oneInN} games (repertoires with a Coverage run). Change this in Settings.
+          Only training positions reached at least as often as each repertoire's coverage target (repertoires with a Coverage run). Change this
+          in Settings.
         </div>
       )}
       <div className="panel list">
@@ -202,7 +202,7 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
           continue;
         }
         if (s.trainOnlyLikely) {
-          if (cov) pool = filterByProbability(pool, cov.probs, 1 / s.oneInN);
+          if (cov) pool = filterByProbability(pool, cov.probs, 1 / repTarget(rep, s));
           else notes.push(`“${rep.name}” has no Coverage run yet, so all of its moves are included.`);
         }
         queue.push(...orderCards(pool, graph, cov?.probs));
@@ -392,7 +392,7 @@ function Session({ setup }: { setup: SessionSetup }) {
         <>
           <b>{failed ? `${expected.san} — keep practising it.` : `✓ ${expected.san}`}</b>
           {interval && <span className="muted"> · next review in {interval}</span>}
-          {expected.comment && <div style={{ marginTop: 4 }}>{expected.comment}</div>}
+          {/* No note after a correct answer: a missed move opens its note under the board instead. */}
         </>
       );
       const token = ++feedbackToken.current;

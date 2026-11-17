@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { updateSettings, useSettings, type AppSettings } from '../db/settings';
-import { OneInNSlider } from '../components/OneInNSlider';
 import { LichessAccount } from '../components/LichessConnect';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { db } from '../db/db';
@@ -166,7 +165,6 @@ export function SettingsPage() {
               <GameRangeSelect setting="opponentRange" />
             </div>
           )}
-          <OneInNSlider value={s.oneInN} />
         </div>
       </div>
 
@@ -202,7 +200,7 @@ export function SettingsPage() {
         </div>
         <label className="check">
           <input type="checkbox" checked={s.trainOnlyLikely} onChange={(e) => set({ trainOnlyLikely: e.target.checked })} />
-          Only train positions I'll meet in at least 1 in {s.oneInN} games (uses the last Coverage run of each repertoire)
+          Only train positions I'll meet at least as often as each repertoire's coverage target (uses its last Coverage run)
         </label>
         <p className="muted small">
           Higher retention means more frequent reviews. 90% is a good default; raise it before a tournament.

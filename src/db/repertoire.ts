@@ -19,6 +19,14 @@ export async function renameRepertoire(id: string, name: string) {
   await db.repertoires.update(id, { name, updatedAt: Date.now() });
 }
 
+/**
+ * Sets the repertoire's coverage target (1 in N games). Leaves updatedAt alone: the moves haven't
+ * changed, and a stored coverage result already goes stale when its threshold differs.
+ */
+export async function setRepertoireTarget(id: string, oneInN: number) {
+  await db.repertoires.update(id, { oneInN });
+}
+
 export async function deleteRepertoire(id: string) {
   await db.transaction('rw', [db.repertoires, db.moves, db.cards, db.coverage, db.reviewLog], async () => {
     await db.moves.where('repId').equals(id).delete();

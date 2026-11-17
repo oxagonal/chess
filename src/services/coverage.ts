@@ -1,10 +1,10 @@
 import { db } from '../db/db';
-import { getSettings, type AppSettings } from '../db/settings';
+import { getSettings, repTarget, type AppSettings } from '../db/settings';
 import { loadGraph } from '../db/repertoire';
 import { computeCoverage, COVERAGE_ALGO } from '../lib/coverage';
 import { GameStatsIndex } from '../lib/mygames';
 import { bandsForRating, toLichessRating } from '../lib/ratings';
-import { moveGames, type CoverageResult, type PositionStats } from '../lib/types';
+import { moveGames, type CoverageResult, type PositionStats, type Repertoire } from '../lib/types';
 import { turnOfKey, type Color } from '../lib/chess';
 import { estimateDepth, type DepthProfile } from '../lib/depth';
 import { gamesInRange, rangeLabel } from '../lib/gameRange';
@@ -49,7 +49,7 @@ export async function runCoverageForGraph(
   opts: { signal?: AbortSignal; onProgress?: (queried: number) => void; oneInN?: number } = {},
 ): Promise<CoverageResult> {
   const s = await getSettings();
-  const n = opts.oneInN ?? s.oneInN;
+  const n = opts.oneInN ?? repTarget(await db.repertoires.get(repId), s);
   const provider = await statsProvider(s, graph.color, opts.signal, 'low');
   const result = await computeCoverage(graph, provider, {
     repId,
@@ -121,14 +121,14 @@ export async function measureDepth(
   return profile;
 }
 
-/** Whether a stored result still matches the repertoire and the current settings. */
-export function isCoverageFresh(result: CoverageResult | undefined, repUpdatedAt: number, s: AppSettings): boolean {
+/** Whether a stored result still matches the repertoire (its moves and coverage target) and the current settings. */
+export function isCoverageFresh(result: CoverageResult | undefined, rep: Pick<Repertoire, 'updatedAt' | 'oneInN'>, s: AppSettings): boolean {
   return (
     !!result &&
     !!result.coverage &&
     result.algo === COVERAGE_ALGO &&
-    result.computedAt >= repUpdatedAt &&
+    result.computedAt >= rep.updatedAt &&
     result.paramsLabel === sourceLabel(s) &&
-    Math.abs(result.threshold - 1 / s.oneInN) < 1e-12
+    Math.abs(result.threshold - 1 / repTarget(rep, s)) < 1e-12
   );
 }

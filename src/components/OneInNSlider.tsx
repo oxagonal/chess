@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ONE_IN_N_MAX, ONE_IN_N_MIN, ONE_IN_N_PRESETS, updateSettings, useSettings } from '../db/settings';
+import { ONE_IN_N_MAX, ONE_IN_N_MIN, ONE_IN_N_PRESETS, useSettings } from '../db/settings';
 import { getDepthProfile, measureDepth, sourceLabel } from '../services/coverage';
 import type { Color } from '../lib/chess';
 
@@ -16,13 +16,26 @@ function toT(n: number): number {
   return Math.round((STEPS * Math.log(n / ONE_IN_N_MIN)) / Math.log(ONE_IN_N_MAX / ONE_IN_N_MIN));
 }
 
-/** "1 in N games" slider; saves when you let go so coverage doesn't recompute on every pixel. */
-export function OneInNSlider({ value, label = 'Study positions seen in at least' }: { value: number; label?: string }) {
+/**
+ * "1 in N games" slider; calls onChange when you let go so coverage doesn't recompute on every pixel.
+ * `color`: only show the depth estimate for that side (a repertoire's own target).
+ */
+export function OneInNSlider({
+  value,
+  onChange,
+  label = 'Study positions seen in at least',
+  color,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  label?: string;
+  color?: Color;
+}) {
   const [t, setT] = useState(toT(value));
   useEffect(() => setT(toT(value)), [value]);
   const n = toN(t);
   const commit = () => {
-    if (n !== value) updateSettings({ oneInN: n });
+    if (n !== value) onChange(n);
   };
   return (
     <div className="field" style={{ minWidth: 280, flex: 1 }}>
@@ -50,14 +63,14 @@ export function OneInNSlider({ value, label = 'Study positions seen in at least'
             className={`small ${p.n === n ? 'primary' : 'ghost'}`}
             onClick={() => {
               setT(toT(p.n));
-              if (p.n !== value) updateSettings({ oneInN: p.n });
+              if (p.n !== value) onChange(p.n);
             }}
           >
             {p.label} · {p.n}
           </button>
         ))}
       </div>
-      {n === value && <DepthReadout n={n} />}
+      {n === value && <DepthReadout n={n} only={color} />}
     </div>
   );
 }
@@ -66,7 +79,8 @@ export function OneInNSlider({ value, label = 'Study positions seen in at least'
  * Measured from the database at your rating: how long lines get before positions become rarer than
  * 1 in N, and how many lines a repertoire needs, if you play the most popular move on your turns.
  */
-function DepthReadout({ n }: { n: number }) {
+function DepthReadout({ n, only }: { n: number; only?: Color }) {
+  const sides: Color[] = only ? [only] : ['white', 'black'];
   const settings = useSettings();
   const src = sourceLabel(settings);
   const profiles = useLiveQuery(
@@ -82,7 +96,7 @@ function DepthReadout({ n }: { n: number }) {
     setError(null);
     ctrl.current = new AbortController();
     try {
-      for (const color of ['white', 'black'] as Color[]) {
+      for (const color of sides) {
         setBusy({ color, queried: 0 });
         await measureDepth(color, n, { signal: ctrl.current.signal, onProgress: (q) => setBusy({ color, queried: q }) });
       }
@@ -110,11 +124,10 @@ function DepthReadout({ n }: { n: number }) {
   };
 
   // Profiles saved before the move count existed lack it; offer to measure again.
-  const have = profiles?.white?.myMoves !== undefined && profiles?.black?.myMoves !== undefined;
+  const have = sides.every((c) => profiles?.[c]?.myMoves !== undefined);
   return (
     <div className="small" style={{ textTransform: 'none', letterSpacing: 0, marginTop: 2 }}>
-      {fmt('white')}
-      {fmt('black')}
+      {sides.map(fmt)}
       {have && <div>if you play the most popular move on your turns · {src}</div>}
       {!have && !busy && (
         <button className="small" style={{ marginTop: 4 }} onClick={measure} title="Walks the opening database to this depth. The first time can take a few minutes; results are saved.">

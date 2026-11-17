@@ -7,6 +7,8 @@ export interface Repertoire {
   color: Color;
   createdAt: number;
   updatedAt: number;
+  /** Coverage target: study positions reached in at least 1 in N games. Unset → the app default. */
+  oneInN?: number;
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;
 }

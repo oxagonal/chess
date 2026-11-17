@@ -12,7 +12,7 @@ import {
   importPgn,
   renameRepertoire,
 } from '../db/repertoire';
-import { useSettings, updateSettings } from '../db/settings';
+import { repTarget, useSettings, updateSettings } from '../db/settings';
 import { useCards, useCoverage, useRepertoires, useRepGraph } from '../hooks';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
@@ -264,7 +264,8 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
   const [line, setLine] = useState<LineMove[]>(() => lineFromSans(initialLine.split(/\s+/).filter(Boolean)));
   const [cursor, setCursor] = useState(line.length);
   // Only trust a coverage run that matches the current repertoire and settings.
-  const freshCoverage = rep && settings.loaded && isCoverageFresh(coverage, rep.updatedAt, settings) ? coverage : undefined;
+  const goalN = repTarget(rep, settings);
+  const freshCoverage = rep && settings.loaded && isCoverageFresh(coverage, rep, settings) ? coverage : undefined;
   const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings, freshCoverage);
   const [flipped, setFlipped] = useState(false);
   const [opening, setOpening] = useState<string | undefined>();
@@ -343,7 +344,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           startKey: memory.startKey,
           startPath: memory.startPath,
           startProb: memory.startProb,
-          threshold: 1 / settings.oneInN,
+          threshold: 1 / goalN,
           provider,
           skip: memSkip,
           signal: ctrl.signal,
@@ -371,7 +372,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
     };
     // Re-run when the repertoire changes (your answer was saved), when you skip, or settings change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memory, rep?.updatedAt, memSkip, settings.loaded, settings.oneInN, sourceLabel(settings)]);
+  }, [memory, rep?.updatedAt, memSkip, settings.loaded, goalN, sourceLabel(settings)]);
 
   const startMemory = () => {
     memStats.current = new Map();
@@ -439,7 +440,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
       if (e.key === 'ArrowLeft') setCursor((c) => Math.max(0, c - 1));
       else if (e.key === 'ArrowRight') {
         if (cursor < line.length) setCursor(cursor + 1);
-        else if (children.length) play(children[0].san);
+        else if (children.length && !memory) play(children[0].san);
       } else if (e.key === 'Home') setCursor(0);
       else if (e.key === 'End') setCursor(line.length);
       else if (e.key === 'f') setFlipped((f) => !f);
@@ -456,13 +457,23 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
   const orientation: Color = flipped ? (rep.color === 'white' ? 'black' : 'white') : rep.color;
   const myMovesHere = children.filter((c) => c.mine);
   const prob = coverage?.probs[key];
+  // Play from memory is "zen mode": just the board and the line — no explorer, arrows, notes or
+  // stats. If you can't find the move without the explorer, you don't really know it.
+  const zen = !!memory;
   const dueCount = (cards ?? []).filter((c) => isDue(c)).length;
   const newCount = (cards ?? []).filter(isNew).length;
 
   return (
     <div className="board-layout">
       <div className="board-col col">
-        <Board pos={pos} orientation={orientation} interactive lastMove={lastMove} onMove={onBoardMove} arrows={children.map((c) => ({ uci: c.uci, brush: c.mine ? 'green' : 'paleBlue' }))} />
+        <Board
+          pos={pos}
+          orientation={orientation}
+          interactive
+          lastMove={lastMove}
+          onMove={onBoardMove}
+          arrows={zen ? [] : children.map((c) => ({ uci: c.uci, brush: c.mine ? 'green' : 'paleBlue' }))}
+        />
         <div className="row">
           <button onClick={() => setCursor(0)} title="Start (Home)">
             ⏮
@@ -470,7 +481,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           <button onClick={() => setCursor(Math.max(0, cursor - 1))} title="Back (←)">
             ◀
           </button>
-          <button onClick={() => (cursor < line.length ? setCursor(cursor + 1) : children[0] && play(children[0].san))} title="Forward (→)">
+          <button onClick={() => (cursor < line.length ? setCursor(cursor + 1) : !zen && children[0] && play(children[0].san))} title="Forward (→)">
             ▶
           </button>
           <button onClick={() => setCursor(line.length)} title="End">
@@ -479,55 +490,61 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           <button onClick={() => setFlipped(!flipped)} title="Flip board (f)">
             ⇅
           </button>
-          <a
-            className="btn small"
-            href={`https://lichess.org/analysis/standard/${`${key} 0 1`.replace(/ /g, '_')}?color=${orientation}`}
-            target="_blank"
-            rel="noreferrer"
-            title="Open this position on the Lichess analysis board (new tab)"
-          >
-            Analyze on Lichess ↗
-          </a>
+          {!zen && (
+            <a
+              className="btn small"
+              href={`https://lichess.org/analysis/standard/${`${key} 0 1`.replace(/ /g, '_')}?color=${orientation}`}
+              target="_blank"
+              rel="noreferrer"
+              title="Open this position on the Lichess analysis board (new tab)"
+            >
+              Analyze on Lichess ↗
+            </a>
+          )}
           <span className="spacer" />
-          <label className="check small" title="Every move you play on the board is saved into the repertoire immediately">
-            <input type="checkbox" checked={autoAdd} onChange={(e) => updateSettings({ builderAutoAdd: e.target.checked })} />
-            Auto-add moves
-          </label>
+          {!zen && (
+            <label className="check small" title="Every move you play on the board is saved into the repertoire immediately">
+              <input type="checkbox" checked={autoAdd} onChange={(e) => updateSettings({ builderAutoAdd: e.target.checked })} />
+              Auto-add moves
+            </label>
+          )}
         </div>
-        {currentEdge && <MoveNote key={currentEdge.id} id={currentEdge.id} san={currentEdge.san} />}
+        {currentEdge && !zen && <MoveNote key={currentEdge.id} id={currentEdge.id} san={currentEdge.san} />}
       </div>
 
       <div className="col">
-        <div className="panel">
-          <div className="row">
-            <h1 style={{ margin: 0 }}>{rep.name}</h1>
-            <ColorPill color={rep.color} />
-            <span className="spacer" />
-            <a className="btn small" href={href('train', { rep: rep.id, mode: 'learn' })}>
-              Learn <span className="badge new">{newCount}</span>
-            </a>
-            <a className="btn small" href={href('train', { rep: rep.id, mode: 'review' })}>
-              Review <span className="badge due">{dueCount}</span>
-            </a>
-            <a className="btn small" href={href(`coverage/${rep.id}`)}>
-              Coverage
-            </a>
-            <a className="btn small" href={href(`insights/${rep.id}`)}>
-              Insights
-            </a>
-            <a className="btn small" href={href('repertoire')}>
-              All
-            </a>
+        {!zen && (
+          <div className="panel">
+            <div className="row">
+              <h1 style={{ margin: 0 }}>{rep.name}</h1>
+              <ColorPill color={rep.color} />
+              <span className="spacer" />
+              <a className="btn small" href={href('train', { rep: rep.id, mode: 'learn' })}>
+                Learn <span className="badge new">{newCount}</span>
+              </a>
+              <a className="btn small" href={href('train', { rep: rep.id, mode: 'review' })}>
+                Review <span className="badge due">{dueCount}</span>
+              </a>
+              <a className="btn small" href={href(`coverage/${rep.id}`)}>
+                Coverage
+              </a>
+              <a className="btn small" href={href(`insights/${rep.id}`)}>
+                Insights
+              </a>
+              <a className="btn small" href={href('repertoire')}>
+                All
+              </a>
+            </div>
+            <div className="muted small" style={{ marginTop: 4 }}>
+              {plural(graph.myMoves().length, 'move')} · {plural(graph.leaves().length, 'line')}
+            </div>
           </div>
-          <div className="muted small" style={{ marginTop: 4 }}>
-            {plural(graph.myMoves().length, 'move')} · {plural(graph.leaves().length, 'line')}
-          </div>
-        </div>
+        )}
 
         {memory ? (
           <div className="panel memory-panel">
             <div className="row">
-              <h3 style={{ margin: 0 }}>Play from memory</h3>
+              <h3 style={{ margin: 0 }}>Play from memory · {rep.name}</h3>
               <span className="spacer" />
               {memAdded > 0 && <span className="badge good">{plural(memAdded, 'move')} added</span>}
               {memState.status === 'waiting' && (
@@ -555,7 +572,7 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
               )}
               {memState.status === 'done' && (
                 <span>
-                  <b>All done.</b> <span className="muted">Everything from here is filled in down to 1 in {settings.oneInN} games{memSkip.size ? ` (except ${plural(memSkip.size, 'position')} you skipped)` : ''}.</span>
+                  <b>All done.</b> <span className="muted">Everything from here is filled in down to 1 in {goalN} games{memSkip.size ? ` (except ${plural(memSkip.size, 'position')} you skipped)` : ''}.</span>
                 </span>
               )}
               {memState.status === 'error' && <div className="error">{memState.error}</div>}
@@ -579,116 +596,124 @@ function Builder({ repId, initialLine }: { repId: string; initialLine: string })
           <div className="row" style={{ marginBottom: 6 }}>
             <h3 style={{ margin: 0 }}>Line</h3>
             <span className="spacer" />
-            {missingUpToCursor && !memory && (
-              <button className="primary small" onClick={addLineToRep}>
-                + Add line to repertoire
-              </button>
+            {!zen && (
+              <>
+                {missingUpToCursor && !memory && (
+                  <button className="primary small" onClick={addLineToRep}>
+                    + Add line to repertoire
+                  </button>
+                )}
+                {message && <span className="badge good">{message}</span>}
+                <button
+                  className="small blue"
+                  disabled={!inRep || (cursor === 0 && graph.size === 0)}
+                  onClick={() => navigate('train', { rep: rep.id, mode: 'drill', at: key, t: String(Date.now()) })}
+                  title={
+                    inRep
+                      ? cursor === 0
+                        ? 'Train your whole repertoire now (learned and new moves, ignoring due dates)'
+                        : 'Train this line and everything after it now (learned and new moves, ignoring due dates)'
+                      : 'Add this line to your repertoire first'
+                  }
+                >
+                  Train this line
+                </button>
+                <button
+                  className="small"
+                  disabled={!biggestGap}
+                  onClick={jumpToBiggestGap}
+                  title={
+                    biggestGap
+                      ? `Most common position you have no answer for: ${biggestGap.label} (${oneIn(biggestGap.prob)} games)`
+                      : live.running || live.stale
+                        ? 'Calculating coverage…'
+                        : `No gaps at 1 in ${goalN} games`
+                  }
+                >
+                  Biggest gap{biggestGap ? ` · ${oneIn(biggestGap.prob)}` : ''}
+                </button>
+              </>
             )}
-            {message && <span className="badge good">{message}</span>}
-            <button
-              className="small blue"
-              disabled={!inRep || (cursor === 0 && graph.size === 0)}
-              onClick={() => navigate('train', { rep: rep.id, mode: 'drill', at: key, t: String(Date.now()) })}
-              title={
-                inRep
-                  ? cursor === 0
-                    ? 'Train your whole repertoire now (learned and new moves, ignoring due dates)'
-                    : 'Train this line and everything after it now (learned and new moves, ignoring due dates)'
-                  : 'Add this line to your repertoire first'
-              }
-            >
-              Train this line
-            </button>
-            <button
-              className="small"
-              disabled={!biggestGap}
-              onClick={jumpToBiggestGap}
-              title={
-                biggestGap
-                  ? `Most common position you have no answer for: ${biggestGap.label} (${oneIn(biggestGap.prob)} games)`
-                  : live.running || live.stale
-                    ? 'Calculating coverage…'
-                    : `No gaps at 1 in ${settings.oneInN} games`
-              }
-            >
-              Biggest gap{biggestGap ? ` · ${oneIn(biggestGap.prob)}` : ''}
-            </button>
           </div>
           <LineView
             items={line.map((m, i) => ({ san: m.san, className: lineInRep[i] ? 'book' : 'out', title: lineInRep[i] ? 'In repertoire' : 'Not in repertoire' }))}
             current={cursor}
             onSelect={setCursor}
           />
-          {opening && <div className="muted small" style={{ marginTop: 6 }}>{opening}</div>}
+          {opening && !zen && <div className="muted small" style={{ marginTop: 6 }}>{opening}</div>}
         </div>
 
-        <div className={inRep ? 'metric-pair' : undefined}>
-          <ReachPanel reach={reach} source={sourceLabel(settings)} atStart={cursor === 0} />
-          {inRep && (
-            <CoverageStrip
-              atStart={cursor === 0}
-              score={coverage?.coverage?.[key]}
-              prob={prob}
-              oneInN={settings.oneInN}
-              source={coverage?.paramsLabel}
-              running={live.running || live.stale}
-              queried={live.queried}
-              error={live.error}
-            />
-          )}
-        </div>
+        {!zen && (
+          <>
+            <div className={inRep ? 'metric-pair' : undefined}>
+              <ReachPanel reach={reach} source={sourceLabel(settings)} atStart={cursor === 0} />
+              {inRep && (
+                <CoverageStrip
+                  atStart={cursor === 0}
+                  score={coverage?.coverage?.[key]}
+                  prob={prob}
+                  oneInN={goalN}
+                  source={coverage?.paramsLabel}
+                  running={live.running || live.stale}
+                  queried={live.queried}
+                  error={live.error}
+                />
+              )}
+            </div>
 
-        <ExplorerPanel
-          fenKey={key}
-          color={rep.color}
-          title={myTurn ? 'Your move' : "Opponent's replies"}
-          saved={children.map((c) => {
-            const card = cardById.get(c.id);
-            const childProb = coverage?.probs[c.toKey];
-            const prepared = coverage?.coverage?.[c.toKey];
-            return {
-              id: c.id,
-              san: c.san,
-              uci: c.uci,
-              mine: c.mine,
-              comment: c.comment,
-              extras: (
+            <ExplorerPanel
+              fenKey={key}
+              color={rep.color}
+              title={myTurn ? 'Your move' : "Opponent's replies"}
+              saved={children.map((c) => {
+                const card = cardById.get(c.id);
+                const childProb = coverage?.probs[c.toKey];
+                const prepared = coverage?.coverage?.[c.toKey];
+                return {
+                  id: c.id,
+                  san: c.san,
+                  uci: c.uci,
+                  mine: c.mine,
+                  comment: c.comment,
+                  extras: (
+                    <>
+                      {prepared !== undefined && childProb !== undefined && childProb >= 1 / goalN && (
+                        <span className="small" style={{ color: coverColor(prepared) }} title="Prepared from the position after this move">
+                          {Math.round(prepared * 100)}%
+                        </span>
+                      )}
+                      {card && <CardBadge state={card.state} due={card.due} />}
+                    </>
+                  ),
+                };
+              })}
+              notes={
                 <>
-                  {prepared !== undefined && childProb !== undefined && childProb >= 1 / settings.oneInN && (
-                    <span className="small" style={{ color: coverColor(prepared) }} title="Prepared from the position after this move">
-                      {Math.round(prepared * 100)}%
-                    </span>
+                  {!inRep && !memory && (
+                    <div className="note" style={{ marginBottom: 6 }}>
+                      Not in your repertoire yet. Use <b>Add line</b> to save the line up to here{autoAdd ? '' : ' (or turn on Auto-add)'}.
+                    </div>
                   )}
-                  {card && <CardBadge state={card.state} due={card.due} />}
+                  {inRep && children.length === 0 && (
+                    <div className="note" style={{ marginBottom: 6 }}>
+                      {myTurn ? 'No move prepared here yet — play one on the board or press + on a move below.' : 'End of line — press + on the replies you expect.'}
+                    </div>
+                  )}
+                  {myTurn && myMovesHere.length > 1 && (
+                    <div className="note" style={{ marginBottom: 6 }}>
+                      You have {myMovesHere.length} prepared moves here. That's fine (all are trained), but most players keep one.
+                    </div>
+                  )}
                 </>
-              ),
-            };
-          })}
-          notes={
-            <>
-              {!inRep && !memory && (
-                <div className="note" style={{ marginBottom: 6 }}>
-                  Not in your repertoire yet. Use <b>Add line</b> to save the line up to here{autoAdd ? '' : ' (or turn on Auto-add)'}.
-                </div>
-              )}
-              {inRep && children.length === 0 && (
-                <div className="note" style={{ marginBottom: 6 }}>
-                  {myTurn ? 'No move prepared here yet — play one on the board or press + on a move below.' : 'End of line — press + on the replies you expect.'}
-                </div>
-              )}
-              {myTurn && myMovesHere.length > 1 && (
-                <div className="note" style={{ marginBottom: 6 }}>
-                  You have {myMovesHere.length} prepared moves here. That's fine (all are trained), but most players keep one.
-                </div>
-              )}
-            </>
-          }
-          onPlay={(san) => play(san)}
-          onAdd={(san) => play(san, true)}
-          onDelete={(id, san) => removeMove(id, san)}
-          onOpening={setOpening}
-          reachHere={reach.loading ? undefined : reach.prob}
-        />
+              }
+              onPlay={(san) => play(san)}
+              onAdd={(san) => play(san, true)}
+              onDelete={(id, san) => removeMove(id, san)}
+              onOpening={setOpening}
+              reachHere={reach.loading ? undefined : reach.prob}
+            />
+          </>
+        )}
       </div>
     </div>
   );
@@ -735,8 +760,8 @@ function useLiveCoverage(
   stored: CoverageResult | undefined,
 ) {
   const [state, setState] = useState<{ running: boolean; queried: number; error?: string }>({ running: false, queried: 0 });
-  const fresh = !!rep && isCoverageFresh(stored, rep.updatedAt, settings);
-  const sig = `${rep?.updatedAt}|${graph?.size}|${settings.oneInN}|${settings.probabilitySource}|${settings.speeds.join()}|${settings.rating}|${settings.ratingPool}|${settings.bandsMode}|${settings.manualBands.join()}`;
+  const fresh = !!rep && isCoverageFresh(stored, rep, settings);
+  const sig = `${rep?.updatedAt}|${graph?.size}|${repTarget(rep, settings)}|${settings.probabilitySource}|${settings.speeds.join()}|${settings.rating}|${settings.ratingPool}|${settings.bandsMode}|${settings.manualBands.join()}`;
   useEffect(() => {
     if (!rep || !graph || !graph.size || !settings.loaded || fresh) return;
     const ctrl = new AbortController();
@@ -819,7 +844,7 @@ function CoverageStrip({
       )}
       {rare && score !== undefined && (
         <div className="muted small" style={{ marginTop: 6 }}>
-          This position is rarer than 1 in {oneInN} games, so nothing below it counts as required. Raise N in Settings to dig deeper.
+          This position is rarer than 1 in {oneInN} games, so nothing below it counts as required. Raise this repertoire's target on the Coverage page to dig deeper.
         </div>
       )}
     </div>

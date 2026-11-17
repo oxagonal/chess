@@ -37,7 +37,7 @@ export function HomePage() {
     { done: !!(settings.lichessUsername || settings.chesscomUsername), text: <>Add your Lichess / Chess.com usernames and rating in <a href={href('settings')}>Settings</a></> },
     { done: reps.length > 0, text: <>Create a repertoire and add lines — or import a PGN / Lichess study (<a href={href('repertoire')}>Repertoire</a>)</> },
     { done: learned > 0, text: <>Learn your first moves (<a href={href('train')}>Train</a>)</> },
-    { done: (coverageCount ?? 0) > 0, text: <>Run <a href={href('coverage')}>Coverage</a> to find the positions you'll meet in 1 in {settings.oneInN} games</> },
+    { done: (coverageCount ?? 0) > 0, text: <>Run <a href={href('coverage')}>Coverage</a> to find the positions you'll meet often enough to prepare</> },
     { done: (allGameCount ?? 0) > 0, text: <>Import your games to see where you forget your prep (<a href={href('games')}>Games</a>)</> },
   ];
   const allDone = steps.every((s) => s.done);

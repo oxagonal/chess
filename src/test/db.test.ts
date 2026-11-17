@@ -146,3 +146,26 @@ describe('depth estimate', () => {
     expect(r.avgMoves).toBeCloseTo(2);
   });
 });
+
+describe('coverage target per repertoire', () => {
+  it('uses the repertoire’s own target, falling back to the default, and coverage goes stale when it changes', async () => {
+    const { repTarget, DEFAULT_SETTINGS } = await import('../db/settings');
+    const { setRepertoireTarget } = await import('../db/repertoire');
+    const { isCoverageFresh } = await import('../services/coverage');
+    const { COVERAGE_ALGO } = await import('../lib/coverage');
+    const s = { ...DEFAULT_SETTINGS, oneInN: 200 };
+    const rep = await createRepertoire('d4', 'white');
+    expect(repTarget(rep, s)).toBe(200);
+
+    await setRepertoireTarget(rep.id, 300);
+    const updated = (await db.repertoires.get(rep.id))!;
+    expect(repTarget(updated, s)).toBe(300);
+    expect(updated.updatedAt).toBe(rep.updatedAt); // the moves didn't change
+
+    const { sourceLabel } = await import('../services/coverage');
+    const result = { repId: rep.id, computedAt: Date.now(), threshold: 1 / 200, source: s.probabilitySource, paramsLabel: sourceLabel(s), probs: {}, gaps: [], unfinished: [], noData: [], queried: 0, coverage: {}, algo: COVERAGE_ALGO };
+    expect(isCoverageFresh(result, rep, s)).toBe(true);
+    expect(isCoverageFresh(result, updated, s)).toBe(false);
+    expect(isCoverageFresh({ ...result, threshold: 1 / 300 }, updated, s)).toBe(true);
+  });
+});

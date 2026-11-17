@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { PageProps } from '../App';
-import { updateSettings, useSettings } from '../db/settings';
+import { repTarget, updateSettings, useSettings } from '../db/settings';
+import { setRepertoireTarget } from '../db/repertoire';
 import { OneInNSlider } from '../components/OneInNSlider';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { repertoireDepth } from '../lib/depth';
@@ -65,8 +66,9 @@ function CoverageView({ repId }: { repId: string }) {
     }
   };
 
+  const n = repTarget(rep, settings);
   const stale = result && rep.updatedAt > result.computedAt;
-  const paramsChanged = result && (result.paramsLabel !== sourceLabel(settings) || Math.abs(result.threshold - 1 / settings.oneInN) > 1e-12);
+  const paramsChanged = result && (result.paramsLabel !== sourceLabel(settings) || Math.abs(result.threshold - 1 / n) > 1e-12);
   const openLine = (sans: string[]) => navigate(`repertoire/${repId}`, { line: sans.join(' ') });
   const myPositions = positions.filter((p) => p.myTurn);
   const mine = result ? repertoireDepth(graph, result) : undefined;
@@ -84,11 +86,11 @@ function CoverageView({ repId }: { repId: string }) {
         </div>
         <p className="muted" style={{ marginTop: 8 }}>
           Assuming you always play your prepared moves and opponents answer like players at your level, how often does each position show up?
-          Anything you'll meet in at least <b>1 in {settings.oneInN}</b> games is worth knowing — and opponent moves that common which your
+          Anything you'll meet in at least <b>1 in {n}</b> games is worth knowing — and opponent moves that common which your
           repertoire doesn't answer are <b>gaps</b>.
         </p>
         <div className="row" style={{ marginTop: 8 }}>
-          <OneInNSlider value={settings.oneInN} label="Depth" />
+          <OneInNSlider value={n} onChange={(v) => setRepertoireTarget(repId, v)} label={`Coverage target for ${rep.name}`} color={rep.color} />
           <label className="field">
             <span>Opponent moves from</span>
             <select value={settings.probabilitySource} onChange={(e) => updateSettings({ probabilitySource: e.target.value as ProbabilitySource })}>
