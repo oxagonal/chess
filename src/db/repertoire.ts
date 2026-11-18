@@ -70,6 +70,60 @@ export async function splitChapter(chapterId: string, parts: { name: string; mov
   return ids;
 }
 
+/**
+ * Split a line off by hand: `startId` (a move) and everything after it go to another chapter (a new one named
+ * `target.name`, or an existing one), with the moves leading to it copied so it starts from move 1.
+ * The original chapter loses what only that move led to (positions it reaches another way stay);
+ * with `keepCopy` it keeps everything. Progress is untouched. Returns the target chapter's id.
+ */
+export async function splitOff(chapterId: string, startId: string, target: { name: string } | { chapterId: string }, opts: { keepCopy?: boolean } = {}): Promise<string> {
+  let targetId = '';
+  await db.transaction('rw', [db.repertoires, db.moves, db.cards], async () => {
+    const chapter = await db.repertoires.get(chapterId);
+    if (!chapter) throw new Error('Chapter not found');
+    const moves = await db.moves.where('repId').equals(chapterId).toArray();
+    const graph = new RepGraph(chapter.color, moves);
+    const start = graph.byId.get(startId);
+    if (!start) throw new Error('Move not found');
+    // The line: the moves to it, the move, and everything that follows.
+    const take = new Map<string, RepMove>((graph.pathTo(start.fromKey) ?? []).map((m) => [m.id, m]));
+    const stack = [start];
+    while (stack.length) {
+      const m = stack.pop()!;
+      if (take.has(m.id)) continue;
+      take.set(m.id, m);
+      stack.push(...graph.childrenOf(m.toKey));
+    }
+    const now = Date.now();
+    if ('chapterId' in target) {
+      const t = await db.repertoires.get(target.chapterId);
+      if (!t || t.color !== chapter.color) throw new Error('Pick a chapter of the same color');
+      targetId = t.id;
+    } else {
+      targetId = uid();
+      await db.repertoires.add({ id: targetId, name: target.name.trim() || `${chapter.name} — ${start.san}`, color: chapter.color, createdAt: now, updatedAt: now });
+    }
+    const copies = [...take.values()].map(({ modifiedAt: _m, ...m }) => ({ ...m, id: moveId(targetId, m.fromKey, m.san), repId: targetId }));
+    const have = new Set((await db.moves.bulkGet(copies.map((c) => c.id))).filter((x): x is RepMove => !!x).map((x) => x.id));
+    await db.moves.bulkAdd(copies.filter((c) => !have.has(c.id)));
+    await db.repertoires.update(targetId, { updatedAt: now });
+    if (opts.keepCopy) return;
+    // From the original: the move and whatever only it led to.
+    let rest = moves.filter((m) => m.id !== startId);
+    const gone = [startId];
+    for (;;) {
+      const orphans = new RepGraph(chapter.color, rest).orphanMoves();
+      if (!orphans.length) break;
+      const ids = new Set(orphans.map((m) => m.id));
+      gone.push(...ids);
+      rest = rest.filter((m) => !ids.has(m.id));
+    }
+    await db.moves.bulkDelete(gone);
+    await db.repertoires.update(chapterId, { updatedAt: now });
+  });
+  return targetId;
+}
+
 export async function renameRepertoire(id: string, name: string) {
   await db.repertoires.update(id, { name, updatedAt: Date.now() });
 }

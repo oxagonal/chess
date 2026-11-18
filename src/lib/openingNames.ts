@@ -4,12 +4,14 @@
  */
 import { playSan, START_KEY, startPos } from './chess';
 
-/** Position key → opening name, e.g. "Sicilian Defense: Four Knights Variation". */
-export type OpeningIndex = Map<string, string>;
+/** Position key → opening name, e.g. "Sicilian Defense: Four Knights Variation"; `eco` → its ECO code (B45). */
+export class OpeningIndex extends Map<string, string> {
+  readonly eco = new Map<string, string>();
+}
 
-export function buildOpeningIndex(entries: readonly (readonly [string, string])[]): OpeningIndex {
-  const index: OpeningIndex = new Map();
-  for (const [name, sans] of entries) {
+export function buildOpeningIndex(entries: readonly (readonly [string, string, string?])[]): OpeningIndex {
+  const index = new OpeningIndex();
+  for (const [name, sans, eco] of entries) {
     let pos = startPos();
     let key = START_KEY;
     let ok = true;
@@ -22,7 +24,10 @@ export function buildOpeningIndex(entries: readonly (readonly [string, string])[
       pos = r.pos;
       key = r.key;
     }
-    if (ok && !index.has(key)) index.set(key, name);
+    if (ok && !index.has(key)) {
+      index.set(key, name);
+      if (eco) index.eco.set(key, eco);
+    }
   }
   return index;
 }
@@ -31,7 +36,7 @@ let cached: Promise<OpeningIndex> | undefined;
 
 /** The index, loaded (as its own chunk) the first time it's needed. */
 export function loadOpeningIndex(): Promise<OpeningIndex> {
-  cached ??= import('../data/openings.json').then((m) => buildOpeningIndex((m.default ?? m) as unknown as [string, string][]));
+  cached ??= import('../data/openings.json').then((m) => buildOpeningIndex((m.default ?? m) as unknown as [string, string, string][]));
   return cached;
 }
 

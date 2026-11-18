@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { MOVE_GLYPHS, OBSERVATION_GLYPHS, POSITION_GLYPHS, glyphClass, toggleGlyph, type Glyph, type MoveAnnotation } from '../lib/annotations';
 
@@ -23,11 +23,14 @@ export function AnnotationMenu({
   annotation,
   onChange,
   onClose,
+  extra,
 }: {
   target: AnnotationTarget;
   annotation: MoveAnnotation | undefined;
   onChange: (next: MoveAnnotation | undefined) => void;
   onClose: () => void;
+  /** More actions under the comment (e.g. splitting the line off, in the builder). */
+  extra?: ReactNode;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: target.x, top: target.y });
@@ -116,6 +119,7 @@ export function AnnotationMenu({
         onChange={(e) => setComment(e.target.value)}
         onBlur={() => (annotation?.comment ?? '') !== comment && onChange({ ...annotation, comment })}
       />
+      {extra}
       <div className="row anno-foot">
         <button className="small ghost" disabled={!glyphs.length && !comment} onClick={() => (setComment(''), setGlyphs([]), onChange(undefined))}>
           Clear

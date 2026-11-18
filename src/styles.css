@@ -444,6 +444,28 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .sc-tip { position: absolute; top: 8px; width: 140px; padding: 8px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; pointer-events: none; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
 .sc-tip-row { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
 
+/* Splitting a line off by hand (in the builder's right-click menu). */
+.split-off-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }
+.split-off { border-top: 1px solid var(--border-soft); padding-top: 8px; }
+
+/* Chapters as dropdowns: first move, then opening family. */
+.ctree { display: flex; flex-direction: column; gap: 10px; }
+.ctree-first { padding-top: 10px; padding-bottom: 6px; }
+.ctree-summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; padding: 4px 0; }
+.ctree-summary::-webkit-details-marker { display: none; }
+.ctree-summary::before { content: '▸'; color: var(--faint); font-size: 12px; width: 12px; transition: transform .12s; }
+details[open] > .ctree-summary::before { transform: rotate(90deg); }
+.ctree-title { font-weight: 750; font-size: 16px; }
+.ctree-first > .list { margin-top: 4px; }
+.ctree-family { border-top: 1px solid var(--border-soft); padding: 6px 0 2px; }
+.ctree-family-name { font-weight: 650; }
+.ctree-eco { font-size: 11px; font-weight: 700; color: var(--faint); font-variant-numeric: tabular-nums; }
+.ctree-children { padding-left: 22px; }
+.ctree .list > div:first-child > .list-item { border-top: none; }
+/* Map cards inside the tree: the group is the box. */
+.ctree .map-chapter { border: none; box-shadow: none; background: transparent; padding: 10px 0; border-radius: 0; border-bottom: 1px solid var(--border-soft); margin: 0; }
+.ctree .list > div:last-child > .map-chapter { border-bottom: none; }
+
 /* Import wizard: steps, chapter rows, and choosing between the moves a study gives you. */
 .wizard { border-color: var(--accent2); }
 .wizard-steps { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0; padding: 0; list-style: none; counter-reset: step; font-size: 13px; color: var(--faint); }

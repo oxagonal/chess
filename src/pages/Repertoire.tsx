@@ -2,7 +2,9 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
-import { addEdges, deleteMove, setMoveAnnotation } from '../db/repertoire';
+import { addEdges, deleteMove, setMoveAnnotation, splitOff } from '../db/repertoire';
+import { loadOpeningIndex, nameParts } from '../lib/openingNames';
+import { chapterOfMoveId } from '../lib/chapters';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
 import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepGraph } from '../hooks';
 import { cardIdOf, cardsOf } from '../lib/chapters';
@@ -29,7 +31,7 @@ import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, stat
 import type { AppSettings } from '../db/settings';
 import { type CoverageResult, type PositionStats, type RepMove, type Repertoire } from '../lib/types';
 import { isDue, isNew } from '../lib/srs';
-import type { RepGraph } from '../lib/graph';
+import { RepGraph } from '../lib/graph';
 
 export function RepertoirePage({ route }: PageProps) {
   const id = route.path[1];
@@ -1003,6 +1005,101 @@ function RepAnnotationMenu({ target, onClose }: { target: RepAnnotationTarget; o
       annotation={{ glyphs: move.glyphs, comment: move.comment }}
       onChange={(a) => void setMoveAnnotation(target.id, a)}
       onClose={onClose}
+      extra={<SplitOffForm move={move} onDone={onClose} />}
     />
+  );
+}
+
+/**
+ * Split a chapter by hand: this move and everything after it go to a new chapter (named after the
+ * opening it reaches) or an existing one; the moves leading to it come along so it starts from move 1.
+ */
+function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
+  const chapterId = chapterOfMoveId(move.id);
+  const [open, setOpen] = useState(false);
+  const chapter = useLiveQuery(() => db.repertoires.get(chapterId), [chapterId]);
+  const others = useLiveQuery(async () => (chapter ? (await db.repertoires.where('color').equals(chapter.color).toArray()).filter((c) => c.id !== chapterId) : []), [chapter]);
+  const [name, setName] = useState('');
+  const [into, setInto] = useState('new');
+  const [keepCopy, setKeepCopy] = useState(false);
+  const [path, setPath] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || !chapter) return;
+    let off = false;
+    void (async () => {
+      const moves = await db.moves.where('repId').equals(chapterId).toArray();
+      const g = new RepGraph(chapter.color, moves);
+      const line = [...(g.pathTo(move.fromKey) ?? []), move];
+      const names = await loadOpeningIndex();
+      let suggested = `${chapter.name} — ${move.san}`;
+      // Name it after the deepest named position on the way, or just after (its first branch).
+      const keys = [...line.map((m) => m.toKey)];
+      for (let k = move.toKey, i = 0; i < 6; i++) {
+        const next = g.childrenOf(k)[0];
+        if (!next) break;
+        keys.push(next.toKey);
+        k = next.toKey;
+      }
+      for (let i = keys.length - 1; i >= 0; i--) {
+        const n = names.get(keys[i]);
+        if (n) {
+          const p = nameParts(n);
+          suggested = p.variation ? `${p.family}: ${p.variation}` : p.family;
+          break;
+        }
+      }
+      if (!off) {
+        setPath(line.map((m) => m.san));
+        setName((cur) => cur || suggested);
+      }
+    })();
+    return () => {
+      off = true;
+    };
+  }, [open, chapter, chapterId, move]);
+
+  if (!open)
+    return (
+      <button className="small ghost split-off-toggle" onClick={() => setOpen(true)}>
+        ✂ Split off from here…
+      </button>
+    );
+  const go = async () => {
+    setError(null);
+    try {
+      const id = await splitOff(chapterId, move.id, into === 'new' ? { name } : { chapterId: into }, { keepCopy });
+      onDone();
+      navigate(`repertoire/${id}`, { line: path.join(' ') });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  return (
+    <div className="split-off col" style={{ gap: 6 }}>
+      <div className="anno-label">Split off from {move.san}</div>
+      <select value={into} onChange={(e) => setInto(e.target.value)} aria-label="Into">
+        <option value="new">Into a new chapter</option>
+        {(others ?? []).map((c) => (
+          <option key={c.id} value={c.id}>
+            Into “{c.name}”
+          </option>
+        ))}
+      </select>
+      {into === 'new' && <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New chapter's name" onKeyDown={(e) => e.stopPropagation()} />}
+      <label className="check small">
+        <input type="checkbox" checked={keepCopy} onChange={(e) => setKeepCopy(e.target.checked)} /> Keep it in “{chapter?.name}” too
+      </label>
+      {error && <div className="error small">{error}</div>}
+      <div className="row">
+        <button className="small ghost" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+        <span className="spacer" />
+        <button className="small primary" onClick={go} disabled={into === 'new' && !name.trim()}>
+          Split off
+        </button>
+      </div>
+    </div>
   );
 }

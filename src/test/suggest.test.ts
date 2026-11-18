@@ -5,7 +5,7 @@ import { movesFromLines } from '../lib/lines';
 import { buildOpeningIndex, nameParts } from '../lib/openingNames';
 import { nameOfLine, suggestChapters } from '../lib/suggest';
 
-const names = buildOpeningIndex(openings as [string, string][]);
+const names = buildOpeningIndex(openings as [string, string, string][]);
 
 describe('suggesting chapters', () => {
   it('names positions, so a transposed move order gets the name of where it lands', () => {

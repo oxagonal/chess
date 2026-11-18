@@ -8,7 +8,8 @@ import { gradeCard } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
 import { Board, type Arrow } from '../components/Board';
 import { ColorPill, Empty, ProgressBar, Stat } from '../components/ui';
-import { PHONE_QUERY, useCards, useMediaQuery, startOfToday } from '../hooks';
+import { PHONE_QUERY, useCards, useChapterGraphs, useMediaQuery, startOfToday } from '../hooks';
+import { ChapterTree } from '../components/ChapterTree';
 import { COLORS, colorName, loadScopeGraph, scopeIdsFor, scopeOf, repertoireScopeId, useChaptersAndSets, type Scope } from '../db/scopes';
 import { cardsOf, chapterOfMoveId, sourcesOf, unionGraph } from '../lib/chapters';
 import { href, navigate } from '../router';
@@ -60,8 +61,9 @@ function TrainChooser() {
   const settings = useSettings();
   const learnedToday = useLiveQuery(learnedTodayCount, []);
   const coverage = useLiveQuery(() => db.coverage.toArray(), []);
+  const graphs = useChapterGraphs();
   const now = Date.now();
-  if (!chapters || !collections || !moves || !cards || !settings.loaded) return null;
+  if (!chapters || !collections || !moves || !cards || !settings.loaded || !graphs) return null;
   if (!chapters.length) return <Empty>Create a chapter first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
 
   const newLeft = Math.max(0, settings.newPerDay - (learnedToday ?? 0));
@@ -78,6 +80,14 @@ function TrainChooser() {
     return { due: rc.filter((c) => isDue(c, now)).length, fresh: rc.filter(isNew).length };
   };
   const all = countsFor('all');
+  /** Due and new across some chapters of a color (a shared move counted once). */
+  const countsOfChapters = (color: 'white' | 'black', ids: string[]) => {
+    const set = new Set(ids);
+    let mine = cardsOf(unionGraph(color, moves.filter((m) => set.has(m.repId))), cards);
+    const cov = settings.trainOnlyLikely ? coverage?.find((r) => r.repId === color) : undefined;
+    if (cov) mine = filterByProbability(mine, cov.probs, cov.threshold);
+    return { due: mine.filter((c) => isDue(c, now)).length, fresh: mine.filter(isNew).length };
+  };
   const row = (scopeId: string, title: ReactNode, color?: 'white' | 'black', sub?: string) => {
     const c = countsFor(scopeId);
     return (
@@ -121,8 +131,27 @@ function TrainChooser() {
           </div>
         </>
       )}
-      <h3 style={{ margin: 0 }}>Chapters</h3>
-      <div className="panel list">{chapters.map((r) => row(r.id, r.name, r.color))}</div>
+      {COLORS.filter((c) => chapters.some((ch) => ch.color === c)).map((color) => (
+        <div key={color} className="col" style={{ gap: 8 }}>
+          <h3 style={{ margin: 0 }}>{colorName(color)} chapters</h3>
+          <ChapterTree
+            color={color}
+            chapters={chapters}
+            graphs={graphs}
+            storageKey="train"
+            summary={(ids) => {
+              const c = countsOfChapters(color, ids);
+              return (
+                <>
+                  {c.due > 0 && <span className="badge due">{c.due} due</span>}
+                  {c.fresh > 0 && <span className="badge new">{c.fresh} new</span>}
+                </>
+              );
+            }}
+            row={(ch, label) => row(ch.id, label)}
+          />
+        </div>
+      ))}
       <p className="muted small">
         <b>Learn</b> shows you new moves of your repertoire line by line, then has you replay them from memory — moves you already know
         are played for you. <b>Review</b> quizzes moves that are due: you play the whole line from move 1 to the end of the branch, so

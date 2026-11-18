@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, openDb } from '../db/db';
-import { addLine, createRepertoire, deleteMove, deleteRepertoire, loadGraph, setMoveComment, splitChapter } from '../db/repertoire';
+import { addLine, createRepertoire, deleteMove, deleteRepertoire, loadGraph, setMoveComment, splitChapter, splitOff } from '../db/repertoire';
 import { loadScopeGraph, repertoireScopeId } from '../db/scopes';
 import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, migrateCardRows, unionGraph } from '../lib/chapters';
 import { playSan, START_KEY, startPos } from '../lib/chess';
@@ -100,6 +100,31 @@ describe('splitting a chapter', () => {
     expect((await db.cards.get(c5card))!.reps).toBe(7);
     expect(await db.cards.count()).toBe(4);
     expect((await db.collections.get('s'))!.chapterIds).toEqual([sic, qp]);
+  });
+});
+
+describe('splitting a line off by hand', () => {
+  it('moves the line from a move on (with the moves to it) and keeps what else reaches it', async () => {
+    const ch = await createRepertoire('Sicilian', 'black');
+    await addLine(ch.id, ['e4', 'c5', 'Nf3', 'e6', 'd4', 'cxd4', 'Nxd4', 'Nc6']);
+    await addLine(ch.id, ['e4', 'c5', 'c3', 'd5']);
+    await db.cards.update(cardIdOf({ fromKey: keyAfter(['e4', 'c5', 'c3']), san: 'd5' }), { reps: 4 });
+    const { graph } = (await loadGraph(ch.id))!;
+    const c3 = graph.edge(keyAfter(['e4', 'c5']), 'c3')!;
+    const alapin = await splitOff(ch.id, c3.id, { name: 'Alapin' });
+    const a = (await loadGraph(alapin))!;
+    expect(a.rep.name).toBe('Alapin');
+    expect([...a.graph.byId.values()].map((m) => m.san).sort()).toEqual(['c3', 'c5', 'd5', 'e4']);
+    const left = (await loadGraph(ch.id))!.graph;
+    expect(left.edge(keyAfter(['e4', 'c5']), 'c3')).toBeUndefined();
+    expect(left.size).toBe(8);
+    expect((await db.cards.get(cardIdOf({ fromKey: keyAfter(['e4', 'c5', 'c3']), san: 'd5' })))!.reps).toBe(4);
+    // Into an existing chapter, keeping a copy.
+    const other = await createRepertoire('Open', 'black');
+    const nf3 = left.edge(keyAfter(['e4', 'c5']), 'Nf3')!;
+    expect(await splitOff(ch.id, nf3.id, { chapterId: other.id }, { keepCopy: true })).toBe(other.id);
+    expect((await loadGraph(other.id))!.graph.size).toBe(8);
+    expect((await loadGraph(ch.id))!.graph.size).toBe(8);
   });
 });
 

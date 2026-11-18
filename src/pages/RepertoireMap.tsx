@@ -11,6 +11,8 @@ import type { Chapter, Collection } from '../lib/types';
 import { MiniBoard } from '../components/MiniBoard';
 import { StrengthChart } from '../components/StrengthChart';
 import { Empty } from '../components/ui';
+import { ChapterTree } from '../components/ChapterTree';
+import type { RepGraph } from '../lib/graph';
 import { href, navigate } from '../router';
 
 const DAY = 86_400_000;
@@ -42,7 +44,7 @@ export function RepertoireMap({
   const cards = useCards();
   const settings = useSettings();
   const logs = useLiveQuery(() => db.reviewLog.where('color').equals(color).toArray(), [color]);
-  const [order, setOrder] = useState<'weakest' | 'strongest'>('weakest');
+  const [order, setOrder] = useState<'opening' | 'weakest' | 'strongest'>('opening');
   const set = collections.find((c) => c.id === setId && c.color === color);
   const shown = chapters.filter((c) => c.color === color && (!set || set.chapterIds.includes(c.id)));
 
@@ -131,9 +133,12 @@ export function RepertoireMap({
           )}
 
           <div className="row">
-            <h2 style={{ margin: 0 }}>Chapters, {order} first</h2>
+            <h2 style={{ margin: 0 }}>{order === 'opening' ? 'Chapters by opening' : `Chapters, ${order} first`}</h2>
             <span className="spacer" />
             <div className="seg" role="group" aria-label="Order">
+              <button className={`small ${order === 'opening' ? 'active' : ''}`} onClick={() => setOrder('opening')}>
+                By opening
+              </button>
               <button className={`small ${order === 'weakest' ? 'active' : ''}`} onClick={() => setOrder('weakest')}>
                 Weakest first
               </button>
@@ -143,7 +148,7 @@ export function RepertoireMap({
             </div>
           </div>
           <Legend />
-          <ChapterCards maps={sorted} color={color} />
+          <ChapterCards maps={sorted} color={color} graphs={order === 'opening' ? graphs : undefined} />
         </>
       )}
     </div>
@@ -203,7 +208,8 @@ function Legend({ chart = false }: { chart?: boolean }) {
 
 type Open = { chapter: Chapter; line: MapLine; index: number; rect: DOMRect; pinned: boolean };
 
-function ChapterCards({ maps, color }: { maps: ChapterMap[]; color: Color }) {
+/** The chapters' cards; given `graphs`, as dropdowns by first move and opening (else in the order given). */
+function ChapterCards({ maps, color, graphs }: { maps: ChapterMap[]; color: Color; graphs?: ReadonlyMap<string, RepGraph> }) {
   const [open, setOpen] = useState<Open | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const keep = () => clearTimeout(closeTimer.current);
@@ -218,9 +224,7 @@ function ChapterCards({ maps, color }: { maps: ChapterMap[]; color: Color }) {
     return () => window.removeEventListener('keydown', esc);
   }, [open]);
 
-  return (
-    <>
-      {maps.map(({ chapter, lines }) => {
+  const card = ({ chapter, lines }: ChapterMap, label: string) => {
         const counts = strengthCounts(lines);
         const dueCount = lines.filter((l) => l.due).length;
         const practice = () =>
@@ -232,8 +236,8 @@ function ChapterCards({ maps, color }: { maps: ChapterMap[]; color: Color }) {
         return (
           <div key={chapter.id} className="panel map-chapter">
             <div className="row map-chapter-head">
-              <a className="map-chapter-name" href={href(`repertoire/${chapter.id}`)}>
-                {chapter.name}
+              <a className="map-chapter-name" href={href(`repertoire/${chapter.id}`)} title={chapter.name}>
+                {label}
               </a>
               <span className="muted small">
                 {lines.length} line{lines.length === 1 ? '' : 's'}
@@ -273,7 +277,23 @@ function ChapterCards({ maps, color }: { maps: ChapterMap[]; color: Color }) {
             )}
           </div>
         );
-      })}
+  };
+  const byId = new Map(maps.map((m) => [m.chapter.id, m]));
+
+  return (
+    <>
+      {graphs ? (
+        <ChapterTree
+          color={color}
+          chapters={maps.map((m) => m.chapter)}
+          graphs={graphs}
+          storageKey="map"
+          summary={(ids) => <StrengthBar counts={strengthCounts(ids.flatMap((id) => byId.get(id)?.lines ?? []))} slim />}
+          row={(ch, label) => (byId.has(ch.id) ? card(byId.get(ch.id)!, label) : null)}
+        />
+      ) : (
+        maps.map((m) => <div key={m.chapter.id}>{card(m, m.chapter.name)}</div>)
+      )}
       {open && <LinePopover open={open} color={color} onEnter={keep} onLeave={leave} onClose={() => setOpen(null)} />}
     </>
   );

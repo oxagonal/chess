@@ -25,6 +25,7 @@ import { href, navigate } from '../router';
 import { RepertoireMap } from './RepertoireMap';
 import { SuggestChapters } from '../components/SuggestChapters';
 import { ImportWizard } from '../components/ImportWizard';
+import { ChapterTree } from '../components/ChapterTree';
 
 /**
  * The Repertoire page: your chapters (one opening each, by color) and your repertoires (saved sets of
@@ -91,19 +92,22 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
       {COLORS.filter((c) => chapters.some((ch) => ch.color === c)).map((color) => (
         <div key={color} className="col" style={{ gap: 8 }}>
           <h2 style={{ margin: 0 }}>{colorName(color)} chapters</h2>
-          <div className="panel list">
-            {chapters
-              .filter((ch) => ch.color === color)
-              .map((ch) => (
-                <ChapterRow
-                  key={ch.id}
-                  chapter={ch}
-                  counts={countsOf([ch.id])}
-                  onImport={() => setImporting(importing === ch.id ? null : ch.id)}
-                  onSuggest={() => setSuggesting(suggesting === ch.id ? null : ch.id)}
-                />
-              ))}
-          </div>
+          <ChapterTree
+            color={color}
+            chapters={chapters}
+            graphs={graphs}
+            storageKey="repertoire"
+            summary={(ids) => <Badges {...countsOf(ids)} />}
+            row={(ch, label) => (
+              <ChapterRow
+                chapter={ch}
+                label={label}
+                counts={countsOf([ch.id])}
+                onImport={() => setImporting(importing === ch.id ? null : ch.id)}
+                onSuggest={() => setSuggesting(suggesting === ch.id ? null : ch.id)}
+              />
+            )}
+          />
         </div>
       ))}
       {importing && <ImportPanel repId={importing} onClose={() => setImporting(null)} />}
@@ -161,13 +165,25 @@ function Counts({ total, due, fresh }: { total: number; due: number; fresh: numb
   );
 }
 
+/** Due / new badges for a group header. */
+function Badges({ due, fresh }: { total: number; due: number; fresh: number }) {
+  return (
+    <>
+      {due > 0 && <span className="badge due">{due} due</span>}
+      {fresh > 0 && <span className="badge new">{fresh} new</span>}
+    </>
+  );
+}
+
 function ChapterRow({
   chapter: r,
+  label,
   counts,
   onImport,
   onSuggest,
 }: {
   chapter: Chapter;
+  label: string;
   counts: { total: number; due: number; fresh: number };
   onImport: () => void;
   onSuggest: () => void;
@@ -176,8 +192,8 @@ function ChapterRow({
     <div className="list-item">
       <div className="list-main">
         <div className="list-head">
-          <a className="list-title" href={href(`repertoire/${r.id}`)}>
-            {r.name}
+          <a className="list-title" href={href(`repertoire/${r.id}`)} title={r.name}>
+            {label}
           </a>
         </div>
         <Counts {...counts} />
