@@ -812,12 +812,13 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 }
 
 /* Explorer: ⚙ column chooser, and the 🔍 links to the games behind a row. */
-.columns-pop { min-width: 270px; gap: 0; }
+.columns-pop { position: fixed; right: auto; z-index: 60; min-width: 200px; gap: 0; }
 .columns-pop > .menu-note { border-top: none; margin-top: 0; padding: 4px 10px 6px; }
-.columns-pop label.check { padding: 7px 10px; border-radius: 6px; align-items: flex-start; font-size: 13px; line-height: 1.35; }
+.columns-pop label.check { padding: 6px 10px; border-radius: 6px; font-size: 13px; }
 .columns-pop label.check:hover { background: var(--panel3); }
-.columns-pop label.check input { margin-top: 2px; }
+.columns-pop label.check > .muted { margin-left: auto; padding-left: 12px; font-size: 11.5px; }
 .explorer-cols { padding: 3px 8px; font-size: 14px; color: var(--muted); }
+.explorer-cols.is-open, .explorer-cols.is-open:hover:not(:disabled) { color: var(--text); background: var(--panel2); }
 .icon-btn { padding: 4px 7px; color: var(--muted); }
 .icon-btn:hover { color: var(--text); }
 .explorer th .list-actions { min-height: 0; }
