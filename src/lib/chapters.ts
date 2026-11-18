@@ -77,6 +77,37 @@ export function sourcesOf(m: RepMove): string[] {
   return (m as Partial<UnionMove>).sources ?? [m.id];
 }
 
+/** A position where chapters played together give you different moves. */
+export interface ChapterConflict {
+  key: string;
+  /** Moves to the position (one move order). */
+  path: string[];
+  /** Each of your moves there, and the chapters that play it. */
+  options: { san: string; chapters: string[] }[];
+}
+
+/**
+ * Where the chapters disagree: positions (your turn) where one chapter plays a move another chapter
+ * that reaches the position doesn't — e.g. 3.exd5 in an Exchange Caro-Kann chapter and 3.f3 in a
+ * Fantasy one. Alternatives within one chapter are your own choice and don't count.
+ */
+export function chapterConflicts(color: Color, moves: readonly RepMove[]): ChapterConflict[] {
+  const graph = unionGraph(color, moves);
+  const out: ChapterConflict[] = [];
+  for (const [key, kids] of graph.children) {
+    const mine = kids.filter((m) => m.mine);
+    if (mine.length < 2) continue;
+    const options = mine.map((m) => ({ san: m.san, chapters: [...new Set(sourcesOf(m).map(chapterOfMoveId))] }));
+    const all = new Set(options.flatMap((o) => o.chapters));
+    // A conflict: some chapter here lacks one of the moves another chapter plays.
+    if (![...all].some((c) => options.some((o) => !o.chapters.includes(c)))) continue;
+    const path = graph.pathTo(key);
+    if (!path) continue;
+    out.push({ key, path: path.map((m) => m.san), options });
+  }
+  return out.sort((a, b) => a.path.length - b.path.length);
+}
+
 /* ------------------------------------------------ migration from per-repertoire cards */
 
 type Row = Record<string, any>;

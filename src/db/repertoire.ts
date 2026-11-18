@@ -5,7 +5,7 @@ import { toRepMove, edgesForLine } from '../lib/lines';
 import { graphToPgn, pgnToEdges, type ImportedEdge } from '../lib/pgn';
 import { grade, gradeAhead, newCard, Rating } from '../lib/srs';
 import { START_KEY, type Color } from '../lib/chess';
-import type { Repertoire, RepMove, ReviewCard, ReviewSource } from '../lib/types';
+import type { Collection, Repertoire, RepMove, ReviewCard, ReviewSource } from '../lib/types';
 import type { Grade } from 'ts-fsrs';
 import { cardIdOf } from '../lib/chapters';
 import { cleanAnnotation, type MoveAnnotation } from '../lib/annotations';
@@ -15,6 +15,26 @@ export async function createRepertoire(name: string, color: Color): Promise<Repe
   const rep: Repertoire = { id: uid(), name: name.trim() || `${color === 'white' ? 'White' : 'Black'} repertoire`, color, createdAt: now, updatedAt: now };
   await db.repertoires.add(rep);
   return rep;
+}
+
+/* Repertoires: named sets of chapters of one color (stored as `collections`). */
+
+export async function createCollection(name: string, color: Color, chapterIds: string[]): Promise<Collection> {
+  const now = Date.now();
+  const set: Collection = { id: uid(), name: name.trim() || 'Repertoire', color, chapterIds, createdAt: now, updatedAt: now };
+  await db.collections.add(set);
+  return set;
+}
+
+export async function updateCollection(id: string, patch: Partial<Pick<Collection, 'name' | 'chapterIds'>>) {
+  await db.collections.update(id, { ...patch, updatedAt: Date.now() });
+}
+
+export async function deleteCollection(id: string) {
+  await db.transaction('rw', [db.collections, db.coverage], async () => {
+    await db.collections.delete(id);
+    await db.coverage.delete(`set:${id}`);
+  });
 }
 
 export async function renameRepertoire(id: string, name: string) {

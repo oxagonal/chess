@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db, openDb } from '../db/db';
 import { addLine, createRepertoire, deleteMove, deleteRepertoire, loadGraph } from '../db/repertoire';
 import { loadScopeGraph, repertoireScopeId } from '../db/scopes';
-import { cardIdOf, cardsOf, chapterForLine, migrateCardRows, unionGraph } from '../lib/chapters';
+import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, migrateCardRows, unionGraph } from '../lib/chapters';
 import { playSan, START_KEY, startPos } from '../lib/chess';
 import { emptyDoc, upgradeSyncDoc } from '../lib/syncMerge';
 import { exportBackup, importBackup } from '../services/backup';
@@ -82,6 +82,17 @@ describe('union graphs', () => {
     expect(g.childrenOf(e4.toKey).map((m) => m.san).sort()).toEqual(['c6', 'e5']);
     expect(chapterForLine(g, ['e4', 'c6', 'd4', 'd5'])).toBe('ck');
     expect(chapterForLine(g, ['e4', 'e5', 'Nf3'])).toBe('it');
+  });
+
+  it('finds where chapters played together give you different moves', () => {
+    const exchange = [mv('ex', ['e4']), mv('ex', ['e4', 'c6']), mv('ex', ['e4', 'c6', 'd4']), mv('ex', ['e4', 'c6', 'd4', 'd5']), mv('ex', ['e4', 'c6', 'd4', 'd5', 'exd5'])];
+    const fantasy = [mv('fa', ['e4']), mv('fa', ['e4', 'c6']), mv('fa', ['e4', 'c6', 'd4']), mv('fa', ['e4', 'c6', 'd4', 'd5']), mv('fa', ['e4', 'c6', 'd4', 'd5', 'f3'])];
+    const [c] = chapterConflicts('white', [...exchange, ...fantasy]);
+    expect(c.path).toEqual(['e4', 'c6', 'd4', 'd5']);
+    expect(c.options.map((o) => `${o.san}:${o.chapters.join()}`).sort()).toEqual(['exd5:ex', 'f3:fa']);
+    // Two moves in one chapter is a choice you made, not a conflict.
+    const both = [...exchange, mv('ex', ['e4', 'c6', 'd4', 'd5', 'f3'])];
+    expect(chapterConflicts('white', both)).toEqual([]);
   });
 });
 
