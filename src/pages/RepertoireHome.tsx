@@ -58,26 +58,37 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
     return scope && run && isCoverageFresh(run, scope, settings) ? run : undefined;
   };
   const view = query.get('view') === 'map' ? 'map' : 'chapters';
-  const mapColor: Color = query.get('color') === 'black' || (query.get('color') !== 'white' && !chapters.some((c) => c.color === 'white')) ? 'black' : 'white';
+  const color: Color = query.get('color') === 'black' || (query.get('color') !== 'white' && !chapters.some((c) => c.color === 'white')) ? 'black' : 'white';
   const tabs = (
     <div className="row">
       <h1 style={{ margin: 0 }}>Repertoire</h1>
       <span className="spacer" />
       <div className="segmented" role="tablist" aria-label="View">
-        <button role="tab" aria-selected={view === 'chapters'} className={view === 'chapters' ? 'active' : ''} onClick={() => navigate('repertoire')}>
+        <button role="tab" aria-selected={view === 'chapters'} className={view === 'chapters' ? 'active' : ''} onClick={() => navigate('repertoire', { color })}>
           Chapters
         </button>
-        <button role="tab" aria-selected={view === 'map'} className={view === 'map' ? 'active' : ''} onClick={() => navigate('repertoire', { view: 'map', color: mapColor })}>
+        <button role="tab" aria-selected={view === 'map'} className={view === 'map' ? 'active' : ''} onClick={() => navigate('repertoire', { view: 'map', color: color })}>
           Map
         </button>
       </div>
     </div>
   );
+  // Chapters are shown one color at a time, like the map.
+  const colorSwitch = (
+    <div className="segmented" role="group" aria-label="Color">
+      {COLORS.map((c) => (
+        <button key={c} className={`small ${c === color ? 'active' : ''}`} onClick={() => navigate('repertoire', { color: c })}>
+          {colorName(c)}
+        </button>
+      ))}
+    </div>
+  );
+  const shown = chapters.filter((c) => c.color === color);
   if (view === 'map')
     return (
       <div className="col" style={{ gap: 16 }}>
         {tabs}
-        <RepertoireMap color={mapColor} setId={query.get('set') ?? undefined} chapters={chapters} collections={collections} />
+        <RepertoireMap color={color} setId={query.get('set') ?? undefined} chapters={chapters} collections={collections} />
       </div>
     );
 
@@ -102,12 +113,13 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
         White chapter.
       </p>
 
-      <NewChapter onImport={() => setWizard(true)} />
+      <NewChapter key={color} defaultColor={color} onImport={() => setWizard(true)} />
       {wizard && <ImportWizard chapters={chapters} onClose={() => setWizard(false)} />}
 
-      {chapters.length === 0 && <Empty>No chapters yet — create one above, or import a PGN or Lichess study into it.</Empty>}
-      {COLORS.filter((c) => chapters.some((ch) => ch.color === c)).map((color) => (
-        <div key={color} className="col" style={{ gap: 8 }}>
+      <div className="row">{colorSwitch}</div>
+      {shown.length === 0 && <Empty>No {colorName(color)} chapters yet — create one above, or import a PGN or Lichess study.</Empty>}
+      {shown.length > 0 && (
+        <div className="col" style={{ gap: 8 }}>
           <div className="row">
             <h2 style={{ margin: 0 }}>{colorName(color)} chapters</h2>
             <span className="spacer" />
@@ -138,7 +150,7 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
             )}
           />
         </div>
-      ))}
+      )}
       {importing && <ImportPanel repId={importing} onClose={() => setImporting(null)} />}
       {merging && chapters.some((c) => c.id === merging) && (
         <MergePanel chapter={chapters.find((c) => c.id === merging)!} chapters={chapters} onClose={() => setMerging(null)} />
@@ -147,14 +159,16 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
         <SuggestChapters chapter={chapters.find((c) => c.id === suggesting)!} graph={graphs.get(suggesting)!} onClose={() => setSuggesting(null)} />
       )}
 
-      {chapters.length > 0 && <Repertoires chapters={chapters} collections={collections} graphs={graphs} countsOf={countsOf} />}
+      {shown.length > 0 && (
+        <Repertoires color={color} chapters={chapters} collections={collections.filter((c) => c.color === color)} graphs={graphs} countsOf={countsOf} />
+      )}
     </div>
   );
 }
 
-function NewChapter({ onImport }: { onImport: () => void }) {
+function NewChapter({ defaultColor, onImport }: { defaultColor: Color; onImport: () => void }) {
   const [name, setName] = useState('');
-  const [color, setColor] = useState<Color>('white');
+  const [color, setColor] = useState<Color>(defaultColor);
   const create = async () => {
     const rep = await createRepertoire(name || (color === 'white' ? 'New White chapter' : 'New Black chapter'), color);
     setName('');
@@ -375,11 +389,13 @@ function MergePanel({ chapter, chapters, onClose }: { chapter: Chapter; chapters
 /* ------------------------------------------------------------ repertoires */
 
 function Repertoires({
+  color,
   chapters,
   collections,
   graphs,
   countsOf,
 }: {
+  color: Color;
   chapters: Chapter[];
   collections: Collection[];
   graphs: Map<string, RepGraph>;
@@ -391,7 +407,7 @@ function Repertoires({
   return (
     <div className="col" style={{ gap: 8 }}>
       <div className="row">
-        <h2 style={{ margin: 0 }}>Repertoires</h2>
+        <h2 style={{ margin: 0 }}>{colorName(color)} repertoires</h2>
         <span className="spacer" />
         {editing !== 'new' && (
           <button className="small" onClick={() => setEditing('new')}>
@@ -399,7 +415,7 @@ function Repertoires({
           </button>
         )}
       </div>
-      {editing === 'new' && <CollectionEditor chapters={chapters} onDone={() => setEditing(null)} />}
+      {editing === 'new' && <CollectionEditor chapters={chapters} defaultColor={color} onDone={() => setEditing(null)} />}
       {collections.length === 0 && editing !== 'new' && (
         <p className="muted small" style={{ margin: 0 }}>
           None yet. Make one when you want to train just some chapters together — say an Exchange Caro-Kann and an Italian for one
@@ -485,9 +501,9 @@ function Conflicts({ conflicts, name }: { conflicts: ChapterConflict[]; name: (i
   );
 }
 
-function CollectionEditor({ chapters, set, onDone }: { chapters: Chapter[]; set?: Collection; onDone: () => void }) {
+function CollectionEditor({ chapters, set, defaultColor = 'white', onDone }: { chapters: Chapter[]; set?: Collection; defaultColor?: Color; onDone: () => void }) {
   const [name, setName] = useState(set?.name ?? '');
-  const [color, setColor] = useState<Color>(set?.color ?? 'white');
+  const [color, setColor] = useState<Color>(set?.color ?? defaultColor);
   const [picked, setPicked] = useState<Set<string>>(new Set(set?.chapterIds ?? []));
   const options = chapters.filter((c) => c.color === color);
   const toggle = (id: string) => {
