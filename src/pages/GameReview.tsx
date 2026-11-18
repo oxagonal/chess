@@ -308,8 +308,19 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
             const computer = judged.get(i)?.judgement;
             const shown = mine ?? (computer ? JUDGEMENT_GLYPH[computer] : undefined);
             const others = otherGlyphs(a);
+            // Back in prep after a transposition: the move that rejoined it, and the moves played in it.
+            const rj = r.rejoins?.find((x) => i >= x.ply && i <= x.ply + x.inBook);
+            const leftAgain = r.rejoins?.find((x) => x.left?.kind === 'you-deviated' && x.left.ply === i);
             const titles = [
-              i === devPly ? 'You left your prep here' : i < r.bookPlies ? 'In your repertoire' : '',
+              i === devPly || leftAgain
+                ? 'You left your prep here'
+                : i < r.bookPlies
+                  ? 'In your repertoire'
+                  : rj?.ply === i
+                    ? 'Back in your prep — the game transposed into it'
+                    : rj
+                      ? 'In your repertoire (back in prep)'
+                      : '',
               mine ? glyphName(mine) : computer ? `Computer: ${computer}` : '',
               ...others.map(glyphName),
               clocks?.[i] !== undefined ? `${formatClock(clocks[i])} left${times[i] !== undefined ? ` · took ${formatMoveTime(times[i]!)}` : ''}` : '',
@@ -317,7 +328,8 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
             return {
               san: `${san}${shown ?? ''}${others.length ? ` ${others.join(' ')}` : ''}`,
               className: [
-                i === devPly ? 'deviation' : i < r.bookPlies ? 'book' : '',
+                i === devPly || leftAgain ? 'deviation' : i < r.bookPlies || rj ? 'book' : '',
+                rj?.ply === i ? 'rejoin' : '',
                 mine ? glyphClass(mine) : computer ? `${glyphClass(JUDGEMENT_GLYPH[computer])} computer` : '',
               ].join(' '),
               title: titles.join(' · ') || undefined,
@@ -415,6 +427,26 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
             </>
           )}
         </div>
+        {r.rejoins?.map((x) => (
+          <div key={x.ply} className="rejoin-note">
+            <b>Back in your prep</b> after {moveNumber(x.ply)} {replay.sans[x.ply]} — the game transposed into it.{' '}
+            {x.left?.kind === 'you-deviated' && (
+              <>
+                Then on move {moveNumber(x.left.ply)} you played <b>{x.left.played}</b>, but your repertoire says <b>{x.left.expected?.join(' or ')}</b>.
+              </>
+            )}
+            {x.left?.kind === 'opponent-deviated' && (
+              <>
+                Then on move {moveNumber(x.left.ply)} {opp} played <b>{x.left.played}</b>, which your repertoire doesn't cover.
+              </>
+            )}
+            {x.left?.kind === 'end-of-prep' && <>Your prep from there ran {Math.ceil(x.inBook / 2)} more move{x.inBook > 2 ? 's' : ''}.</>}
+            {!x.left && <>It stayed in your prep to the end.</>}{' '}
+            <button className="small ghost" onClick={() => goTo(x.ply + 1)}>
+              Go there
+            </button>
+          </div>
+        ))}
         <PrepActions game={game} r={r} graph={graph} />
       </div>
       {r.kind === 'you-deviated' &&

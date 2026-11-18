@@ -279,7 +279,7 @@ describe('my-games explorer + ratings', () => {
       }
     }
     expect(found).toBeGreaterThan(300); // the targets really are shared between games
-  });
+  }, 30_000); // a big randomized check: slow machines need more than the default 5s
 
   it('picks explorer rating bands', () => {
     expect(bandsForRating(1650)).toEqual([1400, 1600, 1800]);

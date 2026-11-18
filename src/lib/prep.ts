@@ -28,6 +28,21 @@ export interface PrepResult {
   playedUci?: string;
   /** Your prepared move(s) at `key` (for you-deviated). */
   expected?: string[];
+  /**
+   * Times the game came back into your prep after leaving it (usually by transposition): from the
+   * move that brought it back to where it left again — or the end of the game.
+   */
+  rejoins?: Rejoin[];
+}
+
+export interface Rejoin {
+  /** The move (0-based ply) after which the game is in your prep again. */
+  ply: number;
+  key: string;
+  /** Plies played in prep from there (moves ply+1 … ply+inBook). */
+  inBook: number;
+  /** How it left the prep again (absent: the game ended in it). */
+  left?: { kind: 'you-deviated' | 'opponent-deviated' | 'end-of-prep'; ply: number; key: string; played: string; expected?: string[] };
 }
 
 /** What a game is checked against: in the app, each color's chapters as one union graph. */
@@ -36,28 +51,62 @@ export interface RepWithGraph {
   graph: RepGraph;
 }
 
-function analyzeAgainst(game: StoredGame, graph: RepGraph): Omit<PrepResult, 'gameId'> {
+/** Every position of the game: keys[i] = before move i (keys[n] = after the last move). */
+function replayKeys(sans: readonly string[]): { keys: string[]; played: { san: string; uci: string }[] } {
   let pos: Position = startPos();
-  let key = START_KEY;
-  for (let i = 0; i < game.sans.length; i++) {
-    const played = playSan(pos, game.sans[i]);
-    if (!played) break;
-    const edges = graph.childrenOf(key);
-    const myTurn = turnOfKey(key) === graph.color;
-    if (!edges.length) return { kind: 'end-of-prep', bookPlies: i, ply: i, key, played: played.san, playedUci: played.uci };
-    const inBook = edges.some((e) => e.san === played.san) || graph.has(played.key);
-    if (!inBook) {
-      const base = { bookPlies: i, ply: i, key, played: played.san, playedUci: played.uci };
-      if (myTurn) {
-        const expected = edges.filter((e) => e.mine).map((e) => e.san);
-        return i <= 1 ? { kind: 'other-opening', ...base, expected } : { kind: 'you-deviated', ...base, expected };
-      }
-      return { kind: 'opponent-deviated', ...base };
-    }
-    pos = played.pos;
-    key = played.key;
+  const keys = [START_KEY];
+  const played: { san: string; uci: string }[] = [];
+  for (const s of sans) {
+    const r = playSan(pos, s);
+    if (!r) break;
+    played.push({ san: r.san, uci: r.uci });
+    keys.push(r.key);
+    pos = r.pos;
   }
-  return { kind: 'still-in-book', bookPlies: game.sans.length };
+  return { keys, played };
+}
+
+type Exit = { kind: 'you-deviated' | 'opponent-deviated' | 'end-of-prep'; ply: number; key: string; played: string; playedUci: string; expected?: string[] };
+
+/** Follow the game in prep from ply `from` until it leaves (undefined: it never does). */
+function followFrom(graph: RepGraph, keys: string[], played: { san: string; uci: string }[], from: number): Exit | undefined {
+  for (let i = from; i < played.length; i++) {
+    const key = keys[i];
+    const edges = graph.childrenOf(key);
+    const base = { ply: i, key, played: played[i].san, playedUci: played[i].uci };
+    if (!edges.length) return { kind: 'end-of-prep', ...base };
+    // A move into a position your prep reaches another way is still in book (a transposition).
+    if (edges.some((e) => e.san === played[i].san) || graph.has(keys[i + 1])) continue;
+    if (turnOfKey(key) === graph.color) return { kind: 'you-deviated', ...base, expected: edges.filter((e) => e.mine).map((e) => e.san) };
+    return { kind: 'opponent-deviated', ...base };
+  }
+  return undefined;
+}
+
+/** After the game left prep at `exitPly`: each time it comes back (to a position with prep to follow). */
+function rejoinsAfter(graph: RepGraph, keys: string[], played: { san: string; uci: string }[], exitPly: number): Rejoin[] {
+  const out: Rejoin[] = [];
+  for (let i = exitPly + 1; i <= played.length - 1; i++) {
+    const key = keys[i];
+    if (!graph.has(key) || !graph.childrenOf(key).length) continue;
+    const exit = followFrom(graph, keys, played, i);
+    const { kind, ply, played: san, expected } = exit ?? ({} as Partial<Exit>);
+    out.push({ ply: i - 1, key, inBook: (exit ? exit.ply : played.length) - i, ...(exit ? { left: { kind: kind!, ply: ply!, key: exit.key, played: san!, ...(expected ? { expected } : {}) } } : {}) });
+    if (!exit) break;
+    i = exit.ply; // look for the next return after this exit
+  }
+  return out;
+}
+
+function analyzeAgainst(game: StoredGame, graph: RepGraph): Omit<PrepResult, 'gameId'> {
+  const { keys, played } = replayKeys(game.sans);
+  const exit = followFrom(graph, keys, played, 0);
+  if (!exit) return { kind: 'still-in-book', bookPlies: game.sans.length };
+  const base = { bookPlies: exit.ply, ply: exit.ply, key: exit.key, played: exit.played, playedUci: exit.playedUci };
+  const rejoins = rejoinsAfter(graph, keys, played, exit.ply);
+  const extra = rejoins.length ? { rejoins } : {};
+  if (exit.kind === 'you-deviated') return exit.ply <= 1 ? { kind: 'other-opening', ...base, expected: exit.expected, ...extra } : { kind: 'you-deviated', ...base, expected: exit.expected, ...extra };
+  return { kind: exit.kind, ...base, ...extra };
 }
 
 const KIND_RANK: Record<PrepKind, number> = {
