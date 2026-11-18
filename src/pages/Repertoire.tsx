@@ -2,9 +2,9 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
-import { addEdges, chapterForNewLine, deleteMove, deleteUnionMove, setMoveAnnotation, splitOff } from '../db/repertoire';
+import { addEdges, chapterForNewLine, deleteMove, deleteUnionMove, setMoveAnnotation, setNoTrain, splitOff } from '../db/repertoire';
 import { loadOpeningIndex, nameParts } from '../lib/openingNames';
-import { chapterGap, chapterOfMoveId, chapterPosition, sourcesOf } from '../lib/chapters';
+import { chapterGap, chapterOfMoveId, chapterPosition, sourcesOf, trainable } from '../lib/chapters';
 import { useOpeningIndex } from '../components/ChapterTree';
 import { ChaptersPanel, ChapterSwitcher } from '../components/ChaptersPanel';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
@@ -78,7 +78,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // a new chapter named after its opening), and deletes and notes apply to every chapter with the move.
   const colorMode = repId === 'white' || repId === 'black';
   const chapterData = useRepGraph(colorMode ? undefined : repId);
-  const colorData = useScopeGraph(colorMode ? repId : undefined);
+  // (Every move, those marked not to train too: they're shown, struck through.)
+  const colorData = useScopeGraph(colorMode ? repId : undefined, { all: true });
   const rep: Repertoire | undefined = colorMode
     ? colorData.scope && { id: repId, name: `All ${colorName(repId as Color)} chapters`, color: repId as Color, createdAt: 0, updatedAt: colorData.scope.updatedAt }
     : chapterData.rep;
@@ -90,7 +91,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     return addEdges(target, toEdges(path), opts);
   };
   const allCards = useCards();
-  const cards = useMemo(() => (graph && allCards ? cardsOf(graph, allCards) : undefined), [graph, allCards]);
+  // The cards you train here: moves marked not to train (and what only they lead to) don't count.
+  const cards = useMemo(() => (graph && allCards ? cardsOf(new RepGraph(graph.color, trainable(graph.color, [...graph.byId.values()])), allCards) : undefined), [graph, allCards]);
   // Coverage is of all this color's chapters together: an Italian chapter isn't "missing" 1...c5 if
   // your Sicilian chapter answers it. The run is kept live as you edit.
   const { scope: colorScope, graph: colorGraph } = useScopeGraph(rep?.color);
@@ -353,10 +355,11 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const annotate = (m: RepMove | undefined, ply: number) =>
     m && !zen ? annotateProps((x, y) => setNoteTarget({ id: sourcesOf(m)[0], sources: sourcesOf(m), san: m.san, ply, x, y })) : {};
   // A saved move as written in the notation: its symbols after it, colored like Lichess.
+  // (A move marked not to train is struck through, in red.)
   const shown = (m: RepMove) => ({
     san: sanWithGlyphs(m.san, m.glyphs),
-    className: glyphClass(moveGlyph(m)),
-    title: [...(m.glyphs ?? []).map(glyphName), m.comment ?? ''].filter(Boolean).join(' · ') || undefined,
+    className: `${glyphClass(moveGlyph(m))} ${m.noTrain ? 'no-train' : ''}`,
+    title: [m.noTrain ? 'Not trained' : '', ...(m.glyphs ?? []).map(glyphName), m.comment ?? ''].filter(Boolean).join(' · ') || undefined,
   });
   // Back to the default studio layout (the Studio forgets the saved one).
   const resetLayout = () => setLayoutVersion((v) => v + 1);
@@ -1038,7 +1041,23 @@ function RepAnnotationMenu({ target, onClose }: { target: RepAnnotationTarget; o
       annotation={{ glyphs: move.glyphs, comment: move.comment }}
       onChange={(a) => void Promise.all((target.sources ?? [target.id]).map((id) => setMoveAnnotation(id, a)))}
       onClose={onClose}
-      extra={<SplitOffForm move={move} onDone={onClose} />}
+      extra={
+        <>
+          {move.mine && (
+            <button
+              className="small ghost no-train-toggle"
+              title={move.noTrain ? 'Train this move again (your progress on it is kept)' : "Keep it in the chapter but leave it — and what only it leads to — out of training"}
+              onClick={() => {
+                void setNoTrain(move, !move.noTrain);
+                onClose();
+              }}
+            >
+              {move.noTrain ? '↺ Train this move again' : '⊘ Don\'t train this move'}
+            </button>
+          )}
+          <SplitOffForm move={move} onDone={onClose} />
+        </>
+      }
     />
   );
 }

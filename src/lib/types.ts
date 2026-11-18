@@ -34,6 +34,11 @@ export interface RepMove {
   comment?: string;
   /** Annotation symbols (!?, ±, N …), in the order sortGlyphs gives. */
   glyphs?: string[];
+  /**
+   * Kept in the chapter but not trained (an example of what not to play, or a line too deep to
+   * review): it and whatever only it leads to are left out of training, coverage and game checks.
+   */
+  noTrain?: boolean;
   createdAt: number;
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;

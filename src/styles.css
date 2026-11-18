@@ -447,6 +447,11 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .miniboard .mb-b { color: #1a1a1a; }
 
 .anno-actions { gap: 6px; flex-wrap: wrap; }
+.train-likely { font-size: 13.5px; color: var(--muted); }
+/* A move kept in a chapter but not trained (an example of what not to play, or too deep to review). */
+.ml-move.no-train, .ml-side .mv.no-train, .iv-move.no-train { color: var(--bad) !important; text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.ml-move.current.no-train, .iv-move.current.no-train { color: #fff !important; }
+.no-train-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }
 /* Splitting a line off by hand (in the builder's right-click menu). */
 .split-off-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }
 .split-off { border-top: 1px solid var(--border-soft); padding-top: 8px; }

@@ -197,6 +197,21 @@ export async function deleteUnionMove(move: RepMove): Promise<number> {
   return n;
 }
 
+/**
+ * Mark a move of yours not to train (or to train again), in every chapter that has it — it's the same
+ * move, and one card. Its card (your progress) is kept, so turning it back on loses nothing.
+ */
+export async function setNoTrain(move: { fromKey: string; san: string }, off: boolean) {
+  await db.moves
+    .where('fromKey')
+    .equals(move.fromKey)
+    .filter((m) => m.san === move.san && m.mine)
+    .modify((m) => {
+      if (off) m.noTrain = true;
+      else delete m.noTrain;
+    });
+}
+
 export async function renameRepertoire(id: string, name: string) {
   await db.repertoires.update(id, { name, updatedAt: Date.now() });
 }

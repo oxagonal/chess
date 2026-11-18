@@ -13,6 +13,17 @@ import { RepGraph } from './graph';
 import type { RepMove } from './types';
 import { nameParts, type OpeningIndex } from './openingNames';
 
+/**
+ * The moves that are trained: without the ones marked not to train, and without whatever can only be
+ * reached through them (a blunder's refutation, say). Everything else is untouched.
+ */
+export function trainable<M extends RepMove>(color: Color, moves: readonly M[]): M[] {
+  if (!moves.some((m) => m.noTrain)) return [...moves];
+  const kept = moves.filter((m) => !m.noTrain);
+  const reach = new RepGraph(color, kept).reachableKeys();
+  return kept.filter((m) => reach.has(m.fromKey));
+}
+
 /** A move's card: `${fromKey}|${san}` (your color is the side to move in fromKey). */
 export function cardIdOf(m: { fromKey: string; san: string }): string {
   return `${m.fromKey}|${m.san}`;

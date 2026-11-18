@@ -12,7 +12,7 @@ import { ColorPill, Empty, ProgressBar, Stat } from '../components/ui';
 import { PHONE_QUERY, useCards, useChapterGraphs, useMediaQuery, startOfToday } from '../hooks';
 import { ChapterTree } from '../components/ChapterTree';
 import { COLORS, colorName, loadScopeGraph, scopeIdsFor, scopeOf, repertoireScopeId, useChaptersAndSets, type Scope } from '../db/scopes';
-import { cardsOf, chapterOfMoveId, sourcesOf, unionGraph } from '../lib/chapters';
+import { cardsOf, chapterOfMoveId, sourcesOf, trainable, unionGraph } from '../lib/chapters';
 import { href, navigate } from '../router';
 import { formatLine, playUci, startPos } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
@@ -73,7 +73,7 @@ function TrainChooser() {
       const scope = scopeOf(id, chapters, collections, settings);
       if (!scope) return [];
       const ids = new Set(scope.chapterIds);
-      let mine = cardsOf(unionGraph(scope.color, moves.filter((m) => ids.has(m.repId))), cards);
+      let mine = cardsOf(unionGraph(scope.color, trainable(scope.color, moves.filter((m) => ids.has(m.repId)))), cards);
       const cov = settings.trainOnlyLikely ? coverageFor(scope, coverage) : undefined;
       if (cov) mine = filterByProbability(mine, cov.probs, cov.threshold);
       return mine;
@@ -84,7 +84,7 @@ function TrainChooser() {
   /** Due and new across some chapters of a color (a shared move counted once). */
   const countsOfChapters = (color: 'white' | 'black', ids: string[]) => {
     const set = new Set(ids);
-    let mine = cardsOf(unionGraph(color, moves.filter((m) => set.has(m.repId))), cards);
+    let mine = cardsOf(unionGraph(color, trainable(color, moves.filter((m) => set.has(m.repId)))), cards);
     const cov = settings.trainOnlyLikely ? coverage?.find((r) => r.repId === color) : undefined;
     if (cov) mine = filterByProbability(mine, cov.probs, cov.threshold);
     return { due: mine.filter((c) => isDue(c, now)).length, fresh: mine.filter(isNew).length };
@@ -114,10 +114,15 @@ function TrainChooser() {
         <Stat value={`${Math.min(newLeft, all.fresh)}`} label="New moves today" hint={`${all.fresh} unlearned in total; daily limit ${settings.newPerDay}`} />
         <Stat value={learnedToday ?? 0} label="Learned today" />
       </div>
+      {/* Stop at your coverage target: a move 1 in 100,000 games deep isn't worth reviewing. */}
+      <label className="check train-likely" title="Needs a Coverage run for the color; without one, everything is trained">
+        <input type="checkbox" checked={settings.trainOnlyLikely} onChange={(e) => updateSettings({ trainOnlyLikely: e.target.checked })} />
+        Only train positions you'll meet at least as often as your coverage target
+      </label>
       {settings.trainOnlyLikely && (
         <div className="note">
-          Only training positions reached at least as often as the coverage target (where Coverage has been run for that color or
-          repertoire). Change this in Settings.
+          Rarer positions are left out of Learn and Review, for each color or repertoire with a Coverage run; the rest is trained as
+          usual. Single moves you don't want trained at all: right-click them in the builder.
         </div>
       )}
       <div className="panel list">

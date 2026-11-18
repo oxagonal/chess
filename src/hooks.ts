@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
 import { RepGraph } from './lib/graph';
 import type { Repertoire, RepMove } from './lib/types';
-import { unionGraph } from './lib/chapters';
+import { trainable, unionGraph } from './lib/chapters';
 import { COLORS, colorName } from './db/scopes';
 import type { RepWithGraph } from './lib/prep';
 import { useSettings } from './db/settings';
@@ -34,7 +34,7 @@ export function useAllGraphs(): RepWithGraph[] | undefined {
     const colorOf = new Map(reps.map((r) => [r.id, r.color]));
     return COLORS.map((color) => ({
       rep: { id: color, name: `All ${colorName(color)} chapters`, color },
-      graph: unionGraph(color, moves.filter((m: RepMove) => colorOf.get(m.repId) === color)),
+      graph: unionGraph(color, trainable(color, moves.filter((m: RepMove) => colorOf.get(m.repId) === color))),
     }));
   }, [reps, moves]);
 }
@@ -51,7 +51,8 @@ export function useChapterGraphs(): Map<string, RepGraph> | undefined {
       if (arr) arr.push(m);
       else by.set(m.repId, [m]);
     }
-    return new Map(reps.map((r) => [r.id, new RepGraph(r.color, by.get(r.id) ?? [])]));
+    // Trained moves only: these are for counts, the map and organizing (the builder reads its own).
+    return new Map(reps.map((r) => [r.id, new RepGraph(r.color, trainable(r.color, by.get(r.id) ?? []))]));
   }, [reps, moves]);
 }
 

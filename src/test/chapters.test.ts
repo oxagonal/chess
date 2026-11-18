@@ -2,9 +2,9 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, openDb } from '../db/db';
-import { addLine, chapterForNewLine, createRepertoire, deleteMove, deleteRepertoire, deleteUnionMove, loadGraph, mergeChapter, setMoveComment, splitChapter, splitOff } from '../db/repertoire';
+import { addLine, chapterForNewLine, createRepertoire, deleteMove, deleteRepertoire, deleteUnionMove, loadGraph, mergeChapter, setMoveComment, setNoTrain, splitChapter, splitOff } from '../db/repertoire';
 import { loadScopeGraph, repertoireScopeId } from '../db/scopes';
-import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, chapterGap, chapterPosition, chapterTrunk, matchChapter, migrateCardRows, unionGraph } from '../lib/chapters';
+import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, chapterGap, chapterPosition, chapterTrunk, matchChapter, migrateCardRows, trainable, unionGraph } from '../lib/chapters';
 import openings from '../data/openings.json';
 import { buildOpeningIndex } from '../lib/openingNames';
 import { RepGraph } from '../lib/graph';
@@ -193,6 +193,26 @@ describe('browsing all of a color', () => {
     const union = (await loadScopeGraph('white'))!.graph;
     await deleteUnionMove(union.edge(START_KEY, 'e4')!);
     expect(await db.moves.count()).toBe(0);
+  });
+});
+
+describe('moves not to train', () => {
+  it('leaves out the move and what only it leads to, from training but not from the chapter', async () => {
+    const ch = await createRepertoire('Italian', 'white');
+    await addLine(ch.id, ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4']);
+    // An example blunder with its refutation: 2.Qh5?? Nc6 3.Bc4 ... — and a transposition back stays.
+    await addLine(ch.id, ['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'g6']);
+    const qh5 = { fromKey: keyAfter(['e4', 'e5']), san: 'Qh5' };
+    await setNoTrain(qh5, true);
+    const { graph } = (await loadScopeGraph('white'))!;
+    expect(graph.edge(qh5.fromKey, 'Qh5')).toBeUndefined();
+    expect(graph.has(keyAfter(['e4', 'e5', 'Qh5', 'Nc6', 'Bc4']))).toBe(false);
+    expect(cardsOf(graph, await db.cards.toArray()).map((c) => c.san).sort()).toEqual(['Bc4', 'Nf3', 'e4']);
+    // Still in the chapter, and back with its progress when turned on again.
+    expect((await loadGraph(ch.id))!.graph.edge(qh5.fromKey, 'Qh5')?.noTrain).toBe(true);
+    await setNoTrain(qh5, false);
+    expect((await loadScopeGraph('white'))!.graph.edge(qh5.fromKey, 'Qh5')).toBeDefined();
+    expect(trainable('white', [])).toEqual([]);
   });
 });
 

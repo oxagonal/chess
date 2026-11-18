@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
 import { updateSettings, useSettings, type AppSettings } from './settings';
-import { unionGraph } from '../lib/chapters';
+import { trainable, unionGraph } from '../lib/chapters';
 import type { Color } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
 import type { Chapter, Collection, RepMove } from '../lib/types';
@@ -62,7 +62,7 @@ async function movesOf(chapterIds: string[]): Promise<RepMove[]> {
 export async function loadScopeGraph(id: string): Promise<{ scope: Scope; graph: RepGraph } | undefined> {
   const scope = await loadScope(id);
   if (!scope) return undefined;
-  return { scope, graph: unionGraph(scope.color, await movesOf(scope.chapterIds), scope.id) };
+  return { scope, graph: unionGraph(scope.color, trainable(scope.color, await movesOf(scope.chapterIds)), scope.id) };
 }
 
 /** Set a scope's coverage target (the colors' live in Settings, a chapter's or repertoire's on itself). */
@@ -82,8 +82,11 @@ export function useChaptersAndSets(): { chapters?: Chapter[]; collections?: Coll
   return { chapters, collections };
 }
 
-/** Live scope and union graph. `loading` until both are read; `scope` undefined when it doesn't exist. */
-export function useScopeGraph(id: string | undefined): { scope?: Scope; graph?: RepGraph; loading: boolean } {
+/**
+ * Live scope and union graph (of trained moves; `all` keeps the ones marked not to train, for the
+ * builder). `loading` until both are read; `scope` undefined when it doesn't exist.
+ */
+export function useScopeGraph(id: string | undefined, opts: { all?: boolean } = {}): { scope?: Scope; graph?: RepGraph; loading: boolean } {
   const { chapters, collections } = useChaptersAndSets();
   const settings = useSettings();
   const scope = useMemo(
@@ -92,6 +95,7 @@ export function useScopeGraph(id: string | undefined): { scope?: Scope; graph?: 
   );
   const key = scope?.chapterIds.join(',') ?? '';
   const moves = useLiveQuery(() => (scope ? movesOf(scope.chapterIds) : Promise.resolve(undefined)), [key, !!scope]);
-  const graph = useMemo(() => (scope && moves ? unionGraph(scope.color, moves, scope.id) : undefined), [scope, moves]);
+  const all = !!opts.all;
+  const graph = useMemo(() => (scope && moves ? unionGraph(scope.color, all ? moves : trainable(scope.color, moves), scope.id) : undefined), [scope, moves, all]);
   return { scope, graph, loading: !chapters || !collections || !settings.loaded || (!!scope && !moves) };
 }
