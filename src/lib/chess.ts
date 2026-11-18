@@ -136,6 +136,16 @@ export function formatLine(sans: string[], startPly = 0): string {
   return parts.join(' ');
 }
 
+/** "1.e4 c5 2.Nf3" — compact, like Lichess writes a line in running text. */
+export function compactLine(sans: string[], startPly = 0): string {
+  return sans
+    .map((san, i) => {
+      const prefix = moveNumberPrefix(startPly + i, i === 0);
+      return prefix ? `${prefix}${san}` : san;
+    })
+    .join(' ');
+}
+
 /** Square names for chessground lastMove highlighting. */
 export function uciSquares(uci: string): [string, string] | undefined {
   if (uci.length < 4) return undefined;

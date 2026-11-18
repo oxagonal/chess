@@ -449,11 +449,16 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .split-off { border-top: 1px solid var(--border-soft); padding-top: 8px; }
 
 /* A chapter row: counts, its biggest gap, and where it branches. */
-.chapter-gap { min-width: 0; }
-.chapter-gap b { color: var(--bad); font-weight: 750; }
-.chapter-pos { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.chapter-pos { font-size: 13.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; font-variant-numeric: tabular-nums; }
 .chapter-pos:hover { color: var(--text); }
-.chapter-gap-line { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.chapter-row .list-head { gap: 10px; align-items: baseline; }
+/* The biggest gap: green when it's rarer than your target, amber when it's one to prepare. */
+.gap-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: 12px; color: var(--muted); border: 1px solid var(--border-soft); }
+.gap-chip b { font-weight: 700; }
+.gap-chip.good b { color: var(--good); }
+.gap-chip.warn { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.gap-chip.warn b { color: var(--warn); }
+.gap-chip:hover { color: var(--text); }
 
 /* Chapters as dropdowns: first move, then opening family. */
 .ctree { display: flex; flex-direction: column; gap: 10px; }

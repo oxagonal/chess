@@ -4,7 +4,7 @@ import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { addEdges, deleteMove, setMoveAnnotation, splitOff } from '../db/repertoire';
 import { loadOpeningIndex, nameParts } from '../lib/openingNames';
-import { chapterOfMoveId, chapterPosition } from '../lib/chapters';
+import { chapterGap, chapterOfMoveId, chapterPosition } from '../lib/chapters';
 import { useOpeningIndex } from '../components/ChapterTree';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
 import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepGraph } from '../hooks';
@@ -266,25 +266,10 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
 
   // The most common hole: an opponent reply you don't answer, or your move with nothing prepared.
   // Only this chapter's: a gap in another chapter is fixed there.
+  // (Rarer than the target too: the real biggest hole, not "none".)
   const biggestGap = useMemo(() => {
     if (!freshCoverage || !graph) return undefined;
-    const inChapter = (sans: string[]) => {
-      let key = graph.root;
-      for (const san of sans) {
-        const m = graph.edge(key, san);
-        if (!m) return false;
-        key = m.toKey;
-      }
-      return true;
-    };
-    const g = freshCoverage.gaps.find((x) => inChapter(x.path));
-    const u = freshCoverage.unfinished.find((x) => inChapter(x.path));
-    const pick =
-      g && (!u || g.prob >= u.prob)
-        ? { sans: [...g.path, g.san], prob: g.prob }
-        : u
-          ? { sans: u.path, prob: u.prob }
-          : undefined;
+    const pick = chapterGap(graph, freshCoverage);
     if (!pick) return undefined;
     return { ...pick, label: formatLine(pick.sans) || 'the starting position' };
   }, [freshCoverage, graph]);
@@ -533,7 +518,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
                   ? `Most common position you have no answer for: ${biggestGap.label} (${oneIn(biggestGap.prob)} games)`
                   : live.running || live.stale
                     ? 'Calculating coverage…'
-                    : `No gaps at 1 in ${goalN} games`
+                    : 'No gaps found in this chapter'
               }
             >
               Biggest gap{biggestGap ? ` · ${oneIn(biggestGap.prob)}` : ''}

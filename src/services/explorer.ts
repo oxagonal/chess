@@ -16,6 +16,8 @@ export interface ExplorerParams {
 
 const MAX_AGE = 30 * 24 * 3600 * 1000;
 const SPACING_MS = 60;
+/** A request that hasn't answered by then is dropped and retried — one stuck request would hold up the whole queue. */
+const TIMEOUT_MS = 20_000;
 
 export function paramsLabel(p: ExplorerParams): string {
   if (p.db === 'masters') return 'Masters';
@@ -150,9 +152,23 @@ export async function fetchExplorer(p: ExplorerParams, key: string, signal?: Abo
       inFlight++;
       emit();
       let res: Response;
+      // The caller's cancel, or our timeout — whichever comes first.
+      const ctrl = new AbortController();
+      const cancel = () => ctrl.abort();
+      signal?.addEventListener('abort', cancel);
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        ctrl.abort();
+      }, TIMEOUT_MS);
       try {
-        res = await fetch(url, { signal, headers });
+        res = await fetch(url, { signal: ctrl.signal, headers });
+      } catch (e) {
+        if (timedOut && !signal?.aborted) continue; // try again
+        throw e;
       } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', cancel);
         inFlight--;
         emit();
       }
@@ -171,7 +187,7 @@ export async function fetchExplorer(p: ExplorerParams, key: string, signal?: Abo
       await db.explorerCache.put({ key: cacheKey(p, key), fetchedAt: Date.now(), data });
       return data;
     }
-    throw new Error('Opening explorer is rate limiting us — try again in a few minutes.');
+    throw new Error('The opening explorer is rate limiting us or not answering — try again in a few minutes.');
   }, priority);
 }
 

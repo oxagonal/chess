@@ -45,6 +45,9 @@ export interface ForwardResult {
   prob: Map<string, number>;
   gaps: CoverageGap[];
   unfinished: CoverageNode[];
+  /** The likeliest holes rarer than the threshold (capped), see CoverageResult.minorGaps. */
+  minorGaps: CoverageGap[];
+  minorUnfinished: CoverageNode[];
   noData: string[];
   queried: number;
   statsAt: Map<string, PositionStats>;
@@ -64,6 +67,8 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
   const prob = new Map<string, number>([[graph.root, 1]]);
   const gaps: CoverageGap[] = [];
   const unfinished: CoverageNode[] = [];
+  const minorGaps: CoverageGap[] = [];
+  const minorUnfinished: CoverageNode[] = [];
   const noData: string[] = [];
   let queried = 0;
 
@@ -79,7 +84,10 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
 
     if (graph.isMyTurn(key)) {
       if (!kids.length) {
-        if (p >= threshold && !isGameOver(key)) unfinished.push({ key, prob: p, path: pathSans(key), myTurn: true });
+        if (!isGameOver(key)) {
+          if (p >= threshold) unfinished.push({ key, prob: p, path: pathSans(key), myTurn: true });
+          else keepMinor(minorUnfinished, { key, prob: p, path: pathSans(key), myTurn: true });
+        }
         continue;
       }
       // Several prepared moves: assume you pick between them evenly (or, for an import, play each).
@@ -104,17 +112,17 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
       if (edge) add(edge.toKey, p * freq);
       else if (p * freq >= threshold) {
         gaps.push({ fromKey: key, san: ms.san, uci: ms.uci, prob: p * freq, freq, games, path: pathSans(key) });
-      }
+      } else keepMinor(minorGaps, { fromKey: key, san: ms.san, uci: ms.uci, prob: p * freq, freq, games, path: pathSans(key) });
     }
   }
-  return { prob, gaps, unfinished, noData, queried, statsAt, kidsOf, order };
+  return { prob, gaps, unfinished, minorGaps, minorUnfinished, noData, queried, statsAt, kidsOf, order };
 }
 
 export async function computeCoverage(graph: RepGraph, provider: StatsProvider, opts: CoverageOptions): Promise<CoverageResult> {
   const { threshold } = opts;
   // Stamp with the start time: an edit made while this runs must make the result look stale.
   const startedAt = Date.now();
-  const { prob, gaps, unfinished, noData, queried, statsAt, kidsOf, order } = await reachProbabilities(graph, provider, opts);
+  const { prob, gaps, unfinished, minorGaps, minorUnfinished, noData, queried, statsAt, kidsOf, order } = await reachProbabilities(graph, provider, opts);
 
   // Backward pass: coverage of each position = share of games reaching it that stay in book until
   // they get rarer than the threshold. Consistent with the forward pass: at the root it equals
@@ -165,6 +173,8 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
     probs,
     gaps,
     unfinished,
+    minorGaps: minorGaps.sort((a, b) => b.prob - a.prob).slice(0, MINOR_KEEP),
+    minorUnfinished: minorUnfinished.sort((a, b) => b.prob - a.prob).slice(0, MINOR_KEEP),
     noData,
     queried,
     coverage: Object.fromEntries(cover),
@@ -175,6 +185,18 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
 interface Edge {
   san: string;
   toKey: string;
+}
+
+/** How many sub-threshold holes a run keeps (the likeliest). */
+const MINOR_KEEP = 300;
+/** Keep the MINOR_KEEP likeliest; trimmed in batches so it stays cheap. */
+function keepMinor<T extends { prob: number }>(list: T[], item: T) {
+  if (item.prob <= 0) return;
+  list.push(item);
+  if (list.length > MINOR_KEEP * 2) {
+    list.sort((a, b) => b.prob - a.prob);
+    list.length = MINOR_KEEP;
+  }
 }
 
 /**

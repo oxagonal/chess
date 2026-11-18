@@ -162,26 +162,38 @@ export interface ChapterGap {
   prob: number;
   /** …and if the chapter's opening came up every game (among games reaching its position; undefined if unknown). */
   inChapter?: number;
+  /** Rarer than the coverage target: you're prepared as deep as you asked to be. */
+  beyondTarget: boolean;
 }
 
 /**
  * A chapter's biggest hole, from a coverage run of its color (all chapters together, so a reply
- * another chapter answers isn't a hole): the likeliest gap or unprepared position inside the chapter.
+ * another chapter answers isn't a hole): the likeliest gap or unprepared position inside the chapter
+ * — including ones rarer than the target, so you see the real figure (1 in 800) rather than nothing.
  */
 export function chapterGap(
   graph: RepGraph,
-  cov: { gaps: { path: string[]; san: string; prob: number }[]; unfinished: { path: string[]; prob: number }[]; probs: Record<string, number> },
+  cov: {
+    gaps: { path: string[]; san: string; prob: number }[];
+    unfinished: { path: string[]; prob: number }[];
+    minorGaps?: { path: string[]; san: string; prob: number }[];
+    minorUnfinished?: { path: string[]; prob: number }[];
+    probs: Record<string, number>;
+    threshold?: number;
+  },
   names?: OpeningIndex,
 ): ChapterGap | undefined {
+  const gaps = [...cov.gaps, ...(cov.minorGaps ?? [])];
+  const unfinished = [...cov.unfinished, ...(cov.minorUnfinished ?? [])];
   const holes = [
-    ...cov.gaps.filter((g) => lineInGraph(graph, g.path)).map((g) => ({ sans: [...g.path, g.san], prob: g.prob })),
-    ...cov.unfinished.filter((u) => lineInGraph(graph, u.path)).map((u) => ({ sans: u.path, prob: u.prob })),
+    ...gaps.filter((g) => lineInGraph(graph, g.path)).map((g) => ({ sans: [...g.path, g.san], prob: g.prob })),
+    ...unfinished.filter((u) => lineInGraph(graph, u.path)).map((u) => ({ sans: u.path, prob: u.prob })),
   ];
   if (!holes.length) return undefined;
   const best = holes.reduce((a, b) => (b.prob > a.prob ? b : a));
   const { key } = chapterPosition(graph, names);
   const base = key === graph.root ? 1 : cov.probs[key];
-  return { ...best, inChapter: base ? Math.min(1, best.prob / base) : undefined };
+  return { ...best, inChapter: base ? Math.min(1, best.prob / base) : undefined, beyondTarget: cov.threshold !== undefined && best.prob < cov.threshold };
 }
 
 /** A position where chapters played together give you different moves. */

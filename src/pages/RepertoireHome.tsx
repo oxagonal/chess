@@ -20,7 +20,7 @@ import { oneIn } from '../lib/coverage';
 import { linePaths } from '../lib/map';
 import { useCards, useChapterGraphs, useCoverage } from '../hooks';
 import { cardIdOf, chapterConflicts, chapterGap, chapterPosition, type ChapterConflict } from '../lib/chapters';
-import { formatLine, type Color } from '../lib/chess';
+import { compactLine, formatLine, type Color } from '../lib/chess';
 import { isDue, isNew } from '../lib/srs';
 import type { Chapter, Collection, CoverageResult, ReviewCard } from '../lib/types';
 import type { RepGraph } from '../lib/graph';
@@ -247,6 +247,10 @@ function ChapterRow({
   const opening = graph ? chapterPosition(graph, names).moves.map((m) => m.san) : [];
   const gap = graph && coverage ? chapterGap(graph, coverage, names) : undefined;
   const target = coverage ? Math.round(1 / coverage.threshold) : 0;
+  const gapTitle = gap
+    ? `Biggest gap: ${compactLine(gap.sans)} — ${oneIn(gap.prob)} games${gap.inChapter !== undefined ? `, ${oneIn(gap.inChapter)} of games in this opening` : ''}. ` +
+      (gap.beyondTarget ? `Rarer than your target (1 in ${target}): you're prepared as deep as you asked.` : `Within your target (1 in ${target}): worth preparing.`)
+    : '';
   return (
     <div className="list-item chapter-row">
       <div className="list-main">
@@ -256,7 +260,7 @@ function ChapterRow({
           </a>
           {opening.length > 0 && (
             <a className="chapter-pos" href={href(`repertoire/${r.id}`, { line: opening.join(' ') })} title="The position that defines this chapter's opening">
-              {formatLine(opening)}
+              {compactLine(opening)}
             </a>
           )}
         </div>
@@ -266,28 +270,19 @@ function ChapterRow({
           </span>
           {counts.due > 0 && <span className="badge due">{counts.due} due</span>}
           {counts.fresh > 0 && <span className="badge new">{counts.fresh} new</span>}
+          {gap && (
+            <a className={`gap-chip ${gap.beyondTarget ? 'good' : 'warn'}`} href={href(`repertoire/${r.id}`, { line: gap.sans.join(' ') })} title={gapTitle}>
+              gap <b>{oneIn(gap.prob)}</b>
+              {gap.inChapter !== undefined && (
+                <>
+                  {' · '}
+                  <b>{oneIn(gap.inChapter)}</b> in this opening
+                </>
+              )}
+            </a>
+          )}
+          {coverage && !gap && <span className="gap-chip good">no gaps found</span>}
         </div>
-        {coverage && (
-          <div className="list-meta chapter-gap">
-            {gap ? (
-              <>
-                <span title="How often the chapter's likeliest hole comes up — a reply you don't answer, or your move with nothing prepared — counting from the start of the game">
-                  Biggest gap <b>{oneIn(gap.prob)}</b> games
-                </span>
-                {gap.inChapter !== undefined && (
-                  <span title={`The same hole if this opening (${formatLine(opening) || 'the start'}) came up in every game`}>
-                    · <b>{oneIn(gap.inChapter)}</b> if you get this opening
-                  </span>
-                )}
-                <a href={href(`repertoire/${r.id}`, { line: gap.sans.join(' ') })} className="chapter-gap-line" title={formatLine(gap.sans)}>
-                  {formatLine(gap.sans)}
-                </a>
-              </>
-            ) : (
-              <span>No gaps at 1 in {target}</span>
-            )}
-          </div>
-        )}
       </div>
       <div className="list-buttons">
         <a className="btn small" href={href(`repertoire/${r.id}`)}>

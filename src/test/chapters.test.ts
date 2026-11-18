@@ -159,7 +159,9 @@ describe('a chapter at a glance', () => {
       unfinished: [{ path: ['e4', 'c5', 'c3', 'Nf6', 'e5', 'Nd5'], prob: 0.002 }],
       probs: { [keyAfter(['e4', 'c5', 'c3'])]: 0.04 },
     };
-    expect(chapterGap(g, cov)).toEqual({ sans: ['e4', 'c5', 'c3', 'd5', 'e5'], prob: 0.004, inChapter: 0.1 });
+    expect(chapterGap(g, cov)).toEqual({ sans: ['e4', 'c5', 'c3', 'd5', 'e5'], prob: 0.004, inChapter: 0.1, beyondTarget: false });
+    // Rarer than the target, it still shows — from the run's sub-threshold holes.
+    expect(chapterGap(g, { gaps: [], unfinished: [], minorGaps: [{ path: ['e4', 'c5', 'c3', 'd5'], san: 'Nf3', prob: 0.00125 }], probs: {}, threshold: 0.005 })).toMatchObject({ prob: 0.00125, beyondTarget: true });
     expect(chapterGap(g, { gaps: [], unfinished: [], probs: {} })).toBeUndefined();
   });
 });

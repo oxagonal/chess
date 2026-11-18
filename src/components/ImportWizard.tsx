@@ -7,6 +7,7 @@ import { db } from '../db/db';
 import { getSettings, repTarget } from '../db/settings';
 import { colorName, loadScope } from '../db/scopes';
 import { statsProvider, type StatsProvider } from '../services/coverage';
+import { onExplorerStatus } from '../services/explorer';
 import { reachProbabilities } from '../lib/coverage';
 import { alternativesIn, importGraph, keptEdges, reachable, studyChapters, trimByReach, type StudyChapter } from '../lib/importPlan';
 import { formatLine, posFromFen, type Color } from '../lib/chess';
@@ -412,6 +413,17 @@ function TrimStep({ plans, setPlans, onBack, onNext }: { plans: Plan[]; setPlans
   const [error, setError] = useState<string | null>(null);
   const ctrl = useRef<AbortController | null>(null);
   const color = plans[0]?.color ?? 'white';
+  // Lichess sometimes asks us to wait a minute between bursts: say so, rather than look frozen.
+  const [waitingUntil, setWaitingUntil] = useState<number | undefined>();
+  useEffect(() => onExplorerStatus((st) => setWaitingUntil(st.waitingUntil)), []);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!waitingUntil) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [waitingUntil]);
+  // At most this many lookups: every opponent position in the import (fewer once rare ones are cut off).
+  const upTo = plans.reduce((n, p) => n + [...p.graph.reachableKeys()].filter((k) => !p.graph.isMyTurn(k) && p.graph.childrenOf(k).length).length, 0);
   useEffect(() => {
     void (async () => setN(repTarget(await loadScope(color), await getSettings())))();
   }, [color]);
@@ -460,7 +472,14 @@ function TrimStep({ plans, setPlans, onBack, onNext }: { plans: Plan[]; setPlans
       </p>
       {n !== null && <OneInNSlider value={n} onChange={(v) => (setN(v), setDone(false))} label="Keep replies seen in at least" color={color} />}
       {error && <div className="error">{error}</div>}
-      {running && <div className="muted">Looked up {queried} positions…</div>}
+      {running && (
+        <div className="muted">
+          Looked up {queried} of at most {upTo} positions…
+          {waitingUntil && waitingUntil > now && (
+            <> Lichess asked us to slow down — continuing in {Math.ceil((waitingUntil - now) / 1000)}s.</>
+          )}
+        </div>
+      )}
       {done && (
         <div className="col" style={{ gap: 4 }}>
           {plans.map((p, i) => {

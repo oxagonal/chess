@@ -197,6 +197,12 @@ export interface CoverageResult {
   gaps: CoverageGap[];
   /** Your-move positions reached ≥ threshold with no prepared move. */
   unfinished: CoverageNode[];
+  /**
+   * The likeliest holes rarer than the target (a few hundred at most), among the positions looked
+   * up — so a chapter can show its real biggest gap even when it's beyond the target.
+   */
+  minorGaps?: CoverageGap[];
+  minorUnfinished?: CoverageNode[];
   /** Positions where the database had no data. */
   noData: string[];
   queried: number;
