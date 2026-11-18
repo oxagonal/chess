@@ -1,6 +1,7 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { isValidElement, useEffect, useRef, type ReactNode } from 'react';
 import { moveNumberPrefix } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
+import { revealInBox } from './MoveList';
 import type { RepMove } from '../lib/types';
 
 /** A move of the line you're on (it may not be saved in the repertoire yet). */
@@ -39,7 +40,7 @@ export function InlineMoves({
 }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    box.current?.querySelector('.iv-move.current')?.scrollIntoView({ block: 'nearest' });
+    revealInBox(box.current?.querySelector('.iv-move.current'));
   }, [current, line.length]);
 
   if (!line.length && !graph.childrenOf(graph.root).length) return <div className="inline-moves muted">Starting position</div>;
@@ -85,7 +86,7 @@ export function InlineMoves({
       for (const a of alts) {
         out.push(
           <span key={key()} className="iv-var">
-            ({variation(here, a)})
+            ({spaced(variation(here, a))})
           </span>,
         );
         numbered = true;
@@ -122,7 +123,7 @@ export function InlineMoves({
     for (const a of alts) {
       out.push(
         <span key={key()} className="iv-var">
-          ({variation(line.slice(0, i), a)})
+          ({spaced(variation(line.slice(0, i), a))})
         </span>,
       );
       numbered = true;
@@ -136,14 +137,23 @@ export function InlineMoves({
     else
       out.push(
         <span key={key()} className="iv-var">
-          ({variation(line, a)})
+          ({spaced(variation(line, a))})
         </span>,
       );
   });
 
   return (
     <div className="inline-moves" ref={box}>
-      {out}
+      {spaced(out)}
     </div>
   );
+}
+
+/**
+ * Spaces between the tokens: each move keeps its number on its line (white-space: nowrap), and the
+ * text can only wrap where there's a space — without them the whole repertoire is one long line.
+ * A transposition mark stays with its move.
+ */
+function spaced(nodes: ReactNode[]): ReactNode[] {
+  return nodes.flatMap((n, i) => (i === 0 || (isValidElement<{ className?: string }>(n) && n.props.className === 'iv-transpose') ? [n] : [' ', n]));
 }
