@@ -448,6 +448,7 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 
 .anno-actions { gap: 6px; flex-wrap: wrap; }
 .train-likely { font-size: 13.5px; color: var(--muted); }
+.train-nav { gap: 6px; flex-wrap: wrap; }
 /* A move kept in a chapter but not trained (an example of what not to play, or too deep to review). */
 .ml-move.no-train, .ml-side .mv.no-train, .iv-move.no-train { color: var(--bad) !important; text-decoration: line-through; text-decoration-thickness: 1.5px; }
 .ml-move.current.no-train, .iv-move.current.no-train { color: #fff !important; }

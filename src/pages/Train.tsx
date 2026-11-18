@@ -14,7 +14,7 @@ import { ChapterTree } from '../components/ChapterTree';
 import { COLORS, colorName, loadScopeGraph, scopeIdsFor, scopeOf, repertoireScopeId, useChaptersAndSets, type Scope } from '../db/scopes';
 import { cardsOf, chapterOfMoveId, sourcesOf, trainable, unionGraph } from '../lib/chapters';
 import { href, navigate } from '../router';
-import { formatLine, playUci, startPos } from '../lib/chess';
+import { compactLine, formatLine, playUci, startPos } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
 import { asQuiz, filterByProbability, moveOrders, orderCards, planLine, type PlannedStep } from '../lib/trainer';
 import { Builder } from './Repertoire';
@@ -586,6 +586,38 @@ function Session({ setup }: { setup: SessionSetup }) {
     return [];
   }, [step, line?.phase, hint]);
 
+  // Looking back through the line: `view` = moves shown (null: the live position). The board is
+  // read-only while you look; stepping forward to the end (or ⏭) takes you back to play.
+  const [view, setView] = useState<number | null>(null);
+  useEffect(() => setView(null), [line]);
+  const viewed = useMemo(() => {
+    if (view === null || !line) return undefined;
+    let p: Chess = startPos();
+    for (const s of line.steps.slice(0, view)) {
+      const r = playUci(p, s.move.uci);
+      if (!r) break;
+      p = r.pos;
+    }
+    return { pos: p, lastMove: view > 0 ? line.steps[view - 1].move.uci : undefined };
+  }, [view, line]);
+  const stepBack = useCallback(() => setView((v) => Math.max(0, (v ?? idx) - 1)), [idx]);
+  const stepForward = useCallback(() => setView((v) => (v === null || v + 1 >= idx ? null : v + 1)), [idx]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        stepBack();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        stepForward();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [stepBack, stepForward]);
+
   const total = queue.length;
   const progress = total ? (total - pendingRef.current.size) / total : 1;
 
@@ -665,7 +697,39 @@ function Session({ setup }: { setup: SessionSetup }) {
       <div className="muted small">Changes apply from the next line.</div>
     </div>
   );
-  const board = <Board pos={pos} orientation={rep?.color ?? 'white'} interactive={waiting} lastMove={lastMove} onMove={onMove} arrows={arrows} flash={flash} />;
+  const looking = viewed !== undefined;
+  const board = (
+    <Board
+      pos={viewed?.pos ?? pos}
+      orientation={rep?.color ?? 'white'}
+      interactive={waiting && !looking}
+      lastMove={looking ? viewed.lastMove : lastMove}
+      onMove={onMove}
+      arrows={looking ? [] : arrows}
+      flash={looking ? undefined : flash}
+    />
+  );
+  const navBar = idx > 0 && (
+    <div className="row train-nav">
+      <button className="small" onClick={() => setView(0)} disabled={view === 0} title="Start of the line" aria-label="Start of the line">
+        ⏮
+      </button>
+      <button className="small" onClick={stepBack} disabled={view === 0} title="Back (←)" aria-label="Back">
+        ◀
+      </button>
+      <button className="small" onClick={stepForward} disabled={!looking} title="Forward (→)" aria-label="Forward">
+        ▶
+      </button>
+      <button className="small" onClick={() => setView(null)} disabled={!looking} title="Back to where you are" aria-label="Back to where you are">
+        ⏭
+      </button>
+      {looking && (
+        <span className="muted small">
+          Looking back — {!view ? 'the starting position' : `after ${compactLine([pathSoFar[view - 1]], view - 1)}`}. ▶ or ⏭ to carry on.
+        </span>
+      )}
+    </div>
+  );
   // Lichess analysis and the FEN to copy (e.g. into Chessable) — only once the line is over and waits
   // for Continue, so they can't give a move away.
   const tools = holdAtEnd && <PositionTools pos={pos} ply={pathSoFar.length} orientation={rep?.color ?? 'white'} />;
@@ -756,6 +820,7 @@ function Session({ setup }: { setup: SessionSetup }) {
           <ProgressBar value={progress} />
         </div>
         <div className="tp-board">{board}</div>
+        {navBar}
         <div className="tp-line">
           {lineLabel}
           {orderBadge}
@@ -780,6 +845,7 @@ function Session({ setup }: { setup: SessionSetup }) {
     <div className="board-layout">
       <div className="board-col col">
         {board}
+        {navBar}
         {tools}
         {note}
       </div>
