@@ -179,7 +179,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   1 in
                 </th>
               )}
-              <th>Result</th>
+              <th className="result">Result</th>
               <th />
             </tr>
           </thead>
@@ -201,7 +201,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   <td className="num">{stat ? n.toLocaleString() : '—'}</td>
                   <td className="num">{stat && total ? ((n / total) * 100).toFixed(1) : '—'}</td>
                   {showReach && <td className="num">{stat && total ? <b>{n ? oneInNumber((reachHere! * n) / total) : 'never'}</b> : '—'}</td>}
-                  <td>{stat ? <WdlBar white={stat.white} draws={stat.draws} black={stat.black} /> : <span className="muted small">not in database</span>}</td>
+                  <td className="result">{stat ? <WdlBar white={stat.white} draws={stat.draws} black={stat.black} /> : <span className="muted small">not in database</span>}</td>
                   <td>
                     <div className="list-actions" style={{ justifyContent: 'flex-end', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                       {rep?.extras}

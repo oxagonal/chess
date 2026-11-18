@@ -567,6 +567,13 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .explorer .tabs button { padding: 5px 9px; font-size: 13px; }
 .explorer .tabs select { padding: 2px 6px; font-size: 12.5px; }
 .studio-inner > .explorer > h3 { display: none; }
+/* In a studio pane the win-rate bars take whatever width the pane has left, instead of a fixed minimum
+   that pushes them off the edge of a narrow pane. */
+.studio-inner > .explorer td.result, .studio-inner > .explorer th.result { width: 100%; }
+.studio-inner > .explorer .wdl { min-width: 36px; container-type: inline-size; }
+.studio-inner > .explorer .explorer-comment { max-width: 160px; }
+/* Too narrow for the percentages to fit: just the bar (the tooltip still has them). */
+@container (max-width: 110px) { .wdl > div { font-size: 0; } }
 .studio-inner > .explorer { padding-top: 6px; }
 
 /* Notes on the line you're on, under their move (scoresheet). */
@@ -641,9 +648,18 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .strip-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .strip-clock { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; padding: 1px 7px; border-radius: 4px; background: var(--bg2); }
 .player-strip.to-move .strip-clock { background: var(--accent-strong); color: #fff; }
+/* The eval beside a move (Lichess-style). */
 .ml-move:has(.ml-extra) { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
-.ml-extra { font-size: 11px; font-weight: 400; color: var(--faint); font-variant-numeric: tabular-nums; }
+.ml-extra { font-size: 11.5px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ml-move.current .ml-extra { color: rgba(255, 255, 255, 0.8); }
+/* Move times at the end of each row, White's above Black's, with a bar for how long (Chess.com-style). */
+.movelist2.with-aside { grid-template-columns: 38px 1fr 1fr auto; }
+.ml-aside { display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 2px 8px 2px 4px; border-bottom: 1px solid var(--bg2); }
+.ml-aside-item { min-height: 12px; line-height: 12px; }
+.ml-time { display: grid; grid-template-columns: 28px 3.6em; align-items: center; gap: 4px; font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.ml-time-bar { justify-self: end; height: 9px; border-radius: 2px; }
+.ml-time.white .ml-time-bar { background: #d8d4cf; }
+.ml-time.black .ml-time-bar { background: #5f5a55; }
 /* Material balance beside a player (Lichess-style): the pieces they're up, then +points. */
 .material { display: inline-flex; align-items: center; gap: 6px; }
 /* Outline symbols in grey, overlapping a little within a group, like Lichess. */

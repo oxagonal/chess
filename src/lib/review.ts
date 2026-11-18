@@ -36,6 +36,13 @@ export interface Swing {
   best?: string;
 }
 
+/** A score the way Lichess prints it beside a move: +1.2, −0.4, 0.0, #3, #−2. */
+export function formatEvalShort(s: Score): string {
+  if (s.mate !== undefined) return `#${s.mate < 0 ? '−' : ''}${Math.abs(s.mate)}`;
+  const v = Math.round((s.cp ?? 0) / 10) / 10;
+  return `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}`;
+}
+
 /** Lichess's win-chance curve, 0–100 for White. */
 export function winChanceOf(s: Score): number {
   if (s.mate !== undefined) return s.mate > 0 ? 100 : s.mate < 0 ? 0 : 50;

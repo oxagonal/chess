@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { db } from '../db/db';
 import { saveAnnotation } from '../db/annotations';
 import { moveGlyph, otherGlyphs, sortGlyphs, toggleGlyph, withLineNote } from '../lib/annotations';
-import { biggestSwingsFor, type GameReview } from '../lib/review';
-import { clocksAt, formatClock, timeSpent } from '../lib/clocks';
+import { biggestSwingsFor, formatEvalShort, type GameReview } from '../lib/review';
+import { clocksAt, formatClock, formatMoveTime, inferIncrement, moveTimes, timeSpent } from '../lib/clocks';
 import { materialBalance } from '../lib/material';
 import { playSan, startPos } from '../lib/chess';
 import { emptySnapshot, mergeSync } from '../lib/syncMerge';
@@ -81,6 +81,16 @@ describe('computer review', () => {
   });
 });
 
+describe('eval beside a move', () => {
+  it('prints scores like Lichess', () => {
+    expect(formatEvalShort({ cp: 118 })).toBe('+1.2');
+    expect(formatEvalShort({ cp: -42 })).toBe('−0.4');
+    expect(formatEvalShort({ cp: 4 })).toBe('0.0');
+    expect(formatEvalShort({ mate: 3 })).toBe('#3');
+    expect(formatEvalShort({ mate: -2 })).toBe('#−2');
+  });
+});
+
 describe('clocks', () => {
   const clocks = [180, 179, 175, 170.5, 160, 9.4];
   it('shows each side’s clock at a position', () => {
@@ -97,6 +107,17 @@ describe('clocks', () => {
     expect(formatClock(3725)).toBe('1:02:05');
     expect(formatClock(247)).toBe('4:07');
     expect(formatClock(9.44)).toBe('0:09.4');
+  });
+  it('lists move times with the increment worked out from the clocks', () => {
+    // 3+2: White's 2nd move was a 0.1s premove (+1.9), Black's took 4s (+2 = −2).
+    const inc = [180, 180, 181.9, 178, 172, 178.5];
+    expect(inferIncrement(inc)).toBe(2);
+    expect(moveTimes(inc)).toEqual([undefined, undefined, expect.closeTo(0.1), 4, expect.closeTo(11.9), expect.closeTo(1.5)]);
+    expect(inferIncrement(clocks)).toBe(0);
+    expect(moveTimes(clocks)[2]).toBe(5);
+    expect(formatMoveTime(0.84)).toBe('0.8s');
+    expect(formatMoveTime(10.5)).toBe('10.5s');
+    expect(formatMoveTime(65)).toBe('1:05');
   });
 });
 

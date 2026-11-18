@@ -13,8 +13,13 @@ export interface ListMove {
   comment?: string;
   /** Right-click / long-press handlers (e.g. to annotate it). */
   menu?: Record<string, unknown>;
-  /** Small text at the end of the move's cell (e.g. the clock in a game review). */
+  /** Small text at the end of the move's cell (e.g. the eval in a game review). */
   extra?: ReactNode;
+  /**
+   * Shown in a column at the right end of the move's row, White's above Black's, like Chess.com's
+   * move times. When any move has one, every row gets the column.
+   */
+  aside?: ReactNode;
 }
 
 /** A side line: a one-line alternative to the move at its ply, shown under the row where it branches. */
@@ -60,6 +65,14 @@ export function MoveList({
 
   const cells: ReactNode[] = [];
   let restart = true; // a black move needs its own row start (first move, or after side lines)
+  const withAside = moves.some((m) => m.aside !== undefined);
+  let rowAsides: ReactNode[] = [];
+  let rowOpen = false;
+  const endRow = (i: number) => {
+    if (withAside) cells.push(<div key={`a${i}`} className="ml-aside">{rowAsides}</div>);
+    rowAsides = [];
+    rowOpen = false;
+  };
   moves.forEach((m, i) => {
     const ply = startPly + i;
     const white = ply % 2 === 0;
@@ -82,10 +95,14 @@ export function MoveList({
         {m.extra !== undefined && <span className="ml-extra">{m.extra}</span>}
       </span>,
     );
+    rowOpen = true;
+    if (withAside) rowAsides.push(<div key={i} className="ml-aside-item">{m.aside}</div>);
     const sides = sideLines?.(i) ?? [];
+    const breaks = !!m.comment || sides.length > 0;
+    if (breaks && white) cells.push(<span key={`g${i}`} className="ml-move ml-empty">…</span>);
+    if (breaks || !white) endRow(i);
     // A note on the line you're on reads under the move, like a comment in a Lichess study.
     if (m.comment) {
-      if (white) cells.push(<span key={`g${i}`} className="ml-move ml-empty">…</span>);
       cells.push(
         <div key={`c${i}`} className="ml-comment" {...m.menu}>
           {m.comment}
@@ -94,7 +111,6 @@ export function MoveList({
       restart = true;
     }
     if (sides.length) {
-      if (white && !m.comment) cells.push(<span key={`f${i}`} className="ml-move ml-empty">…</span>);
       cells.push(
         <div key={`s${i}`} className="ml-sides">
           {sides.map((s) => (
@@ -123,8 +139,13 @@ export function MoveList({
       restart = true;
     }
   });
+  // The game ended on a White move: fill Black's cell so the aside column lines up.
+  if (rowOpen && withAside) {
+    cells.push(<span key="end" className="ml-move ml-empty" />);
+    endRow(moves.length);
+  }
   return (
-    <div className="movelist2" ref={box}>
+    <div className={`movelist2 ${withAside ? 'with-aside' : ''}`} ref={box}>
       {cells}
     </div>
   );

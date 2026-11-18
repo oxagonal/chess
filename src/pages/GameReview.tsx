@@ -10,9 +10,9 @@ import { useAllGraphs, useMediaQuery } from '../hooks';
 import { analyzeGame, PREP_LABEL, type PrepResult } from '../lib/prep';
 import type { RepGraph } from '../lib/graph';
 import { keyOf, opposite, playSan, playUci, startPos } from '../lib/chess';
-import { biggestSwingsFor, JUDGEMENT_GLYPH, swings } from '../lib/review';
+import { biggestSwingsFor, formatEvalShort, JUDGEMENT_GLYPH, swings } from '../lib/review';
 import { glyphClass, glyphName, moveGlyph, otherGlyphs, withLineNote, type SavedLine } from '../lib/annotations';
-import { clocksAt, formatClock, timeSpent } from '../lib/clocks';
+import { clocksAt, formatClock, formatMoveTime, moveTimes } from '../lib/clocks';
 import { MATERIAL_ROLES, materialBalance, type MaterialRole } from '../lib/material';
 import { Board, type Arrow } from '../components/Board';
 import { MoveNote } from '../components/MoveNote';
@@ -188,6 +188,25 @@ export function GameReview({ id }: { id: string }) {
   // Correspondence games (days per move) have no use for a clock.
   const clocks = game.clocks?.length && game.timeClass !== 'correspondence' ? game.clocks : undefined;
   const shownClocks = clocksAt(clocks, cur);
+  // How long each move took, shown at the end of its row with a bar (longest move = full bar), like Chess.com.
+  const times = moveTimes(clocks);
+  const longest = Math.max(0, ...times.map((t) => t ?? 0));
+  const timeAside = (i: number) => {
+    if (!clocks) return undefined;
+    const t = times[i];
+    if (t === undefined) return null;
+    return (
+      <span className={`ml-time ${i % 2 ? 'black' : 'white'}`}>
+        <span className="ml-time-bar" style={{ width: 2 + (longest ? (26 * t) / longest : 0) }} />
+        {formatMoveTime(t)}
+      </span>
+    );
+  };
+  // The engine's eval of the position after each move, beside the move like Lichess.
+  const evalAfter = (i: number) => {
+    const e = review?.evals[i + 1];
+    return e && !replay.sans[i].endsWith('#') ? formatEvalShort(e) : undefined;
+  };
   // Like Lichess: the pieces each side is up (shown as the captured pieces) and +points for the side ahead.
   const material = materialBalance(pos);
   const strip = (color: 'white' | 'black') => (
@@ -268,7 +287,7 @@ export function GameReview({ id }: { id: string }) {
               i === devPly ? 'You left your prep here' : i < r.bookPlies ? 'In your repertoire' : '',
               mine ? glyphName(mine) : computer ? `Computer: ${computer}` : '',
               ...others.map(glyphName),
-              clocks?.[i] !== undefined ? `${formatClock(clocks[i])} left${timeSpent(clocks, i) !== undefined ? ` · took ${formatClock(timeSpent(clocks, i)!)}` : ''}` : '',
+              clocks?.[i] !== undefined ? `${formatClock(clocks[i])} left${times[i] !== undefined ? ` · took ${formatMoveTime(times[i]!)}` : ''}` : '',
             ].filter(Boolean);
             return {
               san: `${san}${shown ?? ''}${others.length ? ` ${others.join(' ')}` : ''}`,
@@ -278,7 +297,8 @@ export function GameReview({ id }: { id: string }) {
               ].join(' '),
               title: titles.join(' · ') || undefined,
               comment: a?.comment,
-              extra: clocks?.[i] !== undefined ? formatClock(clocks[i]) : undefined,
+              extra: evalAfter(i),
+              aside: timeAside(i),
               menu: annotateProps((x, y) => setMenu({ ply: i, san, x, y })),
             };
           })}

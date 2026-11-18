@@ -21,6 +21,36 @@ export function timeSpent(clocks: readonly number[] | undefined, ply: number): n
   return spent >= 0 ? spent : undefined;
 }
 
+/**
+ * The increment, worked out from the clocks: a player's time can only go up between their moves by
+ * the increment (minus the time the move took), so the biggest rise, rounded up, is a good guess.
+ * 0 when no clock ever rises.
+ */
+export function inferIncrement(clocks: readonly number[] | undefined): number {
+  let rise = 0;
+  for (let i = 2; clocks && i < clocks.length; i++) rise = Math.max(rise, clocks[i] - clocks[i - 2]);
+  return rise > 0.05 ? Math.ceil(rise - 0.05) : 0;
+}
+
+/**
+ * How long each move took (seconds), counting the increment like Chess.com's move times. Undefined for
+ * each side's first move (the starting time isn't recorded) and wherever a clock is missing.
+ */
+export function moveTimes(clocks: readonly number[] | undefined): (number | undefined)[] {
+  if (!clocks) return [];
+  const inc = inferIncrement(clocks);
+  return clocks.map((c, i) => {
+    if (i < 2 || c === undefined || clocks[i - 2] === undefined) return undefined;
+    return Math.max(0, clocks[i - 2] - c + inc);
+  });
+}
+
+/** A move's time the way Chess.com lists it: 0.8s, 10.5s, 1:05. */
+export function formatMoveTime(sec: number): string {
+  if (sec < 60) return `${(Math.round(sec * 10) / 10).toFixed(1)}s`;
+  return formatClock(sec);
+}
+
 /** 1:05:03, 4:07, or 0:08.4 in the last ten seconds. */
 export function formatClock(sec: number): string {
   if (sec < 10) return `0:0${Math.max(0, sec).toFixed(1)}`;
