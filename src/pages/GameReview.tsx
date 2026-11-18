@@ -3,8 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import type { Chess } from 'chessops/chess';
 import { db } from '../db/db';
-import { markForgotten } from '../db/repertoire';
-import { chapterForLine, sourcesOf } from '../lib/chapters';
+import { lineTarget, markForgotten } from '../db/repertoire';
+import { sourcesOf } from '../lib/chapters';
 import { saveAnnotation, saveLines } from '../db/annotations';
 import { uid } from '../db/db';
 import { useAllGraphs, useMediaQuery } from '../hooks';
@@ -595,9 +595,12 @@ function moveNumber(ply: number): string {
 }
 
 function PrepActions({ game, r, graph }: { game: StoredGame; r: PrepResult; graph: RepGraph | undefined }) {
-  const pathToDev = r.key && graph ? (graph.pathTo(r.key) ?? []).map((m) => m.san) : [];
-  // Answers go in the chapter the game was following (graphs here are all of a color's chapters).
-  const chapter = graph ? chapterForLine(graph, pathToDev) : undefined;
+  // The game's own moves to where it left your prep (its move order, not the repertoire's).
+  const pathToDev = r.ply !== undefined ? game.sans.slice(0, r.ply) : [];
+  // Open it where it belongs: the chapter whose opening the line goes through, or all your chapters
+  // of the color when that's unclear (adding a move there asks, or starts the right chapter).
+  const open = async (sans: string[]) => navigate(`repertoire/${await lineTarget(game.userColor, sans)}`, { line: sans.join(' ') });
+  const chapter = !!graph;
   return (
     <div className="row" style={{ marginTop: 8 }}>
       {r.kind === 'you-deviated' && r.repId && r.key && graph && (
@@ -613,12 +616,12 @@ function PrepActions({ game, r, graph }: { game: StoredGame; r: PrepResult; grap
         </button>
       )}
       {r.kind === 'opponent-deviated' && chapter && (
-        <button className="primary small" onClick={() => navigate(`repertoire/${chapter}`, { line: [...pathToDev, r.played!].join(' ') })}>
+        <button className="primary small" onClick={() => void open([...pathToDev, r.played!])}>
           Prepare an answer to {r.played}
         </button>
       )}
       {(r.kind === 'end-of-prep' || r.kind === 'you-deviated') && chapter && (
-        <button className="small" onClick={() => navigate(`repertoire/${chapter}`, { line: pathToDev.join(' ') })}>
+        <button className="small" onClick={() => void open(pathToDev)}>
           Open position in repertoire
         </button>
       )}

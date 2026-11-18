@@ -8,7 +8,7 @@
  * of the chapters in play: the same positions and moves, deduplicated, each move's id being its card id.
  * The builder edits one chapter's own graph. Pure: no DOM, no database.
  */
-import { turnOfKey, type Color } from './chess';
+import { playSan, START_KEY, startPos, turnOfKey, type Color } from './chess';
 import { RepGraph } from './graph';
 import type { RepMove } from './types';
 import { nameParts, type OpeningIndex } from './openingNames';
@@ -186,6 +186,59 @@ export function chapterPosition(graph: RepGraph, names: OpeningIndex | undefined
   }
   if (!best?.length) return { moves: trunk, key };
   return { moves: best, key: best[best.length - 1].toKey };
+}
+
+export type LineRoute = { kind: 'one'; id: string } | { kind: 'tie'; ids: string[] } | { kind: 'new'; name: string };
+
+/**
+ * Which chapter a line (SANs from the start) belongs in. A chapter claims a line that passes
+ * through its own opening position (see chapterPosition) — so 1.Nf3 d5 2.b3 isn't the business of a
+ * Semi-Slav chapter just because it reaches the Semi-Slav by 1.Nf3 d5 — and the most specific claim
+ * (the deepest opening position) wins. Failing that, a chapter named for the line's own opening;
+ * then a chapter that branches at the start (a catch-all); else a new chapter named after the
+ * opening. Two chapters that fit equally well are a tie, for you to choose.
+ */
+export function routeLine(sans: readonly string[], chapters: readonly { id: string; name: string; graph: RepGraph }[], names: OpeningIndex | undefined): LineRoute {
+  // The line's positions, and its own opening's name.
+  const keys = new Set<string>([START_KEY]);
+  let pos = startPos();
+  let lineName: string | undefined;
+  for (const san of sans) {
+    const r = playSan(pos, san);
+    if (!r) break;
+    pos = r.pos;
+    keys.add(r.key);
+    const n = names?.get(r.key);
+    if (n) lineName = n;
+  }
+  const group = (n: string) => {
+    const p = nameParts(n);
+    return p.variation ? `${p.family}: ${p.variation}` : p.family;
+  };
+  const claims: { id: string; depth: number }[] = [];
+  for (const c of chapters) {
+    if (!c.graph.size) continue;
+    const def = chapterPosition(c.graph, names, c.name);
+    if (keys.has(def.key)) claims.push({ id: c.id, depth: def.moves.length });
+  }
+  const pick = (list: { id: string }[]): LineRoute | undefined =>
+    list.length === 1 ? { kind: 'one', id: list[0].id } : list.length > 1 ? { kind: 'tie', ids: list.map((x) => x.id) } : undefined;
+  const specific = claims.filter((c) => c.depth > 0);
+  if (specific.length) {
+    const top = Math.max(...specific.map((c) => c.depth));
+    return pick(specific.filter((c) => c.depth === top))!;
+  }
+  if (lineName) {
+    const g = group(lineName);
+    const family = nameParts(lineName).family;
+    const byName = chapters.filter((c) => c.name === g);
+    const byFamily = byName.length ? byName : chapters.filter((c) => c.name === family || nameParts(c.name).family === family);
+    const r = pick(byFamily);
+    if (r) return r;
+  }
+  const catchAll = pick(claims);
+  if (catchAll) return catchAll;
+  return { kind: 'new', name: lineName ? group(lineName) : '' };
 }
 
 /** Whether a line (SANs from the start) stays inside a graph's moves. */

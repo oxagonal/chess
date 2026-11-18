@@ -28,7 +28,7 @@ import { EnginePanel } from '../components/EnginePanel';
 import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
 import { href, navigate } from '../router';
 import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
-import { formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
+import { compactLine, formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
 import { oneIn } from '../lib/coverage';
 import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
 import type { AppSettings } from '../db/settings';
@@ -85,9 +85,13 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     : chapterData.rep;
   const graph = colorMode ? colorData.graph : chapterData.graph;
   const loading = colorMode ? colorData.loading : chapterData.loading;
+  /** Browsing a color: when two chapters fit a new line equally well, you pick (undefined: cancelled). */
+  const [asking, setAsking] = useState<{ ids: string[]; resolve: (id?: string) => void } | null>(null);
+  const askChapter = (ids: string[]) => new Promise<string | undefined>((resolve) => setAsking({ ids, resolve }));
   /** Save a line (from the start): into this chapter, or — browsing a color — the chapter it belongs in. */
   const saveLine = async (path: LineMove[], opts?: { known?: boolean }) => {
-    const target = colorMode ? await chapterForNewLine(repId as Color, path.map((m) => m.san), graph) : repId;
+    const target = colorMode ? await chapterForNewLine(repId as Color, path.map((m) => m.san), askChapter) : repId;
+    if (!target) return { added: 0, mineAdded: 0 };
     return addEdges(target, toEdges(path), opts);
   };
   const allCards = useCards();
@@ -600,6 +604,15 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
         )}
       </div>
       {noteTarget && <RepAnnotationMenu target={noteTarget} onClose={() => setNoteTarget(null)} />}
+      {asking && (
+        <ChooseChapter
+          ids={asking.ids}
+          onPick={(id) => {
+            asking.resolve(id);
+            setAsking(null);
+          }}
+        />
+      )}
     </div>
   );
 
@@ -1029,6 +1042,45 @@ function CoverageBox({
 }
 
 /** `id`: the chapter move to read; `sources`: every chapter move it stands for (all get the change). */
+/** Two chapters fit a new line equally well: which one it goes in. */
+function ChooseChapter({ ids, onPick }: { ids: string[]; onPick: (id?: string) => void }) {
+  const chapters = useLiveQuery(async () => (await db.repertoires.bulkGet(ids)).filter((c): c is Repertoire => !!c), [ids.join()]);
+  const names = useOpeningIndex();
+  const graphs = useLiveQuery(async () => {
+    const moves = await db.moves.where('repId').anyOf(ids).toArray();
+    return new Map(ids.map((id) => [id, moves.filter((m) => m.repId === id)]));
+  }, [ids.join()]);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onPick(undefined);
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onPick]);
+  return (
+    <div className="modal-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onPick(undefined)}>
+      <div className="panel col choose-chapter" role="dialog" aria-label="Which chapter does this line go in?" style={{ gap: 8 }}>
+        <h3 style={{ margin: 0 }}>Which chapter does this line go in?</h3>
+        <div className="muted small">It fits these equally well.</div>
+        {(chapters ?? []).map((c) => {
+          const g = graphs?.get(c.id);
+          const opening = g ? compactLine(chapterPosition(new RepGraph(c.color, g), names, c.name).moves.map((m) => m.san)) : '';
+          return (
+            <button key={c.id} className="cp-item" onClick={() => onPick(c.id)}>
+              <span className="cp-name">{c.name}</span>
+              {opening && <span className="cp-line">{opening}</span>}
+            </button>
+          );
+        })}
+        <div className="row">
+          <span className="spacer" />
+          <button className="small ghost" onClick={() => onPick(undefined)}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type RepAnnotationTarget = AnnotationTarget & { id: string; sources?: string[] };
 
 /** The annotation menu for a saved repertoire move: reads the move's latest symbols and note, saves as you go. */

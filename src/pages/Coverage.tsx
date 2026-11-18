@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { PageProps } from '../App';
 import { repTarget, updateSettings, useSettings } from '../db/settings';
 import { setScopeTarget, useChaptersAndSets, useScopeGraph } from '../db/scopes';
-import { chapterForLine } from '../lib/chapters';
+import { lineTarget } from '../db/repertoire';
 import { defaultScope, ScopeSelect } from '../components/ScopeSelect';
 import { OneInNSlider } from '../components/OneInNSlider';
 import { GameRangeSelect } from '../components/GameRangeSelect';
@@ -66,7 +66,7 @@ function CoverageView({ repId }: { repId: string }) {
   const stale = result && rep.updatedAt > result.computedAt;
   const paramsChanged = result && (result.paramsLabel !== sourceLabel(settings) || Math.abs(result.threshold - 1 / n) > 1e-12);
   // Open a line in the chapter it belongs to (the deepest of its moves that a chapter has).
-  const openLine = (sans: string[]) => navigate(`repertoire/${chapterForLine(graph, sans) ?? rep.chapterIds[0]}`, { line: sans.join(' ') });
+  const openLine = async (sans: string[]) => navigate(`repertoire/${await lineTarget(rep.color, sans)}`, { line: sans.join(' ') });
   const myPositions = positions.filter((p) => p.myTurn);
   const mine = result ? repertoireDepth(graph, result) : undefined;
   const linesDone = mine?.lines ?? 0;

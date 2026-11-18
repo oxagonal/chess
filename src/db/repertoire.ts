@@ -7,9 +7,8 @@ import { grade, gradeAhead, newCard, Rating } from '../lib/srs';
 import { START_KEY, type Color } from '../lib/chess';
 import type { Collection, Repertoire, RepMove, ReviewCard, ReviewSource } from '../lib/types';
 import type { Grade } from 'ts-fsrs';
-import { cardIdOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
-import { loadOpeningIndex, nameParts } from '../lib/openingNames';
-import { playSan, startPos } from '../lib/chess';
+import { cardIdOf, chapterOfMoveId, routeLine, sourcesOf, type LineRoute } from '../lib/chapters';
+import { loadOpeningIndex } from '../lib/openingNames';
 import { cleanAnnotation, type MoveAnnotation } from '../lib/annotations';
 
 export async function createRepertoire(name: string, color: Color): Promise<Repertoire> {
@@ -159,35 +158,34 @@ export async function mergeChapter(fromId: string, intoId: string) {
   });
 }
 
+/** Which chapter of a color a line belongs in (see routeLine): one, a tie to choose from, or a new one. */
+export async function routeNewLine(color: Color, sans: readonly string[]): Promise<LineRoute> {
+  const [reps, names] = await Promise.all([db.repertoires.where('color').equals(color).toArray(), loadOpeningIndex().catch(() => undefined)]);
+  const moves = reps.length ? await db.moves.where('repId').anyOf(reps.map((r) => r.id)).toArray() : [];
+  const chapters = reps.map((r) => ({ id: r.id, name: r.name, graph: new RepGraph(color, moves.filter((m) => m.repId === r.id)) }));
+  return routeLine(sans, chapters, names);
+}
+
 /**
- * Where a line added while browsing all of a color's chapters goes: the chapter of the deepest move
- * of it you already have (`union` is that color's union graph); a line that's new from the first
- * move gets a new chapter, named after the opening it reaches.
+ * Where a line added while browsing all of a color's chapters goes (see routeLine). On a tie,
+ * `choose` asks you (undefined: cancelled); a line no chapter claims gets a new chapter, named after
+ * its opening.
  */
-export async function chapterForNewLine(color: Color, sans: readonly string[], union: RepGraph | undefined): Promise<string> {
-  let key = START_KEY;
-  let last: RepMove | undefined;
-  for (const san of sans) {
-    const m = union?.edge(key, san);
-    if (!m) break;
-    last = m;
-    key = m.toKey;
-  }
-  if (last) return chapterOfMoveId(sourcesOf(last)[0]);
-  const names = await loadOpeningIndex().catch(() => undefined);
-  let name = '';
-  let pos = startPos();
-  for (const san of sans) {
-    const r = playSan(pos, san);
-    if (!r) break;
-    pos = r.pos;
-    const n = names?.get(r.key);
-    if (n) {
-      const p = nameParts(n);
-      name = p.variation ? `${p.family}: ${p.variation}` : p.family;
-    }
-  }
-  return (await createRepertoire(name || `${color === 'white' ? 'White' : 'Black'}: 1.${sans[0] ?? ''}`, color)).id;
+export async function chapterForNewLine(color: Color, sans: readonly string[], choose?: (ids: string[]) => Promise<string | undefined>): Promise<string | undefined> {
+  const r = await routeNewLine(color, sans);
+  if (r.kind === 'one') return r.id;
+  if (r.kind === 'tie') return choose ? choose(r.ids) : r.ids[0];
+  return (await createRepertoire(r.name || `${color === 'white' ? 'White' : 'Black'}: 1.${sans[0] ?? ''}`, color)).id;
+}
+
+/**
+ * Where to open a line to work on it (a gap to answer, a game's position): the chapter it clearly
+ * belongs in, or — on a tie, or when no chapter has it yet — all of the color's chapters, where
+ * adding a move asks or starts the right chapter.
+ */
+export async function lineTarget(color: Color, sans: readonly string[]): Promise<string> {
+  const r = await routeNewLine(color, sans);
+  return r.kind === 'one' ? r.id : color;
 }
 
 /** Delete a move of a union graph: from every chapter that has it (with what only it led to there). */

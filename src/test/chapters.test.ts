@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db, openDb } from '../db/db';
 import { addLine, chapterForNewLine, createRepertoire, deleteMove, deleteRepertoire, deleteUnionMove, loadGraph, mergeChapter, setMoveComment, setNoTrain, splitChapter, splitOff } from '../db/repertoire';
 import { loadScopeGraph, repertoireScopeId } from '../db/scopes';
-import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, chapterGap, chapterPosition, chapterTrunk, matchChapter, migrateCardRows, trainable, unionGraph } from '../lib/chapters';
+import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, chapterGap, chapterPosition, chapterTrunk, matchChapter, migrateCardRows, routeLine, trainable, unionGraph } from '../lib/chapters';
 import openings from '../data/openings.json';
 import { buildOpeningIndex } from '../lib/openingNames';
 import { RepGraph } from '../lib/graph';
@@ -179,8 +179,9 @@ describe('browsing all of a color', () => {
     const alapin = await createRepertoire('Alapin', 'black');
     await addLine(alapin.id, ['e4', 'c5', 'c3', 'd5']);
     const union = (await loadScopeGraph('black'))!.graph;
-    expect(await chapterForNewLine('black', ['e4', 'c5', 'c3', 'Nf6'], union)).toBe(alapin.id);
-    const fresh = await chapterForNewLine('black', ['d4', 'd5', 'c4', 'c6'], union);
+    expect(await chapterForNewLine('black', ['e4', 'c5', 'c3', 'Nf6'])).toBe(alapin.id);
+    expect(union.size).toBe(4);
+    const fresh = (await chapterForNewLine('black', ['d4', 'd5', 'c4', 'c6']))!;
     expect(fresh).not.toBe(alapin.id);
     expect((await db.repertoires.get(fresh))!.name).toBe('Slav Defense');
   });
@@ -193,6 +194,31 @@ describe('browsing all of a color', () => {
     const union = (await loadScopeGraph('white'))!.graph;
     await deleteUnionMove(union.edge(START_KEY, 'e4')!);
     expect(await db.moves.count()).toBe(0);
+  });
+});
+
+describe('which chapter a line belongs in', () => {
+  const names = buildOpeningIndex(openings as [string, string, string][]);
+  const ch = (id: string, name: string, lines: string[]) => ({ id, name, graph: new RepGraph('black', movesFromLines(id, 'black', lines)) });
+  const botvinnik = ch('bot', 'Semi-Slav Defense: Botvinnik Variation', [
+    'd4 d5 c4 c6 Nc3 Nf6 Nf3 e6 Bg5 dxc4',
+    'Nf3 d5 d4 Nf6 c4 c6 Nc3 e6 Bg5 dxc4',
+  ]);
+  const other = ch('oth', 'Sicilian Defense — other lines', ['e4 c5 b3 Nc6', 'e4 c5 g3 Nc6']);
+  const alapin = ch('ala', 'Sicilian Defense: Alapin Variation', ['e4 c5 c3 d5 exd5 Qxd5']);
+
+  it("doesn't file a line in a chapter whose opening it never reaches", () => {
+    // 1.Nf3 d5 2.b3: the Botvinnik reaches the Semi-Slav by 1.Nf3 d5, but this isn't the Semi-Slav.
+    const r = routeLine(['Nf3', 'd5', 'b3'], [botvinnik, other, alapin], names);
+    expect(r.kind).toBe('new');
+    expect(r.kind === 'new' && r.name).not.toMatch(/Semi-Slav/);
+  });
+
+  it('gives a line to the most specific chapter whose opening it goes through, and asks on a tie', () => {
+    expect(routeLine(['e4', 'c5', 'c3', 'Nf6'], [botvinnik, other, alapin], names)).toEqual({ kind: 'one', id: 'ala' });
+    expect(routeLine(['e4', 'c5', 'Nc3'], [botvinnik, other, alapin], names)).toEqual({ kind: 'one', id: 'oth' });
+    const alapin2 = ch('ala2', 'Sicilian Defense: Alapin Variation', ['e4 c5 c3 Nf6 e5 Nd5']);
+    expect(routeLine(['e4', 'c5', 'c3', 'e6'], [alapin, alapin2], names)).toEqual({ kind: 'tie', ids: ['ala', 'ala2'] });
   });
 });
 

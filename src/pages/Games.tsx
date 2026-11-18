@@ -3,8 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { updateSettings, useSettings } from '../db/settings';
-import { markForgotten } from '../db/repertoire';
-import { chapterForLine, sourcesOf } from '../lib/chapters';
+import { lineTarget, markForgotten } from '../db/repertoire';
+import { sourcesOf } from '../lib/chapters';
 import { useAllGraphs, useGames, usePositionSearch } from '../hooks';
 import { syncSource, lastSync, type SyncResult } from '../services/sync';
 import { analyzeGame, summarize, PREP_LABEL, type PrepKind, type PrepResult, type RepWithGraph } from '../lib/prep';
@@ -484,10 +484,11 @@ function GamesOverview({ query }: { query: URLSearchParams }) {
                               <td>
                                 <button
                                   className="small primary"
-                                  onClick={() => {
-                                    const g = graphOf(s.repId)?.graph;
-                                    const chapter = g && chapterForLine(g, path);
-                                    if (chapter) navigate(`repertoire/${chapter}`, { line: [...path, s.san].join(' ') });
+                                  onClick={async () => {
+                                    const g = graphOf(s.repId);
+                                    if (!g) return;
+                                    const line = [...path, s.san];
+                                    navigate(`repertoire/${await lineTarget(g.rep.color, line)}`, { line: line.join(' ') });
                                   }}
                                 >
                                   Prepare
