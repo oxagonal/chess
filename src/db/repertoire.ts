@@ -7,6 +7,7 @@ import { grade, gradeAhead, newCard, Rating } from '../lib/srs';
 import { START_KEY, type Color } from '../lib/chess';
 import type { Repertoire, RepMove, ReviewCard, ReviewSource } from '../lib/types';
 import type { Grade } from 'ts-fsrs';
+import { cleanAnnotation, type MoveAnnotation } from '../lib/annotations';
 
 export async function createRepertoire(name: string, color: Color): Promise<Repertoire> {
   const now = Date.now();
@@ -68,7 +69,8 @@ export async function addEdges(repId: string, edges: ImportedEdge[], opts: { kno
       const m = candidates[i];
       const ex = existing[i];
       if (ex) {
-        if (m.comment && !ex.comment) await db.moves.update(ex.id, { comment: m.comment });
+        if ((m.comment && !ex.comment) || (m.glyphs?.length && !ex.glyphs?.length))
+          await db.moves.update(ex.id, { comment: ex.comment || m.comment, glyphs: ex.glyphs?.length ? ex.glyphs : m.glyphs });
         continue;
       }
       if (seen.has(m.id)) continue;
@@ -120,6 +122,12 @@ export async function deleteMove(repId: string, id: string): Promise<number> {
 
 export async function setMoveComment(id: string, comment: string) {
   await db.moves.update(id, { comment: comment.trim() || undefined });
+}
+
+/** Save a move's symbols and comment together (the right-click annotation menu). */
+export async function setMoveAnnotation(id: string, a: MoveAnnotation | undefined) {
+  const clean = cleanAnnotation(a);
+  await db.moves.update(id, { comment: clean?.comment, glyphs: clean?.glyphs });
 }
 
 export async function importPgn(repId: string, pgn: string) {

@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { db } from '../db/db';
 import { saveAnnotation } from '../db/annotations';
-import { moveGlyph, otherGlyphs, sortGlyphs, toggleGlyph, withLineNote } from '../lib/annotations';
+import { glyphsFromNags, moveGlyph, nagsOf, otherGlyphs, sanWithGlyphs, sortGlyphs, toggleGlyph, withLineNote } from '../lib/annotations';
 import { biggestSwingsFor, formatEvalShort, type GameReview } from '../lib/review';
 import { clocksAt, formatClock, formatMoveTime, inferIncrement, moveTimes, timeSpent } from '../lib/clocks';
 import { materialBalance } from '../lib/material';
@@ -78,6 +78,16 @@ describe('computer review', () => {
     expect(biggestSwingsFor(review, 'white').map((s) => s.ply)).toEqual([2, 4]);
     expect(biggestSwingsFor(review, 'black').map((s) => s.ply)).toEqual([3, 5]);
     expect(biggestSwingsFor(review, 'white', 1)).toHaveLength(1);
+  });
+});
+
+describe('symbols in PGN', () => {
+  it('turns symbols into $n codes and back, and writes them after the move', () => {
+    expect(nagsOf(['!?', '±', 'N'])).toEqual([5, 16, 146]);
+    expect(glyphsFromNags([16, 5, 999, 146])).toEqual(['!?', '±', 'N']);
+    expect(glyphsFromNags([1, 2])).toEqual(['?']); // one move symbol: the last wins
+    expect(sanWithGlyphs('Nf3', ['!?', '±', 'N'])).toBe('Nf3!? ± N');
+    expect(sanWithGlyphs('e4', undefined)).toBe('e4');
   });
 });
 

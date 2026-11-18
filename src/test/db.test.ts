@@ -1,12 +1,34 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../db/db';
-import { addLine, createRepertoire, deleteMove, exportPgn, gradeCard, importPgn, loadGraph, markForgotten } from '../db/repertoire';
+import { addLine, createRepertoire, deleteMove, exportPgn, gradeCard, importPgn, loadGraph, markForgotten, setMoveAnnotation } from '../db/repertoire';
 import { Rating } from '../lib/srs';
 import { importBackup, exportBackup } from '../services/backup';
 
 beforeEach(async () => {
   await Promise.all(db.tables.map((t) => t.clear()));
+});
+
+describe('repertoire annotations', () => {
+  it('saves symbols and a note on a move, clears them, and carries symbols through PGN', async () => {
+    const rep = await createRepertoire('W', 'white');
+    await addLine(rep.id, ['e4', 'e5', 'Nf3']);
+    const nf3 = (await db.moves.toArray()).find((m) => m.san === 'Nf3')!;
+    await setMoveAnnotation(nf3.id, { glyphs: ['±', '!?'], comment: '  main line ' });
+    expect(await db.moves.get(nf3.id)).toMatchObject({ glyphs: ['!?', '±'], comment: 'main line' });
+
+    const pgn = await exportPgn(rep.id);
+    expect(pgn).toContain('Nf3 $5 $16');
+    const other = await createRepertoire('W2', 'white');
+    await importPgn(other.id, pgn);
+    const back = (await db.moves.where('repId').equals(other.id).toArray()).find((m) => m.san === 'Nf3')!;
+    expect(back).toMatchObject({ glyphs: ['!?', '±'], comment: 'main line' });
+
+    await setMoveAnnotation(nf3.id, undefined);
+    const cleared = (await db.moves.get(nf3.id))!;
+    expect(cleared.glyphs).toBeUndefined();
+    expect(cleared.comment).toBeUndefined();
+  });
 });
 
 describe('repertoire persistence', () => {

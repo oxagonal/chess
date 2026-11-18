@@ -3,6 +3,7 @@ import { moveNumberPrefix } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
 import { revealInBox } from './MoveList';
 import type { RepMove } from '../lib/types';
+import { glyphClass, glyphName, moveGlyph, sanWithGlyphs } from '../lib/annotations';
 
 /** A move of the line you're on (it may not be saved in the repertoire yet). */
 export interface LineStep {
@@ -35,8 +36,8 @@ export function InlineMoves({
   order: (kids: RepMove[]) => RepMove[];
   /** Go to the end of this sequence of moves from the starting position. */
   onSelect: (path: LineStep[]) => void;
-  /** Right-click / long-press handlers for a saved move (to annotate it). */
-  menuFor: (m: RepMove) => Record<string, unknown>;
+  /** Right-click / long-press handlers for a saved move (to annotate it); `ply` = its place from the start. */
+  menuFor: (m: RepMove, ply: number) => Record<string, unknown>;
 }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -56,14 +57,19 @@ export function InlineMoves({
     return (
       <span key={key()} className="iv-tok">
         {prefix && <span className="num">{prefix}</span>}
-        <span className={`iv-move ${cls}`} onClick={onClick} {...(edge ? menuFor(edge) : {})}>
-          {san}
+        <span
+          className={`iv-move ${cls} ${glyphClass(moveGlyph(edge))}`}
+          title={edge?.glyphs?.map(glyphName).join(' · ') || undefined}
+          onClick={onClick}
+          {...(edge ? menuFor(edge, ply) : {})}
+        >
+          {edge ? sanWithGlyphs(san, edge.glyphs) : san}
         </span>
       </span>
     );
   };
-  const note = (text: string, edge: RepMove) => (
-    <span key={key()} className="iv-comment" {...menuFor(edge)}>
+  const note = (text: string, edge: RepMove, ply: number) => (
+    <span key={key()} className="iv-comment" {...menuFor(edge, ply)}>
       {text}
     </span>
   );
@@ -80,7 +86,7 @@ export function InlineMoves({
       out.push(moveEl(main.san, here.length, numbered, () => onSelect([...here, step(main)]), main.mine ? 'mine' : '', main));
       numbered = false;
       if (main.comment) {
-        out.push(note(main.comment, main));
+        out.push(note(main.comment, main, here.length));
         numbered = true;
       }
       for (const a of alts) {
@@ -116,7 +122,7 @@ export function InlineMoves({
     );
     numbered = false;
     if (edge?.comment) {
-      out.push(note(edge.comment, edge));
+      out.push(note(edge.comment, edge, i));
       numbered = true;
     }
     const alts = order(graph.childrenOf(m.fromKey)).filter((c) => c.san !== m.san);

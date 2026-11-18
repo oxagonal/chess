@@ -30,6 +30,7 @@ export function toRepMove(repId: string, color: Color, e: ImportedEdge, now = Da
     uci: e.uci,
     mine: turnOfKey(e.fromKey) === color,
     comment: e.comment,
+    ...(e.glyphs?.length ? { glyphs: e.glyphs } : {}),
     createdAt: now,
   };
 }

@@ -26,6 +26,8 @@ export interface RepMove {
   /** True if this move is played by the repertoire's side (i.e. it is something you must remember). */
   mine: boolean;
   comment?: string;
+  /** Annotation symbols (!?, ±, N …), in the order sortGlyphs gives. */
+  glyphs?: string[];
   createdAt: number;
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;

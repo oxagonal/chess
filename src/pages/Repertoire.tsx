@@ -11,6 +11,7 @@ import {
   fetchLichessStudy,
   importPgn,
   renameRepertoire,
+  setMoveAnnotation,
 } from '../db/repertoire';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
 import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepertoires, useRepGraph } from '../hooks';
@@ -21,7 +22,9 @@ import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { InlineMoves } from '../components/InlineMoves';
-import { annotateProps, NotePopover, type NoteTarget } from '../components/NotePopover';
+import { annotateProps } from '../components/NotePopover';
+import { AnnotationMenu, type AnnotationTarget } from '../components/AnnotationMenu';
+import { glyphClass, glyphName, moveGlyph, sanWithGlyphs } from '../lib/annotations';
 import { MoveList, revealInBox, type SideLine } from '../components/MoveList';
 import { EnginePanel } from '../components/EnginePanel';
 import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
@@ -279,8 +282,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const freshCoverage = rep && settings.loaded && isCoverageFresh(coverage, rep, settings) ? coverage : undefined;
   const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings, freshCoverage);
   const [flipped, setFlipped] = useState(false);
-  // The move whose note is open in the right-click popover.
-  const [noteTarget, setNoteTarget] = useState<NoteTarget | null>(null);
+  // The move whose annotation menu (symbols and note) is open, from a right-click.
+  const [noteTarget, setNoteTarget] = useState<RepAnnotationTarget | null>(null);
   // Desktop: a dockable "studio" (tabs, rows and columns you arrange; remembered per device).
   // Narrow windows (tablets): everything stacked, the page scrolls.
   const stacked = useMediaQuery('(max-width: 900px)');
@@ -514,8 +517,16 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const dueCount = (cards ?? []).filter((c) => isDue(c)).length;
   const newCount = (cards ?? []).filter(isNew).length;
   const nav = settings.builderNav === 'inline' ? 'inline' : 'scoresheet';
-  // Right-click (long-press on touch) a saved move to write its note. Not in Play from memory.
-  const annotate = (m: RepMove | undefined) => (m && !zen ? annotateProps((x, y) => setNoteTarget({ id: m.id, san: m.san, x, y })) : {});
+  // Right-click (long-press on touch) a saved move to annotate it: symbols and a note, like a Lichess
+  // study. Not in Play from memory. `ply` is the move's place from the start (for its move number).
+  const annotate = (m: RepMove | undefined, ply: number) =>
+    m && !zen ? annotateProps((x, y) => setNoteTarget({ id: m.id, san: m.san, ply, x, y })) : {};
+  // A saved move as written in the notation: its symbols after it, colored like Lichess.
+  const shown = (m: RepMove) => ({
+    san: sanWithGlyphs(m.san, m.glyphs),
+    className: glyphClass(moveGlyph(m)),
+    title: [...(m.glyphs ?? []).map(glyphName), m.comment ?? ''].filter(Boolean).join(' · ') || undefined,
+  });
   // Back to the default studio layout (the Studio forgets the saved one).
   const resetLayout = () => setLayoutVersion((v) => v + 1);
 
@@ -538,7 +549,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
         const more = graph.childrenOf(k).length;
         return {
           key: alt.id,
-          moves: run.map((x) => ({ san: x.san, note: !!x.comment, title: x.comment || undefined, menu: annotate(x) })),
+          moves: run.map((x, j) => ({ ...shown(x), note: !!x.comment, menu: annotate(x, i + j) })),
           onSelect: (j: number) => {
             const l = [...display.slice(0, i), ...run.slice(0, j + 1).map((x) => ({ san: x.san, uci: x.uci, fromKey: x.fromKey, key: x.toKey }))];
             setLine(l);
@@ -703,7 +714,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               Biggest gap{biggestGap ? ` · ${oneIn(biggestGap.prob)}` : ''}
             </button>
             {!phone && (
-              <span className="seg" title="How to show the moves · right-click a move to write a note">
+              <span className="seg" title="How to show the moves · right-click a move to annotate it (symbols and a note)">
                 <button className={`small ${nav === 'scoresheet' ? 'active' : ''}`} onClick={() => updateSettings({ builderNav: 'scoresheet' })}>
                   Scoresheet
                 </button>
@@ -725,16 +736,17 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           />
         ) : nav === 'scoresheet' || zen ? (
           <MoveList
-            moves={display.map((m) => {
+            moves={display.map((m, i) => {
               const e = graph.edge(m.fromKey, m.san);
+              // The line you're on shows its symbols and notes (not in Play from memory: they'd give it away).
+              const s = e && !zen ? shown(e) : undefined;
               return {
-                san: m.san,
+                san: s?.san ?? m.san,
                 // Only moves you've played that aren't saved stand out (grey, italic).
-                className: e ? undefined : 'out',
-                title: e ? undefined : 'Not in your repertoire yet',
-                // The line you're on shows its notes (not in Play from memory: they'd give it away).
+                className: e ? s?.className : 'out',
+                title: e ? s?.title : 'Not in your repertoire yet',
                 comment: zen ? undefined : e?.comment || undefined,
-                menu: annotate(e),
+                menu: annotate(e, i),
               };
             })}
             current={cursor}
@@ -751,11 +763,11 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               setLine(path);
               setCursor(path.length);
             }}
-            menuFor={(m) => annotate(m)}
+            menuFor={annotate}
           />
         )}
       </div>
-      {noteTarget && <NotePopover target={noteTarget} onClose={() => setNoteTarget(null)} />}
+      {noteTarget && <RepAnnotationMenu target={noteTarget} onClose={() => setNoteTarget(null)} />}
     </div>
   );
 
@@ -1168,5 +1180,21 @@ function CoverageBox({
         </span>
       )}
     </div>
+  );
+}
+
+type RepAnnotationTarget = AnnotationTarget & { id: string };
+
+/** The annotation menu for a saved repertoire move: reads the move's latest symbols and note, saves as you go. */
+function RepAnnotationMenu({ target, onClose }: { target: RepAnnotationTarget; onClose: () => void }) {
+  const move = useLiveQuery(() => db.moves.get(target.id), [target.id]);
+  if (!move) return null;
+  return (
+    <AnnotationMenu
+      target={target}
+      annotation={{ glyphs: move.glyphs, comment: move.comment }}
+      onChange={(a) => void setMoveAnnotation(target.id, a)}
+      onClose={onClose}
+    />
   );
 }

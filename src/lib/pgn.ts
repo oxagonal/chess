@@ -3,6 +3,7 @@ import type { Node, PgnNodeData } from 'chessops/pgn';
 import type { Position } from 'chessops/chess';
 import { keyOf, playSan, START_KEY, startPos } from './chess';
 import type { RepGraph } from './graph';
+import { glyphsFromNags, nagsOf } from './annotations';
 
 export interface ImportedEdge {
   fromKey: string;
@@ -10,6 +11,8 @@ export interface ImportedEdge {
   san: string;
   uci: string;
   comment?: string;
+  /** Annotation symbols, from the move's $n codes. */
+  glyphs?: string[];
 }
 
 export interface PgnImportResult {
@@ -64,13 +67,15 @@ export function pgnToEdges(pgn: string, knownKeys: Set<string> = new Set([START_
         }
         const id = `${key}|${played.san}`;
         const comment = cleanComment(child.data.comments);
+        const glyphs = glyphsFromNags(child.data.nags);
         const existing = edges.get(id);
         if (existing) {
           if (comment && !existing.comment?.includes(comment)) {
             existing.comment = existing.comment ? `${existing.comment} ${comment}` : comment;
           }
+          if (glyphs.length && !existing.glyphs?.length) existing.glyphs = glyphs;
         } else {
-          edges.set(id, { fromKey: key, toKey: played.key, san: played.san, uci: played.uci, comment });
+          edges.set(id, { fromKey: key, toKey: played.key, san: played.san, uci: played.uci, comment, ...(glyphs.length ? { glyphs } : {}) });
         }
         walk(child, played.pos, played.key, depth + 1);
       }
@@ -106,7 +111,8 @@ export function graphToPgn(graph: RepGraph, headers: Record<string, string> = {}
       const comments: string[] = [];
       if (m.comment) comments.push(m.comment);
       if (expanded.has(m.toKey) && graph.childrenOf(m.toKey).length) comments.push('Transposes to a line given elsewhere.');
-      const node = new ChildNode<PgnNodeData>({ san: m.san, comments: comments.length ? comments : undefined });
+      const nags = nagsOf(m.glyphs);
+      const node = new ChildNode<PgnNodeData>({ san: m.san, comments: comments.length ? comments : undefined, ...(nags.length ? { nags } : {}) });
       parent.children.push(node);
       build(node, m.toKey);
     }

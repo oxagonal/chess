@@ -49,6 +49,28 @@ export function glyphName(symbol: string): string {
   return BY_SYMBOL.get(symbol)?.name ?? symbol;
 }
 
+/** PGN $n codes for these symbols (for export). */
+export function nagsOf(glyphs: readonly string[] | undefined): number[] {
+  return (glyphs ?? []).flatMap((g) => (BY_SYMBOL.has(g) ? [BY_SYMBOL.get(g)!.nag] : []));
+}
+
+/** The symbols for PGN $n codes, tidied like toggleGlyph would leave them (unknown codes are dropped). */
+export function glyphsFromNags(nags: readonly number[] | undefined): string[] {
+  let out: string[] = [];
+  for (const n of nags ?? []) {
+    const g = [...BY_SYMBOL.values()].find((x) => x.nag === n);
+    if (g && !out.includes(g.symbol)) out = toggleGlyph(out, g.symbol);
+  }
+  return out;
+}
+
+/** A move with its symbols, the way it's written: Nf3!? ± N. */
+export function sanWithGlyphs(san: string, glyphs: readonly string[] | undefined): string {
+  const a = { glyphs: glyphs ? [...glyphs] : undefined };
+  const others = otherGlyphs(a);
+  return `${san}${moveGlyph(a) ?? ''}${others.length ? ` ${others.join(' ')}` : ''}`;
+}
+
 /** The annotation of one move. */
 export interface MoveAnnotation {
   /** Move symbol, then position symbol, then observations — at most one of each of the first two. */
