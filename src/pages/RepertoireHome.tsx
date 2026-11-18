@@ -23,6 +23,7 @@ import { ColorPill, Empty, MoreMenu } from '../components/ui';
 import { download } from '../services/backup';
 import { href, navigate } from '../router';
 import { RepertoireMap } from './RepertoireMap';
+import { SuggestChapters } from '../components/SuggestChapters';
 
 /**
  * The Repertoire page: your chapters (one opening each, by color) and your repertoires (saved sets of
@@ -33,6 +34,7 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
   const graphs = useChapterGraphs();
   const cards = useCards();
   const [importing, setImporting] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState<string | null>(null);
   if (!chapters || !collections || !graphs || !cards) return null;
 
   const view = query.get('view') === 'map' ? 'map' : 'chapters';
@@ -90,12 +92,21 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
             {chapters
               .filter((ch) => ch.color === color)
               .map((ch) => (
-                <ChapterRow key={ch.id} chapter={ch} counts={countsOf([ch.id])} onImport={() => setImporting(importing === ch.id ? null : ch.id)} />
+                <ChapterRow
+                  key={ch.id}
+                  chapter={ch}
+                  counts={countsOf([ch.id])}
+                  onImport={() => setImporting(importing === ch.id ? null : ch.id)}
+                  onSuggest={() => setSuggesting(suggesting === ch.id ? null : ch.id)}
+                />
               ))}
           </div>
         </div>
       ))}
       {importing && <ImportPanel repId={importing} onClose={() => setImporting(null)} />}
+      {suggesting && graphs.get(suggesting) && chapters.some((c) => c.id === suggesting) && (
+        <SuggestChapters chapter={chapters.find((c) => c.id === suggesting)!} graph={graphs.get(suggesting)!} onClose={() => setSuggesting(null)} />
+      )}
 
       {chapters.length > 0 && <Repertoires chapters={chapters} collections={collections} graphs={graphs} countsOf={countsOf} />}
     </div>
@@ -145,7 +156,17 @@ function Counts({ total, due, fresh }: { total: number; due: number; fresh: numb
   );
 }
 
-function ChapterRow({ chapter: r, counts, onImport }: { chapter: Chapter; counts: { total: number; due: number; fresh: number }; onImport: () => void }) {
+function ChapterRow({
+  chapter: r,
+  counts,
+  onImport,
+  onSuggest,
+}: {
+  chapter: Chapter;
+  counts: { total: number; due: number; fresh: number };
+  onImport: () => void;
+  onSuggest: () => void;
+}) {
   return (
     <div className="list-item">
       <div className="list-main">
@@ -164,6 +185,7 @@ function ChapterRow({ chapter: r, counts, onImport }: { chapter: Chapter; counts
           Train
         </a>
         <MoreMenu>
+          <button onClick={onSuggest}>Split into chapters…</button>
           <button onClick={onImport}>Import PGN or study…</button>
           <button onClick={async () => download(`${r.name.replace(/[^\w-]+/g, '_')}.pgn`, await exportPgn(r.id), 'application/x-chess-pgn')}>Export PGN</button>
           <button

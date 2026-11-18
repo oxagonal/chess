@@ -1,6 +1,6 @@
 import { db, uid } from './db';
 import { getSettings } from './settings';
-import { RepGraph } from '../lib/graph';
+import { moveId, RepGraph } from '../lib/graph';
 import { toRepMove, edgesForLine } from '../lib/lines';
 import { graphToPgn, pgnToEdges, type ImportedEdge } from '../lib/pgn';
 import { grade, gradeAhead, newCard, Rating } from '../lib/srs';
@@ -35,6 +35,39 @@ export async function deleteCollection(id: string) {
     await db.collections.delete(id);
     await db.coverage.delete(`set:${id}`);
   });
+}
+
+/**
+ * Split a chapter into new chapters, each given the ids of the chapter's moves it keeps (with their
+ * notes). Your progress is untouched: cards belong to positions, not chapters. Unless `keepOriginal`,
+ * the chapter is then deleted, and repertoires that had it get the new chapters instead.
+ */
+export async function splitChapter(chapterId: string, parts: { name: string; moveIds: string[] }[], opts: { keepOriginal?: boolean } = {}): Promise<string[]> {
+  const ids: string[] = [];
+  await db.transaction('rw', [db.repertoires, db.moves, db.cards, db.coverage, db.collections], async () => {
+    const chapter = await db.repertoires.get(chapterId);
+    if (!chapter) throw new Error('Chapter not found');
+    const moves = new Map((await db.moves.where('repId').equals(chapterId).toArray()).map((m) => [m.id, m]));
+    const now = Date.now();
+    for (const [i, part] of parts.entries()) {
+      const id = uid();
+      ids.push(id);
+      await db.repertoires.add({ id, name: part.name.trim() || `${chapter.name} ${i + 1}`, color: chapter.color, createdAt: now, updatedAt: now, ...(chapter.oneInN ? { oneInN: chapter.oneInN } : {}) });
+      const copies = part.moveIds.map((mid) => moves.get(mid)).filter((m): m is RepMove => !!m);
+      await db.moves.bulkAdd(copies.map(({ modifiedAt: _m, ...m }) => ({ ...m, id: moveId(id, m.fromKey, m.san), repId: id })));
+    }
+    if (opts.keepOriginal) return;
+    await db.moves.where('repId').equals(chapterId).delete();
+    await pruneCards([...moves.values()]);
+    await db.coverage.delete(chapterId);
+    await db.repertoires.delete(chapterId);
+    await db.collections
+      .filter((c) => c.chapterIds.includes(chapterId))
+      .modify((c) => {
+        c.chapterIds = c.chapterIds.flatMap((x) => (x === chapterId ? ids : [x]));
+      });
+  });
+  return ids;
 }
 
 export async function renameRepertoire(id: string, name: string) {

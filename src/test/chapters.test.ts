@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, openDb } from '../db/db';
-import { addLine, createRepertoire, deleteMove, deleteRepertoire, loadGraph } from '../db/repertoire';
+import { addLine, createRepertoire, deleteMove, deleteRepertoire, loadGraph, setMoveComment, splitChapter } from '../db/repertoire';
 import { loadScopeGraph, repertoireScopeId } from '../db/scopes';
 import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, migrateCardRows, unionGraph } from '../lib/chapters';
 import { playSan, START_KEY, startPos } from '../lib/chess';
@@ -63,6 +63,43 @@ describe('cards shared by chapters', () => {
     expect(cardsOf(loaded.graph, await db.cards.toArray()).map((c) => c.san).sort()).toEqual(['Nf3', 'd4', 'e4', 'f3']);
     await deleteRepertoire(b.id);
     expect((await db.collections.get('set1'))!.chapterIds).toEqual([a.id]);
+  });
+});
+
+describe('splitting a chapter', () => {
+  it('moves lines into new chapters with their notes, keeps progress, and updates repertoires', async () => {
+    const big = await createRepertoire('Black', 'black');
+    await addLine(big.id, ['e4', 'c5', 'Nf3', 'e6']);
+    await addLine(big.id, ['d4', 'Nf6', 'c4', 'e6']);
+    await db.collections.add({ id: 's', name: 'Open', color: 'black', chapterIds: [big.id], createdAt: 1, updatedAt: 1 });
+    const { graph } = (await loadGraph(big.id))!;
+    const e4 = graph.edge(START_KEY, 'e4')!;
+    await setMoveComment(graph.edge(e4.toKey, 'c5')!.id, 'Sicilian!');
+    const c5card = cardIdOf(graph.edge(e4.toKey, 'c5')!);
+    await db.cards.update(c5card, { reps: 7 });
+    const ofLine = (first: string) => {
+      const ids: string[] = [];
+      let key = START_KEY;
+      let m = graph.edge(key, first);
+      while (m) {
+        ids.push(m.id);
+        key = m.toKey;
+        m = graph.childrenOf(key)[0];
+      }
+      return ids;
+    };
+    const [sic, qp] = await splitChapter(big.id, [
+      { name: 'Sicilian', moveIds: ofLine('e4') },
+      { name: 'Queen pawn', moveIds: ofLine('d4') },
+    ]);
+    expect(await db.repertoires.get(big.id)).toBeUndefined();
+    const sicGraph = (await loadGraph(sic))!.graph;
+    expect(sicGraph.size).toBe(4);
+    expect(sicGraph.edge(sicGraph.edge(START_KEY, 'e4')!.toKey, 'c5')!.comment).toBe('Sicilian!');
+    expect((await loadGraph(qp))!.graph.size).toBe(4);
+    expect((await db.cards.get(c5card))!.reps).toBe(7);
+    expect(await db.cards.count()).toBe(4);
+    expect((await db.collections.get('s'))!.chapterIds).toEqual([sic, qp]);
   });
 });
 

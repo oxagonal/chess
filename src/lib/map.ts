@@ -61,10 +61,33 @@ export interface MapLine {
   createdAt: number;
 }
 
+/**
+ * A graph's lines as move paths, depth-first in the order the moves were added: each path runs from
+ * the start to the end of a branch, or to a move into a position the tree reaches another way.
+ */
+export function linePaths(graph: RepGraph): RepMove[][] {
+  const tree = graph.tree();
+  const out: RepMove[][] = [];
+  const walk = (key: string, path: RepMove[], seen: Set<string>) => {
+    const kids = graph.childrenOf(key);
+    if (!kids.length && path.length) out.push(path);
+    for (const m of kids) {
+      const next = [...path, m];
+      // A move the tree reaches another way (or a loop) ends a line here; the position's own
+      // continuation is written out where the tree reaches it.
+      if (tree.get(m.toKey) !== m || seen.has(m.toKey)) {
+        out.push(next);
+        continue;
+      }
+      walk(m.toKey, next, new Set(seen).add(m.toKey));
+    }
+  };
+  walk(graph.root, [], new Set([graph.root]));
+  return out;
+}
+
 /** A chapter's lines, in the order they appear (depth-first, main moves first). */
 export function chapterLines(graph: RepGraph, cardById: ReadonlyMap<string, ReviewCard>, now = Date.now(), startOfToday = now - (now % DAY)): MapLine[] {
-  const tree = graph.tree();
-  const out: MapLine[] = [];
   const make = (path: RepMove[]): MapLine => {
     const cards = path.filter((m) => m.mine).map((m) => cardById.get(cardIdOf(m))).filter((c): c is ReviewCard => !!c);
     const learned = cards.filter((c) => c.state !== 0);
@@ -82,23 +105,10 @@ export function chapterLines(graph: RepGraph, cardById: ReadonlyMap<string, Revi
       createdAt: Math.max(...path.map((m) => m.createdAt)),
     };
   };
-  const walk = (key: string, path: RepMove[], seen: Set<string>) => {
-    const kids = graph.childrenOf(key);
-    if (!kids.length && path.length) out.push(make(path));
-    for (const m of kids) {
-      const next = [...path, m];
-      // A move the tree reaches another way (or a loop) ends a line here; the position's own
-      // continuation is written out where the tree reaches it.
-      if (tree.get(m.toKey) !== m || seen.has(m.toKey)) {
-        out.push(make(next));
-        continue;
-      }
-      walk(m.toKey, next, new Set(seen).add(m.toKey));
-    }
-  };
-  walk(graph.root, [], new Set([graph.root]));
   // Lines with none of your moves on them (an opponent move ending a branch) don't need knowing.
-  return out.filter((l) => l.cards.length > 0);
+  return linePaths(graph)
+    .map(make)
+    .filter((l) => l.cards.length > 0);
 }
 
 /** Share of lines at each strength. */
