@@ -22,17 +22,42 @@ import type { RepGraph } from '../lib/graph';
 import { ColorPill, Empty, MoreMenu } from '../components/ui';
 import { download } from '../services/backup';
 import { href, navigate } from '../router';
+import { RepertoireMap } from './RepertoireMap';
 
 /**
  * The Repertoire page: your chapters (one opening each, by color) and your repertoires (saved sets of
  * chapters, e.g. what you'll play at a tournament).
  */
-export function RepertoireHome() {
+export function RepertoireHome({ query }: { query: URLSearchParams }) {
   const { chapters, collections } = useChaptersAndSets();
   const graphs = useChapterGraphs();
   const cards = useCards();
   const [importing, setImporting] = useState<string | null>(null);
   if (!chapters || !collections || !graphs || !cards) return null;
+
+  const view = query.get('view') === 'map' ? 'map' : 'chapters';
+  const mapColor: Color = query.get('color') === 'black' || (query.get('color') !== 'white' && !chapters.some((c) => c.color === 'white')) ? 'black' : 'white';
+  const tabs = (
+    <div className="row">
+      <h1 style={{ margin: 0 }}>Repertoire</h1>
+      <span className="spacer" />
+      <div className="segmented" role="tablist" aria-label="View">
+        <button role="tab" aria-selected={view === 'chapters'} className={view === 'chapters' ? 'active' : ''} onClick={() => navigate('repertoire')}>
+          Chapters
+        </button>
+        <button role="tab" aria-selected={view === 'map'} className={view === 'map' ? 'active' : ''} onClick={() => navigate('repertoire', { view: 'map', color: mapColor })}>
+          Map
+        </button>
+      </div>
+    </div>
+  );
+  if (view === 'map')
+    return (
+      <div className="col" style={{ gap: 16 }}>
+        {tabs}
+        <RepertoireMap color={mapColor} setId={query.get('set') ?? undefined} chapters={chapters} collections={collections} />
+      </div>
+    );
 
   /** Card ids of your moves in these chapters (shared moves once). */
   const cardIdsOf = (chapterIds: readonly string[]) => {
@@ -48,9 +73,7 @@ export function RepertoireHome() {
 
   return (
     <div className="col" style={{ gap: 16 }}>
-      <div className="row">
-        <h1 style={{ margin: 0 }}>Repertoire</h1>
-      </div>
+      {tabs}
       <p className="muted" style={{ margin: 0 }}>
         A <b>chapter</b> is one opening, from the first move — “Italian”, “Caro-Kann, Exchange”. A move that's in several chapters is learned
         once. A <b>repertoire</b> is a set of chapters you play together, to cram before a tournament; training “All White” covers every

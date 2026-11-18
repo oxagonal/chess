@@ -34,7 +34,7 @@ import type { RepGraph } from '../lib/graph';
 export function RepertoirePage({ route }: PageProps) {
   const id = route.path[1];
   if (id) return <Builder repId={id} initialLine={route.query.get('line') ?? ''} />;
-  return <RepertoireHome />;
+  return <RepertoireHome query={route.query} />;
 }
 
 /* --------------------------------------------------------------- builder */
