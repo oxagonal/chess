@@ -2,14 +2,17 @@ import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { useSettings } from '../db/settings';
-import { useAllGraphs, useCards, useChapterGraphs, useLearnedToday, useRecentGames, useRepertoires, startOfToday } from '../hooks';
-import { cardsOf } from '../lib/chapters';
+import { useAllGraphs, useCards, useLearnedToday, useRecentGames, useRepertoires, startOfToday } from '../hooks';
 import { rangeLabel } from '../lib/gameRange';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { analyzeGame, summarize } from '../lib/prep';
 import { isDue, isMature, isNew } from '../lib/srs';
-import { ColorPill, Stat } from '../components/ui';
+import { Stat } from '../components/ui';
 import { href } from '../router';
+import { COLORS, colorName, useChaptersAndSets } from '../db/scopes';
+import { readyOf, useMapData, WeightedBar } from './RepertoireMap';
+import type { Color } from '../lib/chess';
+import type { Chapter, Collection } from '../lib/types';
 
 export function HomePage() {
   const reps = useRepertoires();
@@ -17,7 +20,6 @@ export function HomePage() {
   const games = useRecentGames();
   const allGameCount = useLiveQuery(() => db.games.count(), []);
   const graphs = useAllGraphs();
-  const chapterGraphs = useChapterGraphs();
   const settings = useSettings();
   const learnedToday = useLearnedToday();
   const reviewsToday = useLiveQuery(() => db.reviewLog.where('reviewedAt').aboveOrEqual(startOfToday()).count(), []);
@@ -39,7 +41,7 @@ export function HomePage() {
 
   const steps = [
     { done: !!(settings.lichessUsername || settings.chesscomUsername), text: <>Add your Lichess / Chess.com usernames and rating in <a href={href('settings')}>Settings</a></> },
-    { done: reps.length > 0, text: <>Create a repertoire and add lines — or import a PGN / Lichess study (<a href={href('repertoire')}>Repertoire</a>)</> },
+    { done: reps.length > 0, text: <>Create a chapter and add lines — or import a Lichess study (<a href={href('repertoire')}>Repertoire</a>)</> },
     { done: learned > 0, text: <>Learn your first moves (<a href={href('train')}>Train</a>)</> },
     { done: (coverageCount ?? 0) > 0, text: <>Run <a href={href('coverage')}>Coverage</a> to find the positions you'll meet often enough to prepare</> },
     { done: (allGameCount ?? 0) > 0, text: <>Import your games to see where you forget your prep (<a href={href('games')}>Games</a>)</> },
@@ -97,30 +99,9 @@ export function HomePage() {
         </div>
       )}
 
+      {reps.length > 0 && <RepertoireAtAGlance />}
+
       <div className="grid2">
-        <div className="panel">
-          <h2>Chapters</h2>
-          {reps.length === 0 && <p className="muted">None yet.</p>}
-          <div className="col">
-            {reps.map((r) => {
-              const g = chapterGraphs?.get(r.id);
-              const rc = g ? cardsOf(g, cards) : [];
-              const d = rc.filter((c) => isDue(c, now)).length;
-              const n = rc.filter(isNew).length;
-              return (
-                <div key={r.id} className="moverow">
-                  <ColorPill color={r.color} />
-                  <a href={href(`repertoire/${r.id}`)} style={{ flex: 1 }}>
-                    {r.name}
-                  </a>
-                  <span className="muted small">{rc.length} moves</span>
-                  {d > 0 && <span className="badge due">{d} due</span>}
-                  {n > 0 && <span className="badge new">{n} new</span>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
 
         <div className="panel">
           <h2>Recent games vs your prep</h2>
@@ -151,6 +132,67 @@ export function HomePage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Each color at a glance: how much you know well, what's due, and the chapters that need work. */
+function RepertoireAtAGlance() {
+  const { chapters, collections } = useChaptersAndSets();
+  if (!chapters || !collections) return null;
+  const colors = COLORS.filter((c) => chapters.some((ch) => ch.color === c));
+  return (
+    <div className="grid2">
+      {colors.map((c) => (
+        <ColorGlance key={c} color={c} chapters={chapters} collections={collections} />
+      ))}
+    </div>
+  );
+}
+
+function ColorGlance({ color, chapters, collections }: { color: Color; chapters: Chapter[]; collections: Collection[] }) {
+  const { maps, allLines, overall, cov } = useMapData(color, chapters, collections);
+  if (!maps) return <div className="panel" />;
+  const due = allLines.filter((l) => l.due).length;
+  const count = chapters.filter((ch) => ch.color === color).length;
+  const weakest = maps
+    .filter((m) => m.lines.length)
+    .sort((a, b) => a.ready - b.ready)
+    .slice(0, 3);
+  return (
+    <div className="panel col glance" style={{ gap: 10 }}>
+      <div className="row">
+        <h2 style={{ margin: 0 }}>{colorName(color)}</h2>
+        <span className="muted small">
+          {count} chapter{count === 1 ? '' : 's'} · {allLines.length} line{allLines.length === 1 ? '' : 's'}
+        </span>
+        <span className="spacer" />
+        <a className="btn small" href={href('repertoire', { view: 'map', color })}>
+          Map
+        </a>
+        <a className={`btn small ${due ? 'primary' : ''}`} href={href('train', { rep: color, mode: 'review' })}>
+          {due ? `Review ${due}` : 'Train'}
+        </a>
+      </div>
+      {allLines.length > 0 && (
+        <>
+          <div className="glance-ready">
+            <b>{Math.round(readyOf(overall) * 100)}%</b>
+            <span className="muted small">{cov ? 'of your games go down lines you know well' : 'of your lines you know well'}</span>
+          </div>
+          <WeightedBar s={overall} />
+          {weakest.length > 0 && (
+            <div className="glance-weak">
+              <span className="muted small">Needs work</span>
+              {weakest.map((m) => (
+                <a key={m.chapter.id} className="chip" href={href(`repertoire/${m.chapter.id}`)} title={m.chapter.name}>
+                  {m.chapter.name} · {Math.round(m.ready * 100)}%
+                </a>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

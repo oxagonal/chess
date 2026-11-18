@@ -2,32 +2,84 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { useSettings } from '../db/settings';
-import { colorName } from '../db/scopes';
-import { startOfToday, useCards, useChapterGraphs } from '../hooks';
-import { chapterLines, STRENGTH_HINT, STRENGTH_LABEL, STRENGTHS, strengthCounts, strengthHistory, type MapLine, type Strength } from '../lib/map';
-import { formatLine, type Color } from '../lib/chess';
+import { colorName, scopeOf } from '../db/scopes';
+import { startOfToday, useCards, useChapterGraphs, useCoverage } from '../hooks';
+import { chapterLines, STRENGTH_HINT, STRENGTH_LABEL, STRENGTHS, strengthHistory, type MapLine, type Strength } from '../lib/map';
+import { chapterPosition } from '../lib/chapters';
+import { compactLine, formatLine, type Color } from '../lib/chess';
 import { formatInterval } from '../lib/srs';
-import type { Chapter, Collection } from '../lib/types';
+import type { Chapter, Collection, CoverageResult } from '../lib/types';
+import { isCoverageFresh } from '../services/coverage';
 import { MiniBoard } from '../components/MiniBoard';
-import { StrengthChart } from '../components/StrengthChart';
 import { Empty } from '../components/ui';
-import { ChapterTree } from '../components/ChapterTree';
+import { ChapterTree, useOpeningIndex } from '../components/ChapterTree';
 import type { RepGraph } from '../lib/graph';
 import { href, navigate } from '../router';
 
 const DAY = 86_400_000;
-const rank = (s: Strength) => STRENGTHS.indexOf(s);
+/** Known well: the next review is a week or more away. */
+const WELL: Strength[] = ['growing', 'solid'];
+/** Strongest first, for bars and the legend. */
+const ORDER: Strength[] = ['solid', 'growing', 'learning', 'lapsed', 'new'];
 
 interface ChapterMap {
   chapter: Chapter;
   lines: MapLine[];
-  /** 0 (nothing learned) … 1 (every line solid). */
-  score: number;
+  /** Each line's weight: how often it comes up (its end position's reach), or 1 each without coverage. */
+  weights: number[];
+  /** Share (by weight) of the chapter's lines known well. */
+  ready: number;
 }
 
+/** Shares by strength, weighted. */
+function shares(lines: readonly MapLine[], weights: readonly number[]): Record<Strength, number> {
+  const out = Object.fromEntries(STRENGTHS.map((s) => [s, 0])) as Record<Strength, number>;
+  const total = weights.reduce((a, w) => a + w, 0) || 1;
+  lines.forEach((l, i) => (out[l.strength] += weights[i] / total));
+  return out;
+}
+const readyOf = (s: Record<Strength, number>) => WELL.reduce((a, k) => a + s[k], 0);
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+
 /**
- * The repertoire as a map: one card per chapter, one square per line, colored by how well you know
- * it (its weakest move). Hover or tap a square for the line, its position and what's due.
+ * Each chapter's lines with their weights (how often they come up, from the color's coverage run
+ * when it's up to date; otherwise every line counts the same) and readiness — for the map and Home.
+ */
+export function useMapData(color: Color, chapters: Chapter[], collections: Collection[], setId?: string) {
+  const graphs = useChapterGraphs();
+  const cards = useCards();
+  const settings = useSettings();
+  const run = useCoverage(color);
+  const set = collections.find((c) => c.id === setId && c.color === color);
+  const shown = chapters.filter((c) => c.color === color && (!set || set.chapterIds.includes(c.id)));
+  const scope = settings.loaded ? scopeOf(color, chapters, collections, settings) : undefined;
+  const cov: CoverageResult | undefined = scope && run && isCoverageFresh(run, scope, settings) ? run : undefined;
+  const today = startOfToday();
+  const maps = useMemo<ChapterMap[] | undefined>(() => {
+    if (!graphs || !cards) return undefined;
+    const byId = new Map(cards.map((c) => [c.id, c]));
+    const now = Date.now();
+    return shown.map((chapter) => {
+      const g = graphs.get(chapter.id);
+      const lines = g ? chapterLines(g, byId, now, today) : [];
+      // A line too rare for the run to price still shows, thinly.
+      const weights = lines.map((l) => (cov ? Math.max(cov.probs[l.path[l.path.length - 1].toKey] ?? 0, 1e-5) : 1));
+      return { chapter, lines, weights, ready: lines.length ? readyOf(shares(lines, weights)) : 0 };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphs, cards, shown.map((c) => c.id).join(), today, cov]);
+  const allLines = useMemo(() => maps?.flatMap((m) => m.lines) ?? [], [maps]);
+  const allWeights = useMemo(() => maps?.flatMap((m) => m.weights) ?? [], [maps]);
+  return { graphs, maps, allLines, allWeights, cov, set, today, overall: shares(allLines, allWeights) };
+}
+
+/** Share known well (growing or solid), weighted. */
+export { readyOf, shares, WeightedBar };
+
+/**
+ * The repertoire as a map, weighted by how often things come up: how much of your games go down
+ * lines you know well, and each chapter as a strip of its lines — each as wide as it is common in
+ * your games, colored by how well you know its weakest move. Hover or tap a line for the details.
  */
 export function RepertoireMap({
   color,
@@ -40,43 +92,24 @@ export function RepertoireMap({
   chapters: Chapter[];
   collections: Collection[];
 }) {
-  const graphs = useChapterGraphs();
-  const cards = useCards();
   const settings = useSettings();
   const logs = useLiveQuery(() => db.reviewLog.where('color').equals(color).toArray(), [color]);
   const [order, setOrder] = useState<'opening' | 'weakest' | 'strongest'>('opening');
-  const set = collections.find((c) => c.id === setId && c.color === color);
-  const shown = chapters.filter((c) => c.color === color && (!set || set.chapterIds.includes(c.id)));
-
-  const now = Date.now();
-  const today = startOfToday();
-  const maps = useMemo<ChapterMap[] | undefined>(() => {
-    if (!graphs || !cards) return undefined;
-    const byId = new Map(cards.map((c) => [c.id, c]));
-    return shown.map((chapter) => {
-      const g = graphs.get(chapter.id);
-      const lines = g ? chapterLines(g, byId, now, today) : [];
-      const score = lines.length ? lines.reduce((a, l) => a + rank(l.strength), 0) / (lines.length * (STRENGTHS.length - 1)) : 0;
-      return { chapter, lines, score };
-    });
-    // `now` changes every render; the cards and graphs are what matter.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphs, cards, shown.map((c) => c.id).join(), today]);
-  const allLines = useMemo(() => maps?.flatMap((m) => m.lines) ?? [], [maps]);
-  const history = useMemo(
-    () =>
-      logs && allLines.length
-        ? strengthHistory(allLines, logs, { requestRetention: settings.requestRetention, maximumIntervalDays: settings.maxIntervalDays }, 30, Date.now(), today)
-        : [],
-    [allLines, logs, settings.requestRetention, settings.maxIntervalDays, today],
-  );
+  const { graphs, maps, allLines, cov, set, today, overall } = useMapData(color, chapters, collections, setId);
+  // A week ago vs now, in lines known well.
+  const week = useMemo(() => {
+    if (!logs || !allLines.length) return undefined;
+    const h = strengthHistory(allLines, logs, { requestRetention: settings.requestRetention, maximumIntervalDays: settings.maxIntervalDays }, 8, Date.now(), today);
+    const well = (d: (typeof h)[number]) => WELL.reduce((a, s) => a + d.counts[s], 0);
+    return well(h[h.length - 1]) - well(h[0]);
+  }, [allLines, logs, settings.requestRetention, settings.maxIntervalDays, today]);
 
   if (!maps) return null;
   const go = (q: Record<string, string | undefined>) => navigate('repertoire', { view: 'map', color, set: setId, ...q });
-  const sorted = [...maps].sort((a, b) => (a.lines.length ? 0 : 1) - (b.lines.length ? 0 : 1) || (order === 'weakest' ? a.score - b.score : b.score - a.score));
-  const counts = strengthCounts(allLines);
   const total = allLines.length;
   const due = allLines.filter((l) => l.due).length;
+  const sorted = [...maps].sort((a, b) => (a.lines.length ? 0 : 1) - (b.lines.length ? 0 : 1) || (order === 'weakest' ? a.ready - b.ready : b.ready - a.ready));
+  const scopeId = set ? `set:${set.id}` : color;
 
   return (
     <div className="col" style={{ gap: 14 }}>
@@ -106,34 +139,42 @@ export function RepertoireMap({
         <Empty>No {colorName(color)} lines yet.</Empty>
       ) : (
         <>
-          <div className="panel map-summary">
-            <div className="map-eyebrow">
-              Map · {set ? set.name : `${colorName(color)} chapters`}
-            </div>
-            <div className="map-hero">
-              <span className="map-hero-num">{Math.round((counts.solid / total) * 100)}%</span>
-              <span className="muted">
-                solid — {counts.solid} of {total} line{total === 1 ? '' : 's'}
+          <div className="panel readiness">
+            <div className="readiness-head">
+              <span className="readiness-num">{pct(readyOf(overall))}</span>
+              <span className="readiness-text">
+                {cov ? `of your ${colorName(color)} games go down lines you know well` : `of your ${colorName(color)} lines you know well`}
+                {set ? ` · ${set.name}` : ''}
               </span>
+              <span className="spacer" />
+              {due > 0 && (
+                <button className="primary small" onClick={() => navigate('train', { rep: scopeId, mode: 'review', t: String(Date.now()) })}>
+                  Review {due} due line{due === 1 ? '' : 's'}
+                </button>
+              )}
             </div>
-            <div className="map-tiles">
-              <Tile value={due} label="due now" />
-              <Tile value={counts.lapsed} label="missed last time" />
-              <Tile value={counts.new} label="not learned" />
+            <WeightedBar s={overall} />
+            <div className="readiness-legend">
+              {ORDER.map((s) => (
+                <span key={s} title={STRENGTH_HINT[s]}>
+                  <span className={`str-swatch str-${s}`} /> {STRENGTH_LABEL[s]} <b>{pct(overall[s])}</b>
+                </span>
+              ))}
             </div>
-            <StrengthBar counts={counts} />
+            <div className="muted small">
+              {cov ? 'Weighted by how often each line comes up in your games.' : 'Every line counts the same — run Coverage to weight them by how often they come up.'}
+              {week !== undefined && week !== 0 && (
+                <>
+                  {' '}
+                  This week: <b className={week > 0 ? 'good-text' : 'warn-text'}>{week > 0 ? `+${week}` : week}</b> line{Math.abs(week) === 1 ? '' : 's'} known well.
+                </>
+              )}
+            </div>
           </div>
 
-          {history.length > 1 && (
-            <div className="panel">
-              <h3 style={{ marginTop: 0 }}>Lines in rotation, by strength</h3>
-              <StrengthChart data={history} />
-              <Legend chart />
-            </div>
-          )}
-
           <div className="row">
-            <h2 style={{ margin: 0 }}>{order === 'opening' ? 'Chapters by opening' : `Chapters, ${order} first`}</h2>
+            <h2 style={{ margin: 0 }}>Chapters</h2>
+            <span className="muted small">{cov ? 'width = how often a line comes up · hollow = due' : 'hollow = due'}</span>
             <span className="spacer" />
             <div className="seg" role="group" aria-label="Order">
               <button className={`small ${order === 'opening' ? 'active' : ''}`} onClick={() => setOrder('opening')}>
@@ -147,69 +188,40 @@ export function RepertoireMap({
               </button>
             </div>
           </div>
-          <Legend />
-          <ChapterCards maps={sorted} color={color} graphs={order === 'opening' ? graphs : undefined} />
+          <ChapterStrips maps={sorted} color={color} graphs={order === 'opening' ? graphs : undefined} allGraphs={graphs} />
         </>
       )}
     </div>
   );
 }
 
-function Tile({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="map-tile">
-      <b>{value}</b>
-      <span className="muted small">{label}</span>
-    </div>
-  );
-}
-
-function StrengthBar({ counts, slim = false }: { counts: Record<Strength, number>; slim?: boolean }) {
-  const total = STRENGTHS.reduce((a, s) => a + counts[s], 0) || 1;
-  const order: Strength[] = ['solid', 'growing', 'learning', 'lapsed', 'new'];
+function WeightedBar({ s, slim = false }: { s: Record<Strength, number>; slim?: boolean }) {
   return (
     <div className={`str-bar ${slim ? 'slim' : ''}`} aria-hidden="true">
-      {order
-        .filter((s) => counts[s] > 0)
-        .map((s) => (
-          <span key={s} className={`str-seg str-${s}`} style={{ flexGrow: counts[s] / total }} title={`${STRENGTH_LABEL[s]}: ${counts[s]}`} />
-        ))}
-    </div>
-  );
-}
-
-function Legend({ chart = false }: { chart?: boolean }) {
-  const items: Strength[] = chart ? ['solid', 'growing', 'learning', 'lapsed'] : ['new', 'lapsed', 'learning', 'growing', 'solid'];
-  return (
-    <div className="map-legend">
-      {items.map((s) => (
-        <span key={s} title={STRENGTH_HINT[s]}>
-          <span className={`str-swatch str-${s}`} /> {STRENGTH_LABEL[s]}
-          {!chart && s === 'learning' && <span className="muted"> &lt;1 wk</span>}
-          {!chart && s === 'growing' && <span className="muted"> 1–4 wk</span>}
-          {!chart && s === 'solid' && <span className="muted"> 1 mo+</span>}
-        </span>
+      {ORDER.filter((k) => s[k] > 0).map((k) => (
+        <span key={k} className={`str-seg str-${k}`} style={{ flexGrow: s[k] }} title={`${STRENGTH_LABEL[k]}: ${pct(s[k])}`} />
       ))}
-      {!chart && (
-        <>
-          <span>
-            <span className="str-swatch str-growing due" /> Hollow = due
-          </span>
-          <span>
-            <span className="str-swatch str-solid today" /> Practiced today
-          </span>
-        </>
-      )}
     </div>
   );
 }
 
-/* ----------------------------------------------------------------- squares */
+/* ------------------------------------------------------------------ strips */
 
 type Open = { chapter: Chapter; line: MapLine; index: number; rect: DOMRect; pinned: boolean };
 
-/** The chapters' cards; given `graphs`, as dropdowns by first move and opening (else in the order given). */
-function ChapterCards({ maps, color, graphs }: { maps: ChapterMap[]; color: Color; graphs?: ReadonlyMap<string, RepGraph> }) {
+/** Each chapter as a strip of its lines; given `graphs`, grouped by first move and opening. */
+function ChapterStrips({
+  maps,
+  color,
+  graphs,
+  allGraphs,
+}: {
+  maps: ChapterMap[];
+  color: Color;
+  graphs?: ReadonlyMap<string, RepGraph>;
+  allGraphs?: ReadonlyMap<string, RepGraph>;
+}) {
+  const names = useOpeningIndex();
   const [open, setOpen] = useState<Open | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const keep = () => clearTimeout(closeTimer.current);
@@ -224,59 +236,61 @@ function ChapterCards({ maps, color, graphs }: { maps: ChapterMap[]; color: Colo
     return () => window.removeEventListener('keydown', esc);
   }, [open]);
 
-  const card = ({ chapter, lines }: ChapterMap, label: string) => {
-        const counts = strengthCounts(lines);
-        const dueCount = lines.filter((l) => l.due).length;
-        const practice = () =>
-          dueCount
-            ? navigate('train', { rep: chapter.id, mode: 'review', t: String(Date.now()) })
-            : counts.new
-              ? navigate('train', { rep: chapter.id, mode: 'learn', t: String(Date.now()) })
-              : navigate('train', { rep: chapter.id, mode: 'drill', t: String(Date.now()) });
-        return (
-          <div key={chapter.id} className="panel map-chapter">
-            <div className="row map-chapter-head">
-              <a className="map-chapter-name" href={href(`repertoire/${chapter.id}`)} title={chapter.name}>
-                {label}
-              </a>
-              <span className="muted small">
-                {lines.length} line{lines.length === 1 ? '' : 's'}
-              </span>
-              <span className="spacer" />
-              {lines.length > 0 && <StrengthBar counts={counts} slim />}
-              {lines.length > 0 && (
-                <button className="small ghost" onClick={practice}>
-                  {dueCount ? `Review ${dueCount} due ▸` : counts.new ? 'Learn new ▸' : 'Drill weakest ▸'}
-                </button>
-              )}
-            </div>
-            {lines.length === 0 ? (
-              <div className="muted small">No lines yet — add moves in the builder.</div>
-            ) : (
-              <div className="map-squares">
-                {lines.map((line, i) => (
-                  <button
-                    key={line.id}
-                    className={`sq str-${line.strength} ${line.due ? 'due' : ''} ${line.today ? 'today' : ''} ${open?.line.id === line.id ? 'open' : ''}`}
-                    aria-label={`Line ${i + 1}: ${formatLine(line.path.map((m) => m.san))} — ${STRENGTH_LABEL[line.strength]}${line.due ? ', due' : ''}`}
-                    onMouseEnter={(e) => {
-                      keep();
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setOpen((o) => (o?.pinned ? o : { chapter, line, index: i, rect, pinned: false }));
-                    }}
-                    onMouseLeave={leave}
-                    onFocus={(e) => setOpen({ chapter, line, index: i, rect: e.currentTarget.getBoundingClientRect(), pinned: false })}
-                    onBlur={leave}
-                    onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setOpen((o) => (o?.pinned && o.line.id === line.id ? null : { chapter, line, index: i, rect, pinned: true }));
-                    }}
-                  />
-                ))}
-              </div>
-            )}
+  const strip = ({ chapter, lines, weights, ready }: ChapterMap, label: string) => {
+    const dueCount = lines.filter((l) => l.due).length;
+    const fresh = lines.some((l) => l.strength === 'new');
+    const g = allGraphs?.get(chapter.id);
+    const opening = g ? compactLine(chapterPosition(g, names).moves.map((m) => m.san)) : '';
+    const practice = () =>
+      navigate('train', { rep: chapter.id, mode: dueCount ? 'review' : fresh ? 'learn' : 'drill', t: String(Date.now()) });
+    return (
+      <div key={chapter.id} className="map-row">
+        <div className="map-row-head">
+          <a className="map-row-name" href={href(`repertoire/${chapter.id}`)} title={chapter.name}>
+            {label}
+          </a>
+          {opening && <span className="map-row-line">{opening}</span>}
+          <span className="spacer" />
+          {lines.length > 0 && (
+            <span className="map-row-ready" title="Share of this chapter's lines (weighted by how often they come up) that you know well">
+              {pct(ready)}
+            </span>
+          )}
+          {lines.length > 0 && (
+            <button className="small ghost" onClick={practice}>
+              {dueCount ? `Review ${dueCount}` : fresh ? 'Learn' : 'Drill'} ▸
+            </button>
+          )}
+        </div>
+        {lines.length === 0 ? (
+          <div className="muted small">No lines yet — add moves in the builder.</div>
+        ) : (
+          <div className="strip" role="list">
+            {lines.map((line, i) => (
+              <button
+                key={line.id}
+                role="listitem"
+                className={`strip-seg str-${line.strength} ${line.due ? 'due' : ''} ${open?.line.id === line.id ? 'open' : ''}`}
+                style={{ flexGrow: weights[i] }}
+                aria-label={`Line ${i + 1}: ${formatLine(line.path.map((m) => m.san))} — ${STRENGTH_LABEL[line.strength]}${line.due ? ', due' : ''}`}
+                onMouseEnter={(e) => {
+                  keep();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setOpen((o) => (o?.pinned ? o : { chapter, line, index: i, rect, pinned: false }));
+                }}
+                onMouseLeave={leave}
+                onFocus={(e) => setOpen({ chapter, line, index: i, rect: e.currentTarget.getBoundingClientRect(), pinned: false })}
+                onBlur={leave}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setOpen((o) => (o?.pinned && o.line.id === line.id ? null : { chapter, line, index: i, rect, pinned: true }));
+                }}
+              />
+            ))}
           </div>
-        );
+        )}
+      </div>
+    );
   };
   const byId = new Map(maps.map((m) => [m.chapter.id, m]));
 
@@ -288,11 +302,20 @@ function ChapterCards({ maps, color, graphs }: { maps: ChapterMap[]; color: Colo
           chapters={maps.map((m) => m.chapter)}
           graphs={graphs}
           storageKey="map"
-          summary={(ids) => <StrengthBar counts={strengthCounts(ids.flatMap((id) => byId.get(id)?.lines ?? []))} slim />}
-          row={(ch, label) => (byId.has(ch.id) ? card(byId.get(ch.id)!, label) : null)}
+          summary={(ids) => {
+            const ms = ids.map((id) => byId.get(id)).filter((m): m is ChapterMap => !!m);
+            const s = shares(ms.flatMap((m) => m.lines), ms.flatMap((m) => m.weights));
+            return (
+              <>
+                <WeightedBar s={s} slim />
+                <span className="map-row-ready">{pct(readyOf(s))}</span>
+              </>
+            );
+          }}
+          row={(ch, label) => (byId.has(ch.id) ? strip(byId.get(ch.id)!, label) : null)}
         />
       ) : (
-        maps.map((m) => <div key={m.chapter.id}>{card(m, m.chapter.name)}</div>)
+        <div className="panel list">{maps.map((m) => <div key={m.chapter.id}>{strip(m, m.chapter.name)}</div>)}</div>
       )}
       {open && <LinePopover open={open} color={color} onEnter={keep} onLeave={leave} onClose={() => setOpen(null)} />}
     </>
@@ -315,7 +338,7 @@ function LinePopover({ open, color, onEnter, onLeave, onClose }: { open: Open; c
     if (!open.pinned) return;
     const away = (e: PointerEvent) => {
       const t = e.target as HTMLElement;
-      if (!box.current?.contains(t) && !t.closest('.sq')) onClose();
+      if (!box.current?.contains(t) && !t.closest('.strip-seg')) onClose();
     };
     const id = setTimeout(() => window.addEventListener('pointerdown', away), 0);
     return () => {
