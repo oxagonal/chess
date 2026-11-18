@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Chess } from 'chessops/chess';
 import { db } from '../db/db';
 import { fenOf, opposite, playUci, type Color } from '../lib/chess';
-import { biggestSwingsFor, JUDGEMENT_GLYPH, swings, winChanceOf, type GameReview, type Score, type Swing } from '../lib/review';
+import { biggestSwingsFor, formatEvalShort, JUDGEMENT_GLYPH, swings, winChanceOf, type GameReview, type Score, type Swing } from '../lib/review';
 import type { StoredGame } from '../lib/types';
 import { evaluatePosition } from '../services/engine';
 
@@ -192,8 +192,6 @@ export function GameReviewPanel({
 function SwingRow({ s, san, pos, active, onJump }: { s: Swing; san: string; pos: Chess; active: boolean; onJump: (ply: number) => void }) {
   const bestSan = s.best ? playUci(pos, s.best)?.san : undefined;
   const moveNo = `${Math.floor(s.ply / 2) + 1}${s.mover === 'white' ? '.' : '…'}`;
-  const pct = (x: number) => `${Math.round(x)}%`;
-  const fromView = (wc: number) => (s.mover === 'white' ? wc : 100 - wc);
   return (
     <button className={`swing ${s.judgement ?? ''} ${active ? 'active' : ''}`} onClick={() => onJump(s.ply)} title="Show the position before this move">
       <span className={`swing-glyph ${s.judgement ?? ''}`}>{s.judgement ? JUDGEMENT_GLYPH[s.judgement] : '·'}</span>
@@ -203,7 +201,8 @@ function SwingRow({ s, san, pos, active, onJump }: { s: Swing; san: string; pos:
         </b>
         <br />
         <span className="small muted">
-          win chance {pct(fromView(s.before))} → {pct(fromView(s.after))}
+          {/* The evaluation before → after, White's point of view (like Lichess): +3.5 → −9.0. */}
+          {formatEvalShort(s.scoreBefore)} → {formatEvalShort(s.scoreAfter)}
           {bestSan && bestSan !== san ? (
             <>
               {' '}
@@ -216,9 +215,23 @@ function SwingRow({ s, san, pos, active, onJump }: { s: Swing; san: string; pos:
   );
 }
 
-/** White's win chance across the game; click to jump. Marks the swings and where you left prep. */
+/**
+ * White's win chance across the game; click to jump. Marks the swings and where you left prep. Drawn
+ * at the width it's shown at (measured as its pane is resized), so dots stay round and lines keep
+ * their thickness however wide or narrow the pane is.
+ */
 function EvalGraph({ review, cursor, onJump, prepPly }: { review: GameReview; cursor: number; onJump: (ply: number) => void; prepPly?: number }) {
-  const W = 600;
+  const box = useRef<SVGSVGElement>(null);
+  const [W, setW] = useState(600);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const measure = () => el.clientWidth > 0 && setW(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [review.evals.length >= 2]);
   const H = 90;
   const n = review.evals.length;
   if (n < 2) return null;
@@ -230,8 +243,8 @@ function EvalGraph({ review, cursor, onJump, prepPly }: { review: GameReview; cu
   const marks = swings(review).filter((s) => s.judgement === 'blunder' || s.judgement === 'mistake');
   return (
     <svg
+      ref={box}
       viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
       className="evalgraph"
       onClick={(e) => {
         const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();

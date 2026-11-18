@@ -27,9 +27,12 @@ export interface Swing {
   /** Index of the move in the game (0 = White's first move). */
   ply: number;
   mover: Color;
-  /** Win chance (0–100, White's view) before and after the move. */
+  /** Win chance (0–100, White's view) before and after the move — what judges it. */
   before: number;
   after: number;
+  /** The engine's evaluation before and after the move (White's view) — what's shown. */
+  scoreBefore: Score;
+  scoreAfter: Score;
   /** Win chance lost by the player who moved. */
   loss: number;
   judgement?: Judgement;
@@ -71,7 +74,7 @@ export function swings(review: GameReview): Swing[] {
     const after = winChanceOf(b);
     const mover: Color = ply % 2 === 0 ? 'white' : 'black';
     const loss = mover === 'white' ? before - after : after - before;
-    out.push({ ply, mover, before, after, loss, judgement: judge(loss), best: review.best[ply] ?? undefined });
+    out.push({ ply, mover, before, after, scoreBefore: a, scoreAfter: b, loss, judgement: judge(loss), best: review.best[ply] ?? undefined });
   }
   return out;
 }
