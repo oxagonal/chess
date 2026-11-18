@@ -42,8 +42,8 @@ function useOpenState(storageKey: string) {
 
 /**
  * One color's chapters as dropdowns: first move (1.e4, 1.d4 … / vs 1.e4 …), then opening family
- * (Sicilian, Catalan …) in ECO order. A family with one chapter shows the chapter itself; inside a
- * family, chapters show their names without the family's.
+ * (Sicilian, Catalan …) in ECO order. A first move or family with one chapter shows the chapter itself
+ * (first moves like that together, after the dropdowns); inside a family, chapters drop its name.
  */
 export function ChapterTree({
   color,
@@ -66,9 +66,12 @@ export function ChapterTree({
   const groups = useMemo(() => organize(chapters, graphs, names, color), [chapters, graphs, names, color]);
   const [open, setOpen] = useOpenState(`chapter-tree:${storageKey}:${color}`);
   if (!groups.length) return null;
+  // A first move with a single chapter needs no folder: those chapters sit together after the folders.
+  const count = (g: (typeof groups)[number]) => g.families.reduce((n, f) => n + f.chapters.length, 0);
+  const loose = groups.filter((g) => count(g) === 1).map((g) => g.families[0].chapters[0].chapter);
   return (
     <div className="ctree">
-      {groups.map((g) => {
+      {groups.filter((g) => count(g) > 1).map((g) => {
         const ids = g.families.flatMap((f) => f.chapters.map((c) => c.chapter.id));
         const key = g.firstMove;
         return (
@@ -107,6 +110,13 @@ export function ChapterTree({
           </details>
         );
       })}
+      {loose.length > 0 && (
+        <div className="panel list ctree-loose">
+          {loose.map((c) => (
+            <div key={c.id}>{row(c, c.name)}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

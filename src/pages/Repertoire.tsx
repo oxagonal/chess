@@ -84,6 +84,9 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const goalN = repTarget(colorScope, settings);
   const freshCoverage = colorScope && settings.loaded && isCoverageFresh(coverage, colorScope, settings) ? coverage : undefined;
   const reach = useLineReach(line.slice(0, cursor), rep?.color, colorGraph, settings, freshCoverage);
+  // The same position down this chapter's line only: this move order, split only between this
+  // chapter's own choices (the figure above adds every move order in every chapter of the color).
+  const branchReach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings);
   const [flipped, setFlipped] = useState(false);
   // The move whose annotation menu (symbols and note) is open, from a right-click.
   const [noteTarget, setNoteTarget] = useState<RepAnnotationTarget | null>(null);
@@ -588,6 +591,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const coverageBox = (
     <CoverageBox
       reach={reach}
+      branch={branchReach}
+      colorLabel={rep ? `${rep.color === 'white' ? 'White' : 'Black'} chapters` : ''}
       inRep={inRep}
       score={coverage?.coverage?.[key]}
       prob={prob}
@@ -942,6 +947,8 @@ function useLineReach(
  */
 function CoverageBox({
   reach,
+  branch,
+  colorLabel,
   inRep,
   score,
   prob,
@@ -951,6 +958,9 @@ function CoverageBox({
   error,
 }: {
   reach: LineReach;
+  /** Down this chapter's line only. */
+  branch: LineReach;
+  colorLabel: string;
   inRep: boolean;
   score?: number;
   prob?: number;
@@ -966,10 +976,19 @@ function CoverageBox({
     <div className="panel coverage-box">
       <div
         className="cov-stat"
-        title={`How often this position appears in your games, if you play your moves and opponents answer like ${source}. Every move order in your repertoire counts.`}
+        title={`How often this position appears in your games, if you play your moves and opponents answer like ${source}. Every move order in all your ${colorLabel} counts.`}
       >
         <b style={{ opacity: reach.loading ? 0.5 : 1 }}>{reach.error ? '—' : p === undefined ? '…' : p === 0 ? 'never' : oneIn(p)}</b>
-        <span>{p !== undefined && p >= 1 / 1.05 ? 'you reach this position' : 'games reach here'}</span>
+        <span>{p !== undefined && p >= 1 / 1.05 ? 'you reach this position' : `games reach here (all ${colorLabel})`}</span>
+      </div>
+      <div
+        className="cov-stat"
+        title="How often you get here down this chapter's line: this move order only, your choices split only between this chapter's moves. Other move orders and other chapters can add to the figure before it."
+      >
+        <b style={{ opacity: branch.loading ? 0.5 : 1 }}>
+          {branch.error ? '—' : branch.prob === undefined ? '…' : branch.prob === 0 ? 'never' : oneIn(branch.prob)}
+        </b>
+        <span>down this chapter's line</span>
       </div>
       {inRep && (
         <div
