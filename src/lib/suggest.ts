@@ -26,6 +26,29 @@ export function nameOfLine(path: readonly RepMove[], names: OpeningIndex): strin
   return undefined;
 }
 
+/**
+ * The chapter a line belongs to: its deepest name's opening and variation. A "Delayed" variation
+ * counts as the plain one only when the line goes through that variation's own named position (an
+ * Alapin that reaches a "Delayed Alapin" position); a delayed line that never does keeps its own name.
+ */
+export function groupOfLine(path: readonly RepMove[], names: OpeningIndex): { key: string; family: string } | undefined {
+  const full = nameOfLine(path, names);
+  if (!full) return undefined;
+  const { family, variation } = nameParts(full);
+  if (!variation) return { key: family, family };
+  const plain = variation.replace(/^Delayed\s+/, '');
+  if (plain !== variation) {
+    const through = path.some((m) => {
+      const n = names.get(m.toKey);
+      if (!n) return false;
+      const p = nameParts(n);
+      return p.family === family && p.variation === plain;
+    });
+    if (through) return { key: `${family}: ${plain}`, family };
+  }
+  return { key: `${family}: ${variation}`, family };
+}
+
 export function suggestChapters(graph: RepGraph, names: OpeningIndex, minLines = MIN_LINES): SuggestedChapter[] {
   const groups = new Map<string, { family: string; lines: RepMove[][] }>();
   const add = (key: string, family: string, lines: RepMove[][]) => {
@@ -38,13 +61,8 @@ export function suggestChapters(graph: RepGraph, names: OpeningIndex, minLines =
   // carry on from there — e.g. 2.d4 cxd4 3.Nf3 e6 4.Nxd4 into the Four Knights — so it's placed after.
   const transposes = (p: RepMove[]) => graph.childrenOf(p[p.length - 1].toKey).length > 0;
   for (const path of paths.filter((p) => !transposes(p))) {
-    const full = nameOfLine(path, names);
-    if (!full) {
-      add('Other lines', 'Other lines', [path]);
-      continue;
-    }
-    const { family, variation } = nameParts(full);
-    add(variation ? `${family}: ${variation}` : family, family, [path]);
+    const g = groupOfLine(path, names);
+    add(g?.key ?? 'Other lines', g?.family ?? 'Other lines', [path]);
   }
   for (const path of paths.filter(transposes)) {
     const key = path[path.length - 1].toKey;
@@ -58,9 +76,8 @@ export function suggestChapters(graph: RepGraph, names: OpeningIndex, minLines =
       groups.get(best)!.lines.push(path);
       continue;
     }
-    const full = nameOfLine(path, names);
-    const parts = full ? nameParts(full) : { family: 'Other lines', variation: undefined };
-    add(parts.variation ? `${parts.family}: ${parts.variation}` : parts.family, parts.family, [path]);
+    const g = groupOfLine(path, names);
+    add(g?.key ?? 'Other lines', g?.family ?? 'Other lines', [path]);
   }
   // Small groups fold into "<opening> — other lines" when the opening has a bigger group to sit beside.
   const families = new Map<string, number>();

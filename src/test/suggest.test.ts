@@ -14,7 +14,6 @@ describe('suggesting chapters', () => {
     const path = g.pathTo([...g.byId.values()].find((m) => m.san === 'Nf6')!.toKey)!;
     expect(nameOfLine(path, names)).toMatch(/^Sicilian Defense: Four Knights Variation/);
     expect(nameParts('Sicilian Defense: Four Knights Variation, Exchange Variation')).toEqual({ family: 'Sicilian Defense', variation: 'Four Knights Variation' });
-    expect(nameParts('Sicilian Defense: Delayed Alapin Variation').variation).toBe('Alapin Variation');
   });
 
   it('groups a Sicilian chapter by variation — Four Knights lines together whatever the move order', () => {
@@ -59,5 +58,13 @@ describe('suggesting chapters', () => {
     const names2 = suggestChapters(g, names).map((c) => `${c.name}:${c.lines.length}`);
     expect(names2).toContain('Sicilian Defense: Alapin Variation:3');
     expect(names2).toContain('Nimzo-Indian Defense:2');
+  });
+
+  it('keeps a true delayed line (one that never goes through the plain variation) apart', () => {
+    // 2.Nf3 e6 3.c3: a Delayed Alapin that never passes the 2.c3 position.
+    const g = new RepGraph('black', movesFromLines('r', 'black', ['e4 c5 Nf3 e6 c3 d5 exd5 exd5', 'e4 c5 Nf3 e6 c3 Nf6 e5 Nd5', 'e4 c5 Nf3 e6 c3 d5 e5 d4']));
+    const groups = suggestChapters(g, names, 1).map((c) => c.name);
+    expect(groups.some((n) => n.includes('Delayed Alapin'))).toBe(true);
+    expect(groups.some((n) => n === 'Sicilian Defense: Alapin Variation')).toBe(false);
   });
 });

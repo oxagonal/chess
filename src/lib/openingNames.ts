@@ -37,10 +37,9 @@ export function loadOpeningIndex(): Promise<OpeningIndex> {
 
 /**
  * "Sicilian Defense: Four Knights Variation, Exchange Variation" → its family and first variation.
- * A "Delayed" variation is the same variation by another move order, so it counts as that variation.
  */
 export function nameParts(name: string): { family: string; variation?: string } {
   const [family, rest] = name.split(/:\s*/, 2);
-  const variation = rest?.split(/,\s*/)[0]?.replace(/^Delayed\s+/, '');
+  const variation = rest?.split(/,\s*/)[0];
   return { family: family.trim(), variation: variation?.trim() || undefined };
 }
