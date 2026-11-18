@@ -12,13 +12,15 @@
 import { RepGraph } from './graph';
 import type { Color } from './chess';
 import type { RepMove } from './types';
+import { cardIdOf, migrateCardRows } from './chapters';
 
-export const SYNC_TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players'] as const;
+export const SYNC_TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players', 'collections'] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
 export type Row = Record<string, any>;
 
-export const SYNC_FORMAT = 1;
+/** 2: chapters — cards are per position and move (not per repertoire), coverage per color; repertoires (collections) added. */
+export const SYNC_FORMAT = 2;
 
 /** Tombstones older than this are forgotten (a device that stays offline longer may bring deleted rows back). */
 export const TOMB_TTL_MS = 180 * 86_400_000;
@@ -96,12 +98,29 @@ function rowBirth(table: SyncTable, row: Row): number {
     case 'moves':
     case 'cards':
     case 'players':
+    case 'collections':
       return row.createdAt ?? rowVersion(table, row);
     case 'reviewLog':
       return row.reviewedAt ?? 0;
     default:
       return rowVersion(table, row);
   }
+}
+
+/**
+ * A synced copy saved before chapters (format 1), in today's form: cards and review log moved to
+ * per-position ids (as the database upgrade does on each device), old per-repertoire coverage runs
+ * dropped. Tombstones of the old ids can't match anything any more and are dropped too.
+ */
+export function upgradeSyncDoc(doc: SyncDoc): SyncDoc {
+  if (doc.format >= SYNC_FORMAT) return doc;
+  const tables = { ...doc.tables };
+  for (const t of SYNC_TABLES) tables[t] ??= { rows: [], tombs: {} };
+  const next = migrateCardRows(tables.cards.rows, tables.reviewLog.rows);
+  tables.cards = { rows: next.cards, tombs: {} };
+  tables.reviewLog = { rows: next.logs, tombs: {} };
+  tables.coverage = { rows: [], tombs: {} };
+  return { ...doc, format: SYNC_FORMAT, tables };
 }
 
 function canonical(v: unknown): string {
@@ -236,7 +255,11 @@ export function mergeSync({ local, remote, base, now, forceLocal }: MergeInput):
   return { doc, puts, deletes, remoteChanged, keys };
 }
 
-/** Moves cut off from their repertoire's start position, and rows belonging to repertoires or moves that are gone. */
+/**
+ * Moves cut off from their chapter's start position, moves of chapters that are gone, cards no chapter
+ * has as your move any more, and coverage runs of scopes that are gone. (The review log is history
+ * shared by every chapter with the move, so it stays.)
+ */
 function danglingRows(merged: Snapshot, local: Snapshot, remote: Snapshot): [SyncTable, string][] {
   const out: [SyncTable, string][] = [];
   const reps = merged.repertoires;
@@ -255,9 +278,11 @@ function danglingRows(merged: Snapshot, local: Snapshot, remote: Snapshot): [Syn
     if (!reps.has(m.repId) || (after.has(k) && !before.has(k))) out.push(['moves', k]);
   }
   const goneMoves = new Set(out.map(([, k]) => k));
-  for (const [k, c] of merged.cards) if (!reps.has(c.repId) || !merged.moves.has(k) || goneMoves.has(k)) out.push(['cards', k]);
-  for (const [k, l] of merged.reviewLog) if (!reps.has(l.repId)) out.push(['reviewLog', k]);
-  for (const [k, c] of merged.coverage) if (!reps.has(c.repId)) out.push(['coverage', k]);
+  const known = new Set<string>();
+  for (const [k, m] of merged.moves) if (m.mine && !goneMoves.has(k)) known.add(cardIdOf(m as RepMove));
+  for (const k of merged.cards.keys()) if (!known.has(k)) out.push(['cards', k]);
+  const scopes = new Set(['white', 'black', ...reps.keys(), ...[...merged.collections.keys()].map((id) => `set:${id}`)]);
+  for (const [k, c] of merged.coverage) if (!scopes.has(c.repId)) out.push(['coverage', k]);
   return out;
 }
 

@@ -4,6 +4,7 @@ import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { updateSettings, useSettings } from '../db/settings';
 import { markForgotten } from '../db/repertoire';
+import { chapterForLine, sourcesOf } from '../lib/chapters';
 import { useAllGraphs, useGames } from '../hooks';
 import { syncSource, lastSync, type SyncResult } from '../services/sync';
 import { analyzeGame, summarize, PREP_LABEL, type PrepKind, type PrepResult, type RepWithGraph } from '../lib/prep';
@@ -388,7 +389,7 @@ function GamesOverview() {
                             {(graphOf(f.repId)?.graph.childrenOf(f.key) ?? [])
                               .filter((m) => m.mine)
                               .map((m) => (
-                                <MoveNote key={m.id} id={m.id} san={m.san} compact autoFocus prompt />
+                                <MoveNote key={m.id} id={sourcesOf(m)[0]} san={m.san} compact autoFocus prompt />
                               ))}
                           </td>
                         </tr>
@@ -429,7 +430,14 @@ function GamesOverview() {
                           <td className="num hide-sm">{s.count}</td>
                           <td className="num">{Math.round(s.score * 100)}%</td>
                           <td>
-                            <button className="small primary" onClick={() => navigate(`repertoire/${s.repId}`, { line: [...path, s.san].join(' ') })}>
+                            <button
+                              className="small primary"
+                              onClick={() => {
+                                const g = graphOf(s.repId)?.graph;
+                                const chapter = g && chapterForLine(g, path);
+                                if (chapter) navigate(`repertoire/${chapter}`, { line: [...path, s.san].join(' ') });
+                              }}
+                            >
                               Prepare
                             </button>
                           </td>

@@ -1,6 +1,6 @@
 import { db } from '../db/db';
 import { getSettings, repTarget, type AppSettings } from '../db/settings';
-import { loadGraph } from '../db/repertoire';
+import { loadScope, loadScopeGraph } from '../db/scopes';
 import { computeCoverage, COVERAGE_ALGO } from '../lib/coverage';
 import { GameStatsIndex } from '../lib/mygames';
 import { bandsForRating, toLichessRating } from '../lib/ratings';
@@ -33,13 +33,14 @@ export function sourceLabel(s: AppSettings): string {
   }
 }
 
+/** Coverage of a scope ('white', 'black', a chapter or `set:<id>`): its chapters' union graph. */
 export async function runCoverage(
-  repId: string,
+  scopeId: string,
   opts: { signal?: AbortSignal; onProgress?: (queried: number) => void; oneInN?: number } = {},
 ): Promise<CoverageResult> {
-  const loaded = await loadGraph(repId);
-  if (!loaded) throw new Error('Repertoire not found');
-  return runCoverageForGraph(repId, loaded.graph, opts);
+  const loaded = await loadScopeGraph(scopeId);
+  if (!loaded) throw new Error('Not found');
+  return runCoverageForGraph(scopeId, loaded.graph, { oneInN: repTarget(loaded.scope, await getSettings()), ...opts });
 }
 
 /** Run the analysis on an in-memory graph (the builder uses this to keep scores live). */
@@ -49,7 +50,7 @@ export async function runCoverageForGraph(
   opts: { signal?: AbortSignal; onProgress?: (queried: number) => void; oneInN?: number } = {},
 ): Promise<CoverageResult> {
   const s = await getSettings();
-  const n = opts.oneInN ?? repTarget(await db.repertoires.get(repId), s);
+  const n = opts.oneInN ?? repTarget(await loadScope(repId), s);
   const provider = await statsProvider(s, graph.color, opts.signal, 'low');
   const result = await computeCoverage(graph, provider, {
     repId,

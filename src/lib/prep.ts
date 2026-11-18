@@ -1,10 +1,10 @@
 /**
  * Compare real games against your repertoire to find where you (or your opponent) left the book.
  */
-import { playSan, START_KEY, startPos, turnOfKey } from './chess';
+import { playSan, START_KEY, startPos, turnOfKey, type Color } from './chess';
 import type { Position } from 'chessops/chess';
 import type { RepGraph } from './graph';
-import type { Repertoire, StoredGame } from './types';
+import type { StoredGame } from './types';
 
 export type PrepKind =
   | 'no-repertoire' // you have no repertoire for this color
@@ -30,8 +30,9 @@ export interface PrepResult {
   expected?: string[];
 }
 
+/** What a game is checked against: in the app, each color's chapters as one union graph. */
 export interface RepWithGraph {
-  rep: Repertoire;
+  rep: { id: string; name: string; color: Color };
   graph: RepGraph;
 }
 

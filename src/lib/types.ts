@@ -2,6 +2,11 @@ import type { GameReview } from './review';
 import type { MoveAnnotation, SavedLine } from './annotations';
 import type { Color } from './chess';
 
+/**
+ * A chapter: one color's move tree from the starting position, with its notes — e.g. "Italian" or
+ * "Caro-Kann, Exchange". (Stored in the `repertoires` table, its name from before chapters existed;
+ * a repertoire is now a `Collection` of chapters.) Moves (`RepMove.repId`) belong to a chapter.
+ */
 export interface Repertoire {
   id: string;
   name: string;
@@ -33,10 +38,31 @@ export interface RepMove {
   modifiedAt?: number;
 }
 
-/** Spaced-repetition state for one of *your* moves (mirrors ts-fsrs Card, dates as epoch ms). */
+export type Chapter = Repertoire;
+
+/** A repertoire: a named set of chapters of one color — e.g. what you'll play at a tournament. */
+export interface Collection {
+  id: string;
+  name: string;
+  color: Color;
+  chapterIds: string[];
+  /** Coverage target (1 in N games) for this repertoire. Unset → the app default. */
+  oneInN?: number;
+  createdAt: number;
+  updatedAt: number;
+  modifiedAt?: number;
+}
+
+/**
+ * Spaced-repetition state for one of *your* moves (mirrors ts-fsrs Card, dates as epoch ms). One
+ * card per position and move (`cardIdOf`), shared by every chapter of that color that has the move:
+ * knowing your move in a position is the same knowledge whichever chapter it's in.
+ */
 export interface ReviewCard {
-  id: string; // same as RepMove.id
-  repId: string;
+  /** `${fromKey}|${san}` (see cardIdOf). */
+  id: string;
+  /** Your color in this position (= the side to move in fromKey). */
+  color: Color;
   fromKey: string;
   san: string;
   due: number;
@@ -60,7 +86,7 @@ export type ReviewSource = 'learn' | 'review' | 'game';
 export interface ReviewLogEntry {
   id?: number;
   cardId: string;
-  repId: string;
+  color: Color;
   /** ts-fsrs Rating: 1 Again, 2 Hard, 3 Good, 4 Easy */
   rating: number;
   state: number;
@@ -155,6 +181,7 @@ export interface CoverageNode {
 }
 
 export interface CoverageResult {
+  /** What it was computed for: a scope id ('white', 'black', a chapter or a repertoire; see db/scopes). */
   repId: string;
   computedAt: number;
   threshold: number; // 1/N

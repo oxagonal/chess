@@ -2,7 +2,10 @@ import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
-import { useAllGraphs, useCards, useRecentGames, useRepertoires, useRepGraph } from '../hooks';
+import { useAllGraphs, useCards, useRecentGames } from '../hooks';
+import { useChaptersAndSets, useScopeGraph } from '../db/scopes';
+import { cardsOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
+import { defaultScope, ScopeSelect } from '../components/ScopeSelect';
 import { useSettings } from '../db/settings';
 import { rangeLabel } from '../lib/gameRange';
 import { GameRangeSelect } from '../components/GameRangeSelect';
@@ -14,22 +17,16 @@ import { ColorPill, Empty, Stat, TableWrap } from '../components/ui';
 import { href, navigate } from '../router';
 
 export function InsightsPage({ route }: PageProps) {
-  const reps = useRepertoires();
-  const repId = route.path[1] ?? reps?.[0]?.id;
-  if (!reps) return null;
-  if (!reps.length) return <Empty>Create a repertoire first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
+  const { chapters, collections } = useChaptersAndSets();
+  if (!chapters || !collections) return null;
+  const repId = route.path[1] ?? defaultScope(chapters);
+  if (!chapters.length) return <Empty>Create a chapter first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
   return (
     <div className="col" style={{ gap: 16 }}>
       <div className="row">
         <h1 style={{ margin: 0 }}>Insights</h1>
         <span className="spacer" />
-        <select value={repId} onChange={(e) => navigate(`insights/${e.target.value}`)}>
-          {reps.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name} ({r.color})
-            </option>
-          ))}
-        </select>
+        {repId && <ScopeSelect value={repId} onChange={(id) => navigate(`insights/${id}`)} chapters={chapters} collections={collections} />}
       </div>
       {repId && <InsightsView key={repId} repId={repId} />}
     </div>
@@ -58,9 +55,21 @@ function MasteryBar({ value }: { value: number | undefined }) {
 const pct = (x: number | undefined) => (x === undefined ? '—' : `${Math.round(x * 100)}%`);
 
 function InsightsView({ repId }: { repId: string }) {
-  const { rep, graph } = useRepGraph(repId);
-  const cards = useCards(repId);
-  const logs = useLiveQuery(() => db.reviewLog.where('repId').equals(repId).toArray(), [repId]);
+  const { scope: rep, graph } = useScopeGraph(repId);
+  const allCards = useCards();
+  const cards = useMemo(() => (graph && allCards ? cardsOf(graph, allCards) : undefined), [graph, allCards]);
+  const color = rep?.color;
+  const colorLogs = useLiveQuery(async () => (color ? await db.reviewLog.where('color').equals(color).toArray() : undefined), [color]);
+  const logs = useMemo(() => {
+    if (!cards || !colorLogs) return undefined;
+    const ids = new Set(cards.map((c) => c.id));
+    return colorLogs.filter((l) => ids.has(l.cardId));
+  }, [cards, colorLogs]);
+  // The builder opens a line in the chapter its move comes from.
+  const chapterFor = (moveId: string) => {
+    const m = graph?.byId.get(moveId);
+    return m ? chapterOfMoveId(sourcesOf(m)[0]) : (rep?.chapterIds[0] ?? '');
+  };
   const recentGames = useRecentGames();
   const allGraphs = useAllGraphs();
   const { gameRange } = useSettings();
@@ -71,7 +80,7 @@ function InsightsView({ repId }: { repId: string }) {
     if (!recentGames || !allGraphs || !graph) return { slips, surprises };
     for (const g of recentGames) {
       const r = analyzeGame(g, allGraphs);
-      if (r.repId !== repId || !r.key) continue;
+      if (r.repId !== color || !r.key) continue;
       if (r.kind === 'you-deviated') {
         for (const m of graph.childrenOf(r.key)) if (m.mine) slips.set(m.id, (slips.get(m.id) ?? 0) + 1);
       } else if (r.kind === 'opponent-deviated') {
@@ -79,7 +88,7 @@ function InsightsView({ repId }: { repId: string }) {
       }
     }
     return { slips, surprises };
-  }, [recentGames, allGraphs, graph, repId]);
+  }, [recentGames, allGraphs, graph, color]);
 
   const insights = useMemo(
     () => (graph && cards && logs ? computeInsights({ graph, cards, logs, gameSlips: fromGames.slips, surprises: fromGames.surprises }) : undefined),
@@ -87,7 +96,7 @@ function InsightsView({ repId }: { repId: string }) {
   );
 
   if (!rep || !graph || !insights) return <div className="muted">Loading…</div>;
-  if (!graph.size) return <Empty>This repertoire is empty.</Empty>;
+  if (!graph.size) return <Empty>No moves here yet.</Empty>;
   const t = insights.total;
   const learnedMoves = insights.moves.filter((m) => m.mastery !== undefined);
 
@@ -141,7 +150,7 @@ function InsightsView({ repId }: { repId: string }) {
             </thead>
             <tbody>
               {insights.lines.map((l) => (
-                <LineRow key={l.id} line={l} depth={0} repId={repId} defaultOpen />
+                <LineRow key={l.id} line={l} depth={0} repId={repId} chapterFor={chapterFor} defaultOpen />
               ))}
             </tbody>
           </table>
@@ -196,7 +205,7 @@ function InsightsView({ repId }: { repId: string }) {
                         <button className="small primary" onClick={() => navigate('train', { rep: repId, mode: 'drill', under: m.move.id, t: String(Date.now()) })}>
                           Drill
                         </button>
-                        <button className="small" onClick={() => navigate(`repertoire/${repId}`, { line: [...m.path, m.move.san].join(' ') })}>
+                        <button className="small" onClick={() => navigate(`repertoire/${chapterFor(m.move.id)}`, { line: [...m.path, m.move.san].join(' ') })}>
                           Open
                         </button>
                       </div>
@@ -213,7 +222,19 @@ function InsightsView({ repId }: { repId: string }) {
   );
 }
 
-function LineRow({ line, depth, repId, defaultOpen = false }: { line: LineInsight; depth: number; repId: string; defaultOpen?: boolean }) {
+function LineRow({
+  line,
+  depth,
+  repId,
+  chapterFor,
+  defaultOpen = false,
+}: {
+  line: LineInsight;
+  depth: number;
+  repId: string;
+  chapterFor: (moveId: string) => string;
+  defaultOpen?: boolean;
+}) {
   const [open, setOpen] = useState(defaultOpen);
   const sans = line.segment.map((m) => m.san);
   const hasKids = line.children.length > 0;
@@ -249,13 +270,13 @@ function LineRow({ line, depth, repId, defaultOpen = false }: { line: LineInsigh
             >
               Drill
             </button>
-            <button className="small" onClick={() => navigate(`repertoire/${repId}`, { line: [...line.prefix, ...sans].join(' ') })}>
+            <button className="small" onClick={() => navigate(`repertoire/${chapterFor(line.id)}`, { line: [...line.prefix, ...sans].join(' ') })}>
               Open
             </button>
           </div>
         </td>
       </tr>
-      {open && line.children.map((c) => <LineRow key={c.id} line={c} depth={depth + 1} repId={repId} />)}
+      {open && line.children.map((c) => <LineRow key={c.id} line={c} depth={depth + 1} repId={repId} chapterFor={chapterFor} />)}
     </>
   );
 }

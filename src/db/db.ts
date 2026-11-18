@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { CoverageResult, Player, PlayerGame, PositionStats, Repertoire, RepMove, ReviewCard, ReviewLogEntry, StoredGame } from '../lib/types';
+import type { Collection, CoverageResult, Player, PlayerGame, PositionStats, Repertoire, RepMove, ReviewCard, ReviewLogEntry, StoredGame } from '../lib/types';
+import { migrateCardRows } from '../lib/chapters';
 import { trackChanges } from './changes';
 
 export interface ExplorerCacheRow {
@@ -33,6 +34,7 @@ export type ChessDB = Dexie & {
   syncState: EntityTable<SyncStateRow, 'key'>;
   players: EntityTable<Player, 'id'>;
   playerGames: EntityTable<PlayerGame, 'id'>;
+  collections: EntityTable<Collection, 'id'>;
 };
 
 export function openDb(name = 'chess-prep'): ChessDB {
@@ -49,6 +51,34 @@ export function openDb(name = 'chess-prep'): ChessDB {
   });
   db.version(2).stores({ syncState: 'key' });
   db.version(3).stores({ players: 'id, name', playerGames: 'id, playerId, [playerId+source]' });
+  // Chapters: repertoires become chapters, and cards go from one per repertoire move to one per
+  // position and move (shared by every chapter that has it). Coverage is now per color / repertoire,
+  // so old per-repertoire runs are dropped; each color keeps the widest coverage target it had.
+  db.version(4)
+    .stores({
+      moves: 'id, repId, fromKey, [repId+fromKey], [repId+toKey]',
+      cards: 'id, color, due, state',
+      reviewLog: '++id, cardId, color, reviewedAt',
+      collections: 'id, color',
+    })
+    .upgrade(async (tx) => {
+      const cards = await tx.table('cards').toArray();
+      const logs = await tx.table('reviewLog').toArray();
+      const next = migrateCardRows(cards, logs);
+      await tx.table('cards').clear();
+      await tx.table('cards').bulkPut(next.cards);
+      await tx.table('reviewLog').clear();
+      await tx.table('reviewLog').bulkPut(next.logs);
+      await tx.table('coverage').clear();
+      const reps = await tx.table('repertoires').toArray();
+      const settings = await tx.table('kv').get('settings');
+      const targets: Record<string, number> = {};
+      for (const r of reps) if (r.oneInN) targets[r.color] = Math.max(targets[r.color] ?? 0, r.oneInN);
+      if (Object.keys(targets).length) {
+        const value = { ...(settings?.value ?? {}), scopeTargets: targets };
+        await tx.table('kv').put({ ...settings, key: 'settings', value });
+      }
+    });
   trackChanges(db);
   return db;
 }

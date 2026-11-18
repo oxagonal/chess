@@ -14,7 +14,9 @@ import {
   setMoveAnnotation,
 } from '../db/repertoire';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
-import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepertoires, useRepGraph } from '../hooks';
+import { PHONE_QUERY, useCards, useChapterGraphs, useCoverage, useMediaQuery, useRepertoires, useRepGraph } from '../hooks';
+import { cardIdOf, cardsOf } from '../lib/chapters';
+import { useScopeGraph } from '../db/scopes';
 import type { StudioPanelDef } from '../components/Studio';
 // The studio (dockview) loads only when the desktop builder opens it — phones never download it.
 const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
@@ -50,6 +52,7 @@ export function RepertoirePage({ route }: PageProps) {
 function RepertoireList() {
   const reps = useRepertoires();
   const cards = useCards();
+  const chapterGraphs = useChapterGraphs();
   const [name, setName] = useState('');
   const [color, setColor] = useState<Color>('white');
   const [importing, setImporting] = useState<string | null>(null);
@@ -88,7 +91,8 @@ function RepertoireList() {
       {reps && reps.length > 0 && (
         <div className="panel list">
           {reps.map((r) => {
-            const rc = cards?.filter((c) => c.repId === r.id) ?? [];
+            const g = chapterGraphs?.get(r.id);
+            const rc = g && cards ? cardsOf(g, cards) : [];
             const due = rc.filter((c) => isDue(c, now)).length;
             const fresh = rc.filter(isNew).length;
             return (
@@ -115,7 +119,7 @@ function RepertoireList() {
                   <a className="btn small" href={href('train', { rep: r.id, mode: 'review' })}>
                     Train
                   </a>
-                  <a className="btn small" href={href(`coverage/${r.id}`)}>
+                  <a className="btn small" href={href(`coverage/${r.color}`)}>
                     Coverage
                   </a>
                   <MoreMenu>
@@ -134,7 +138,7 @@ function RepertoireList() {
                     <button
                       className="danger"
                       onClick={() => {
-                        if (confirm(`Delete “${r.name}” and all its training progress?`)) deleteRepertoire(r.id);
+                        if (confirm(`Delete “${r.name}”? Training progress on moves no other chapter has goes with it.`)) deleteRepertoire(r.id);
                       }}
                     >
                       Delete…
@@ -271,16 +275,20 @@ const toEdges = (l: LineMove[]) => l.map((m) => ({ fromKey: m.fromKey, toKey: m.
  */
 export function Builder({ repId, initialLine, onDone }: { repId: string; initialLine: string; onDone?: () => void }) {
   const { rep, graph, loading } = useRepGraph(repId);
-  const cards = useCards(repId);
-  const coverage = useCoverage(repId);
+  const allCards = useCards();
+  const cards = useMemo(() => (graph && allCards ? cardsOf(graph, allCards) : undefined), [graph, allCards]);
+  // Coverage is of all this color's chapters together: an Italian chapter isn't "missing" 1...c5 if
+  // your Sicilian chapter answers it. The run is kept live as you edit.
+  const { scope: colorScope, graph: colorGraph } = useScopeGraph(rep?.color);
+  const coverage = useCoverage(rep?.color);
   const settings = useSettings();
-  const live = useLiveCoverage(repId, rep, graph, settings, coverage);
+  const live = useLiveCoverage(rep?.color ?? '', colorScope, colorGraph, settings, coverage);
   const [line, setLine] = useState<LineMove[]>(() => lineFromSans(initialLine.split(/\s+/).filter(Boolean)));
   const [cursor, setCursor] = useState(line.length);
   // Only trust a coverage run that matches the current repertoire and settings.
-  const goalN = repTarget(rep, settings);
-  const freshCoverage = rep && settings.loaded && isCoverageFresh(coverage, rep, settings) ? coverage : undefined;
-  const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings, freshCoverage);
+  const goalN = repTarget(colorScope, settings);
+  const freshCoverage = colorScope && settings.loaded && isCoverageFresh(coverage, colorScope, settings) ? coverage : undefined;
+  const reach = useLineReach(line.slice(0, cursor), rep?.color, colorGraph, settings, freshCoverage);
   const [flipped, setFlipped] = useState(false);
   // The move whose annotation menu (symbols and note) is open, from a right-click.
   const [noteTarget, setNoteTarget] = useState<RepAnnotationTarget | null>(null);
@@ -450,10 +458,20 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   };
 
   // The most common hole: an opponent reply you don't answer, or your move with nothing prepared.
+  // Only this chapter's: a gap in another chapter is fixed there.
   const biggestGap = useMemo(() => {
-    if (!freshCoverage) return undefined;
-    const g = freshCoverage.gaps[0];
-    const u = freshCoverage.unfinished[0];
+    if (!freshCoverage || !graph) return undefined;
+    const inChapter = (sans: string[]) => {
+      let key = graph.root;
+      for (const san of sans) {
+        const m = graph.edge(key, san);
+        if (!m) return false;
+        key = m.toKey;
+      }
+      return true;
+    };
+    const g = freshCoverage.gaps.find((x) => inChapter(x.path));
+    const u = freshCoverage.unfinished.find((x) => inChapter(x.path));
     const pick =
       g && (!u || g.prob >= u.prob)
         ? { sans: [...g.path, g.san], prob: g.prob }
@@ -462,7 +480,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           : undefined;
     if (!pick) return undefined;
     return { ...pick, label: formatLine(pick.sans) || 'the starting position' };
-  }, [freshCoverage]);
+  }, [freshCoverage, graph]);
 
   const jumpToBiggestGap = () => {
     if (!biggestGap) return;
@@ -598,7 +616,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               <button onClick={() => navigate('train', { rep: rep.id, mode: 'review' })}>
                 Review <span className="badge due">{dueCount}</span>
               </button>
-              <button onClick={() => navigate(`coverage/${rep.id}`)}>Coverage</button>
+              <button onClick={() => navigate(`coverage/${rep.color}`)}>Coverage</button>
               <button onClick={() => navigate(`insights/${rep.id}`)}>Insights</button>
             </>
           )}
@@ -617,7 +635,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           <a className="btn small" href={href('train', { rep: rep.id, mode: 'review' })}>
             Review <span className="badge due">{dueCount}</span>
           </a>
-          <a className="btn small" href={href(`coverage/${rep.id}`)}>
+          <a className="btn small" href={href(`coverage/${rep.color}`)}>
             Coverage
           </a>
           <a className="btn small" href={href(`insights/${rep.id}`)}>
@@ -845,7 +863,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
       color={rep.color}
       title={myTurn ? 'Your move' : "Opponent's replies"}
       saved={children.map((c) => {
-        const card = cardById.get(c.id);
+        const card = cardById.get(cardIdOf(c));
         const childProb = coverage?.probs[c.toKey];
         const prepared = coverage?.coverage?.[c.toKey];
         return {
@@ -1021,7 +1039,7 @@ function plural(n: number, word: string) {
 
 function useLiveCoverage(
   repId: string,
-  rep: Repertoire | undefined,
+  rep: Pick<Repertoire, 'updatedAt' | 'oneInN'> | undefined,
   graph: RepGraph | undefined,
   settings: AppSettings & { loaded: boolean },
   stored: CoverageResult | undefined,

@@ -5,6 +5,7 @@
  */
 import { createEmptyCard, fsrs, Rating, State, type Card, type Grade } from 'ts-fsrs';
 import type { ReviewCard } from './types';
+import type { Color } from './chess';
 
 export { Rating, State };
 
@@ -24,7 +25,7 @@ function scheduler(s: SrsSettings) {
   });
 }
 
-export function newCard(base: { id: string; repId: string; fromKey: string; san: string }, now = Date.now()): ReviewCard {
+export function newCard(base: { id: string; color: Color; fromKey: string; san: string }, now = Date.now()): ReviewCard {
   const c = createEmptyCard(new Date(now));
   return { ...base, ...fromFsrs(c), createdAt: now };
 }
