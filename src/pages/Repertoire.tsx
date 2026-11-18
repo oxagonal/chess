@@ -16,6 +16,7 @@ import type { StudioPanelDef } from '../components/Studio';
 const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
 import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import { Board } from '../components/Board';
+import { PositionTools } from '../components/PositionTools';
 import { RepertoireHome } from './RepertoireHome';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { InlineMoves } from '../components/InlineMoves';
@@ -373,7 +374,6 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   };
 
   const counts = `${plural(graph.myMoves().length, 'move')} · ${plural(graph.leaves().length, 'line')}`;
-  const lichessUrl = `https://lichess.org/analysis/standard/${`${key} 0 1`.replace(/ /g, '_')}?color=${orientation}`;
   const header = (
     <div className="builder-head">
       <ChapterSwitcher chapter={rep} line={line.slice(0, cursor).map((m) => m.san)} />
@@ -417,7 +417,6 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           <button onClick={() => updateSettings({ builderNav: nav === 'inline' ? 'scoresheet' : 'inline' })}>
             {nav === 'inline' ? 'Show moves as a scoresheet' : 'Show moves inline'}
           </button>
-          <button onClick={() => window.open(lichessUrl, '_blank', 'noreferrer')}>Analyze on Lichess ↗</button>
           {!onDone && <button onClick={() => navigate('repertoire')}>All repertoires</button>}
           <div className="menu-note muted small">{counts}</div>
         </MoreMenu>
@@ -599,6 +598,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
       error={live.error}
     />
   );
+  // Lichess analysis and the FEN to copy (e.g. into Chessable) — not while playing from memory.
+  const positionTools = <PositionTools pos={pos} ply={cursor} orientation={orientation} />;
   const boardPane = (
     <>
       <div className="board-fit">
@@ -632,17 +633,6 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
             Fit
           </button>
         )}
-        {!zen && !phone && (
-          <a
-            className="btn small"
-            href={lichessUrl}
-            target="_blank"
-            rel="noreferrer"
-            title="Open this position on the Lichess analysis board (new tab)"
-          >
-            Analyze on Lichess ↗
-          </a>
-        )}
         <span className="spacer" />
         {!zen && (
           <label className="check small" title="Every move you play on the board is saved into the repertoire immediately">
@@ -651,6 +641,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           </label>
         )}
       </div>
+      {!zen && !phone && positionTools}
       {!zen && stacked && !phone && coverageBox}
     </>
   );
@@ -714,6 +705,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
         <div className="board-col col">{boardPane}</div>
         {memoryPanel}
         {movesPanel}
+        {!zen && <div className="panel position-tools-panel">{positionTools}</div>}
         {!zen && coverageBox}
         {!zen && engine}
         {explorer}

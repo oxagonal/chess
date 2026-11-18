@@ -16,6 +16,7 @@ import { matchChapter } from '../lib/chapters';
 import { moveGames, type Chapter, type PositionStats, type RepMove } from '../lib/types';
 import type { ImportedEdge } from '../lib/pgn';
 import { Board, type Arrow } from './Board';
+import { PositionTools } from './PositionTools';
 import { OneInNSlider } from './OneInNSlider';
 import { WdlBar } from './ui';
 import { href } from '../router';
@@ -615,7 +616,14 @@ function ChooseStep({ plans, setPlans, onBack, onNext }: { plans: Plan[]; setPla
         <span className="muted small">{formatLine(cur.a.path) || 'Starting position'}</span>
       </div>
       <div className="choose">
-        <div className="choose-board">{pos && <Board pos={pos} orientation={plan.color} arrows={arrows} />}</div>
+        <div className="choose-board">
+          {pos && (
+            <>
+              <Board pos={pos} orientation={plan.color} arrows={arrows} />
+              <PositionTools pos={pos} ply={cur.a.path.length} orientation={plan.color} />
+            </>
+          )}
+        </div>
         <div className="col choose-options" style={{ gap: 8 }}>
           <div className="muted small">The study gives you {options.length} moves here. Keep the ones you'll play:</div>
           {options.map((m) => {

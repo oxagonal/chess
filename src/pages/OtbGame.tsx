@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, uid } from '../db/db';
 import { updateSettings, useSettings } from '../db/settings';
 import { Board } from '../components/Board';
+import { PositionTools } from '../components/PositionTools';
 import { LineView } from '../components/ui';
 import { href, navigate } from '../router';
 import { playSan, playUci, startPos, type Color } from '../lib/chess';
@@ -167,6 +168,7 @@ export function OtbGameEditor({ editId, initialOpponent }: { editId?: string; in
             Undo last move
           </button>
         </div>
+        <PositionTools pos={here.pos} ply={Math.min(cursor, line.length - 1)} orientation={draft.userColor} />
       </div>
 
       <div className="col">

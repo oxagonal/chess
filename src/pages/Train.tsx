@@ -7,6 +7,7 @@ import { getSettings, updateSettings, useSettings, type AppSettings } from '../d
 import { gradeCard } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
 import { Board, type Arrow } from '../components/Board';
+import { PositionTools } from '../components/PositionTools';
 import { ColorPill, Empty, ProgressBar, Stat } from '../components/ui';
 import { PHONE_QUERY, useCards, useChapterGraphs, useMediaQuery, startOfToday } from '../hooks';
 import { ChapterTree } from '../components/ChapterTree';
@@ -660,6 +661,9 @@ function Session({ setup }: { setup: SessionSetup }) {
     </div>
   );
   const board = <Board pos={pos} orientation={rep?.color ?? 'white'} interactive={waiting} lastMove={lastMove} onMove={onMove} arrows={arrows} flash={flash} />;
+  // Lichess analysis and the FEN to copy (e.g. into Chessable) — only once the line is over and waits
+  // for Continue, so they can't give a move away.
+  const tools = holdAtEnd && <PositionTools pos={pos} ply={pathSoFar.length} orientation={rep?.color ?? 'white'} />;
   const note = noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" prompt compact={phone} />;
   const lineLabel = <h3 style={{ margin: 0 }}>{line?.phase === 'show' ? 'New line' : 'Line'}</h3>;
   const orderBadge = line?.order && (
@@ -758,6 +762,7 @@ function Session({ setup }: { setup: SessionSetup }) {
           {optionsPanel || (
             <>
               {feedbackBox}
+              {tools}
               {notes}
             </>
           )}
@@ -770,6 +775,7 @@ function Session({ setup }: { setup: SessionSetup }) {
     <div className="board-layout">
       <div className="board-col col">
         {board}
+        {tools}
         {note}
       </div>
       <div className="col">

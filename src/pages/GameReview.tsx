@@ -27,6 +27,7 @@ import {
 import { clocksAt, formatClock, formatMoveTime, moveTimes } from '../lib/clocks';
 import { MATERIAL_ROLES, materialBalance, type MaterialRole } from '../lib/material';
 import { Board, type Arrow } from '../components/Board';
+import { PositionTools } from '../components/PositionTools';
 import { MoveNote } from '../components/MoveNote';
 import { MoveList, type SideNode } from '../components/MoveList';
 import { EnginePanel } from '../components/EnginePanel';
@@ -287,6 +288,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
           </button>
         )}
       </div>
+      <PositionTools pos={pos} ply={plyHere} orientation={orientation} />
     </>
   );
 

@@ -926,3 +926,16 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .ml-inline .mv:hover { color: var(--text); background: var(--panel3); }
 .ml-inline .ml-var { color: var(--faint); }
 .ml-inline .ml-var .ml-var { font-size: 13px; }
+
+/* Under a board: Analyze on Lichess, the position's FEN (a tap selects it all) and Copy. */
+.position-tools { gap: 6px; flex-wrap: nowrap; }
+.position-tools > .btn, .position-tools > button { flex: none; }
+.position-tools .fen-field {
+  flex: 1 1 160px; min-width: 0; padding: 4px 8px; font-size: 12px; color: var(--muted);
+  background: var(--bg2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: all; -webkit-user-select: all; cursor: text;
+}
+.board-pane > .position-tools { flex: none; }
+.choose-board .position-tools { margin-top: 8px; }
+.position-tools-panel { padding: 8px 10px; }
+.tp-info > .position-tools { flex: none; }
