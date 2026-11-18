@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db, openDb } from '../db/db';
 import { addLine, createRepertoire, deleteMove, deleteRepertoire, loadGraph, setMoveComment, splitChapter, splitOff } from '../db/repertoire';
 import { loadScopeGraph, repertoireScopeId } from '../db/scopes';
-import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, migrateCardRows, unionGraph } from '../lib/chapters';
+import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, chapterGap, chapterTrunk, migrateCardRows, unionGraph } from '../lib/chapters';
+import { RepGraph } from '../lib/graph';
+import { movesFromLines } from '../lib/lines';
 import { playSan, START_KEY, startPos } from '../lib/chess';
 import { emptyDoc, upgradeSyncDoc } from '../lib/syncMerge';
 import { exportBackup, importBackup } from '../services/backup';
@@ -125,6 +127,28 @@ describe('splitting a line off by hand', () => {
     expect(await splitOff(ch.id, nf3.id, { chapterId: other.id }, { keepCopy: true })).toBe(other.id);
     expect((await loadGraph(other.id))!.graph.size).toBe(8);
     expect((await loadGraph(ch.id))!.graph.size).toBe(8);
+  });
+});
+
+describe('a chapter at a glance', () => {
+  const g = new RepGraph('black', movesFromLines('c', 'black', ['e4 c5 c3 d5 exd5 Qxd5', 'e4 c5 c3 Nf6 e5 Nd5']));
+  it('finds where it branches', () => {
+    const { trunk, key } = chapterTrunk(g);
+    expect(trunk.map((m) => m.san)).toEqual(['e4', 'c5', 'c3']);
+    expect(key).toBe(keyAfter(['e4', 'c5', 'c3']));
+    expect(chapterTrunk(new RepGraph('black', movesFromLines('c', 'black', ['e4 c5', 'd4 Nf6']))).trunk).toEqual([]);
+  });
+  it('gives its biggest gap from the start and among games reaching it', () => {
+    const cov = {
+      gaps: [
+        { path: ['e4', 'c5', 'c3', 'd5'], san: 'e5', prob: 0.004 },
+        { path: ['e4', 'c5', 'Nf3'], san: 'x', prob: 0.2 }, // not in this chapter
+      ],
+      unfinished: [{ path: ['e4', 'c5', 'c3', 'Nf6', 'e5', 'Nd5'], prob: 0.002 }],
+      probs: { [keyAfter(['e4', 'c5', 'c3'])]: 0.04 },
+    };
+    expect(chapterGap(g, cov)).toEqual({ sans: ['e4', 'c5', 'c3', 'd5', 'e5'], prob: 0.004, inChapter: 0.1 });
+    expect(chapterGap(g, { gaps: [], unfinished: [], probs: {} })).toBeUndefined();
   });
 });
 

@@ -448,6 +448,15 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .split-off-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }
 .split-off { border-top: 1px solid var(--border-soft); padding-top: 8px; }
 
+/* A chapter row: counts, its biggest gap, and where it branches. */
+.chapter-gap { min-width: 0; }
+.chapter-gap b { color: var(--text); }
+.chapter-gap-line { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.chapter-branch { display: flex; align-items: center; gap: 10px; flex: 0 1 260px; min-width: 0; color: var(--muted); }
+.chapter-branch:hover { color: var(--text); }
+.chapter-branch .miniboard { box-shadow: 0 0 0 1px rgba(0, 0, 0, .4); }
+.chapter-branch-line { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+
 /* Chapters as dropdowns: first move, then opening family. */
 .ctree { display: flex; flex-direction: column; gap: 10px; }
 .ctree-first { padding-top: 10px; padding-bottom: 6px; }

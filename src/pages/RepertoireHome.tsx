@@ -12,12 +12,17 @@ import {
   renameRepertoire,
   updateCollection,
 } from '../db/repertoire';
-import { COLORS, colorName, repertoireScopeId, useChaptersAndSets } from '../db/scopes';
-import { useCards, useChapterGraphs } from '../hooks';
-import { cardIdOf, chapterConflicts, type ChapterConflict } from '../lib/chapters';
+import { COLORS, colorName, repertoireScopeId, scopeOf, useChaptersAndSets } from '../db/scopes';
+import { useSettings } from '../db/settings';
+import { isCoverageFresh } from '../services/coverage';
+import { oneIn } from '../lib/coverage';
+import { linePaths } from '../lib/map';
+import { MiniBoard } from '../components/MiniBoard';
+import { useCards, useChapterGraphs, useCoverage } from '../hooks';
+import { cardIdOf, chapterConflicts, chapterGap, chapterTrunk, type ChapterConflict } from '../lib/chapters';
 import { formatLine, type Color } from '../lib/chess';
 import { isDue, isNew } from '../lib/srs';
-import type { Chapter, Collection, ReviewCard } from '../lib/types';
+import type { Chapter, Collection, CoverageResult, ReviewCard } from '../lib/types';
 import type { RepGraph } from '../lib/graph';
 import { ColorPill, Empty, MoreMenu } from '../components/ui';
 import { download } from '../services/backup';
@@ -38,8 +43,17 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
   const [importing, setImporting] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState<string | null>(null);
   const [wizard, setWizard] = useState(false);
+  const settings = useSettings();
+  const covWhite = useCoverage('white');
+  const covBlack = useCoverage('black');
   if (!chapters || !collections || !graphs || !cards) return null;
 
+  // Each color's coverage run, if it's up to date: it gives every chapter's biggest gap.
+  const freshCov = (color: Color): CoverageResult | undefined => {
+    const run = color === 'white' ? covWhite : covBlack;
+    const scope = settings.loaded ? scopeOf(color, chapters, collections, settings) : undefined;
+    return scope && run && isCoverageFresh(run, scope, settings) ? run : undefined;
+  };
   const view = query.get('view') === 'map' ? 'map' : 'chapters';
   const mapColor: Color = query.get('color') === 'black' || (query.get('color') !== 'white' && !chapters.some((c) => c.color === 'white')) ? 'black' : 'white';
   const tabs = (
@@ -91,7 +105,15 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
       {chapters.length === 0 && <Empty>No chapters yet — create one above, or import a PGN or Lichess study into it.</Empty>}
       {COLORS.filter((c) => chapters.some((ch) => ch.color === c)).map((color) => (
         <div key={color} className="col" style={{ gap: 8 }}>
-          <h2 style={{ margin: 0 }}>{colorName(color)} chapters</h2>
+          <div className="row">
+            <h2 style={{ margin: 0 }}>{colorName(color)} chapters</h2>
+            <span className="spacer" />
+            {!freshCov(color) && (
+              <a className="small muted" href={href(`coverage/${color}`)}>
+                Run Coverage for {colorName(color)} to see each chapter's biggest gap →
+              </a>
+            )}
+          </div>
           <ChapterTree
             color={color}
             chapters={chapters}
@@ -102,6 +124,8 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
               <ChapterRow
                 chapter={ch}
                 label={label}
+                graph={graphs.get(ch.id)}
+                coverage={freshCov(color)}
                 counts={countsOf([ch.id])}
                 onImport={() => setImporting(importing === ch.id ? null : ch.id)}
                 onSuggest={() => setSuggesting(suggesting === ch.id ? null : ch.id)}
@@ -156,8 +180,8 @@ function NewChapter({ onImport }: { onImport: () => void }) {
 function Counts({ total, due, fresh }: { total: number; due: number; fresh: number }) {
   return (
     <div className="list-meta">
-      <span>
-        {total} move{total === 1 ? '' : 's'} to know
+      <span title="Your moves to know">
+        {total} move{total === 1 ? '' : 's'}
       </span>
       {due > 0 && <span className="badge due">{due} due</span>}
       {fresh > 0 && <span className="badge new">{fresh} new</span>}
@@ -178,26 +202,68 @@ function Badges({ due, fresh }: { total: number; due: number; fresh: number }) {
 function ChapterRow({
   chapter: r,
   label,
+  graph,
+  coverage,
   counts,
   onImport,
   onSuggest,
 }: {
   chapter: Chapter;
   label: string;
+  graph?: RepGraph;
+  /** Its color's coverage run, when up to date. */
+  coverage?: CoverageResult;
   counts: { total: number; due: number; fresh: number };
   onImport: () => void;
   onSuggest: () => void;
 }) {
+  const lines = graph ? linePaths(graph).filter((l) => l.some((m) => m.mine)).length : 0;
+  const { trunk, key } = graph ? chapterTrunk(graph) : { trunk: [], key: '' };
+  const gap = graph && coverage ? chapterGap(graph, coverage) : undefined;
+  const target = coverage ? Math.round(1 / coverage.threshold) : 0;
   return (
-    <div className="list-item">
+    <div className="list-item chapter-row">
       <div className="list-main">
         <div className="list-head">
           <a className="list-title" href={href(`repertoire/${r.id}`)} title={r.name}>
             {label}
           </a>
         </div>
-        <Counts {...counts} />
+        <div className="list-meta">
+          <span title={`${counts.total} of your moves to know, across ${lines} line${lines === 1 ? '' : 's'}`}>
+            {counts.total} move{counts.total === 1 ? '' : 's'} · {lines} line{lines === 1 ? '' : 's'}
+          </span>
+          {counts.due > 0 && <span className="badge due">{counts.due} due</span>}
+          {counts.fresh > 0 && <span className="badge new">{counts.fresh} new</span>}
+        </div>
+        {coverage && (
+          <div className="list-meta chapter-gap">
+            {gap ? (
+              <>
+                <span title="How often the chapter's likeliest hole comes up — a reply you don't answer, or your move with nothing prepared — counting from the start of the game">
+                  Biggest gap <b>{oneIn(gap.prob)}</b> games
+                </span>
+                {gap.inChapter !== undefined && (
+                  <span title="The same hole among the games that reach the position where this chapter branches">
+                    · <b>{oneIn(gap.inChapter)}</b> in this chapter
+                  </span>
+                )}
+                <a href={href(`repertoire/${r.id}`, { line: gap.sans.join(' ') })} className="chapter-gap-line" title={formatLine(gap.sans)}>
+                  {formatLine(gap.sans)}
+                </a>
+              </>
+            ) : (
+              <span>No gaps at 1 in {target}</span>
+            )}
+          </div>
+        )}
       </div>
+      {graph && graph.size > 0 && (
+        <a className="chapter-branch hide-sm" href={href(`repertoire/${r.id}`, { line: trunk.map((m) => m.san).join(' ') })} title="Where this chapter branches">
+          <MiniBoard fen={key} orientation={r.color} size={64} />
+          <span className="chapter-branch-line">{formatLine(trunk.map((m) => m.san)) || 'Starting position'}</span>
+        </a>
+      )}
       <div className="list-buttons">
         <a className="btn small" href={href(`repertoire/${r.id}`)}>
           Edit

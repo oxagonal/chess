@@ -77,6 +77,61 @@ export function sourcesOf(m: RepMove): string[] {
   return (m as Partial<UnionMove>).sources ?? [m.id];
 }
 
+/**
+ * Where a chapter branches: the moves from the start while there's only one way on (its trunk), and
+ * the position at the end of them. A chapter that starts with several first moves branches at once.
+ */
+export function chapterTrunk(graph: RepGraph): { trunk: RepMove[]; key: string } {
+  const trunk: RepMove[] = [];
+  let key = graph.root;
+  const seen = new Set([key]);
+  for (let kids = graph.childrenOf(key); kids.length === 1 && !seen.has(kids[0].toKey); kids = graph.childrenOf(key)) {
+    trunk.push(kids[0]);
+    key = kids[0].toKey;
+    seen.add(key);
+  }
+  return { trunk, key };
+}
+
+/** Whether a line (SANs from the start) stays inside a graph's moves. */
+export function lineInGraph(graph: RepGraph, sans: readonly string[]): boolean {
+  let key = graph.root;
+  for (const san of sans) {
+    const m = graph.edge(key, san);
+    if (!m) return false;
+    key = m.toKey;
+  }
+  return true;
+}
+
+export interface ChapterGap {
+  /** The line to the hole: an opponent reply you don't answer, or your move with nothing prepared. */
+  sans: string[];
+  /** How often it comes up, from the starting position. */
+  prob: number;
+  /** …and among the games that reach the chapter's branch position (undefined if that's unknown). */
+  inChapter?: number;
+}
+
+/**
+ * A chapter's biggest hole, from a coverage run of its color (all chapters together, so a reply
+ * another chapter answers isn't a hole): the likeliest gap or unprepared position inside the chapter.
+ */
+export function chapterGap(
+  graph: RepGraph,
+  cov: { gaps: { path: string[]; san: string; prob: number }[]; unfinished: { path: string[]; prob: number }[]; probs: Record<string, number> },
+): ChapterGap | undefined {
+  const holes = [
+    ...cov.gaps.filter((g) => lineInGraph(graph, g.path)).map((g) => ({ sans: [...g.path, g.san], prob: g.prob })),
+    ...cov.unfinished.filter((u) => lineInGraph(graph, u.path)).map((u) => ({ sans: u.path, prob: u.prob })),
+  ];
+  if (!holes.length) return undefined;
+  const best = holes.reduce((a, b) => (b.prob > a.prob ? b : a));
+  const { key } = chapterTrunk(graph);
+  const base = key === graph.root ? 1 : cov.probs[key];
+  return { ...best, inChapter: base ? Math.min(1, best.prob / base) : undefined };
+}
+
 /** A position where chapters played together give you different moves. */
 export interface ChapterConflict {
   key: string;
