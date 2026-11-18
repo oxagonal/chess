@@ -138,8 +138,15 @@ describe('player games and downloads', () => {
     expect((await db.games.toArray()).map((g) => g.id)).toEqual(['otb:1']);
   });
 
-  it('downloads only the newest Lichess games the first time, then just new ones', async () => {
+  it('downloads every Lichess game in the chosen period the first time, then just new ones', async () => {
     const urls: string[] = [];
+    // What's already downloaded is remembered on the device.
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+    });
     const line = (id: string, t: number) =>
       JSON.stringify({ id, rated: true, variant: 'standard', speed: 'blitz', createdAt: t, status: 'mate', winner: 'white', moves: 'e4 e5', players: { white: { user: { id: 'anna', name: 'Anna' } }, black: { user: { id: 'bob', name: 'Bob' } } } });
     vi.stubGlobal('fetch', async (url: string) => {
@@ -147,10 +154,11 @@ describe('player games and downloads', () => {
       const body = urls.length === 1 ? `${line('g2', 2000)}\n${line('g1', 1000)}\n` : `${line('g3', 3000)}\n`;
       return new Response(body, { status: 200 });
     });
-    const p = await savePlayer({ name: 'Anna', lichess: 'anna' });
+    const p = await savePlayer({ name: 'Anna', lichess: 'anna', since: '' }); // all her games
     await refreshPlayerGames(p);
-    expect(urls[0]).toContain('max=600');
-    expect(urls[0]).not.toContain('sort=dateAsc');
+    expect(urls[0]).toContain('since=0');
+    expect(urls[0]).toContain('sort=dateAsc');
+    expect(urls[0]).not.toContain('max=');
     await refreshPlayerGames(p);
     expect(urls[1]).toContain('since=2001');
     const cached = await db.playerGames.where('playerId').equals(p.id).toArray();
