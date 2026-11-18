@@ -3,7 +3,7 @@ import { noteLocalDataReplaced } from './cloudSync';
 import { migrateCardRows } from '../lib/chapters';
 
 /** The Lichess login is a credential: kept out of backup files, and kept on this device across restores. */
-const CREDENTIALS = ['lichessToken', 'lichessAccount'] as const;
+const CREDENTIALS = ['lichessToken', 'lichessAccount', 'lichessScopes'] as const;
 const SETTINGS_KEY = 'settings';
 
 type KvRow = { key: string; value: unknown };

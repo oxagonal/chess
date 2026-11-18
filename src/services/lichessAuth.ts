@@ -1,13 +1,16 @@
 // "Connect Lichess": OAuth 2 with PKCE, which Lichess supports without registering an app.
-// Since 2026 the Lichess opening explorer only answers requests carrying a Lichess token; a token
-// with no scopes is enough (it can only read public data). The same token also speeds up game
-// downloads, and /api/account tells us the username so it doesn't have to be typed.
+// Since 2026 the Lichess opening explorer only answers requests carrying a Lichess token. The token
+// asks for one permission, study:read, so your private and unlisted studies can be imported; it
+// can't change anything on Lichess. The same token speeds up game downloads, and /api/account
+// tells us the username so it doesn't have to be typed.
 import { useSyncExternalStore } from 'react';
 import { getSettings, updateSettings } from '../db/settings';
 
 export const LICHESS = 'https://lichess.org';
 const CLIENT_ID = 'chess-prep';
 const PENDING_KEY = 'chess-prep:lichess-login';
+/** What the login asks for: reading your studies (for importing private and unlisted ones). */
+export const LICHESS_SCOPES = 'study:read';
 
 interface Pending {
   verifier: string;
@@ -77,6 +80,7 @@ export async function startLichessLogin(): Promise<void> {
     code_challenge_method: 'S256',
     code_challenge: await codeChallenge(pending.verifier),
     state: pending.state,
+    scope: LICHESS_SCOPES,
   });
   window.location.assign(`${LICHESS}/oauth?${params}`);
 }
@@ -125,7 +129,7 @@ export async function completeLichessLogin(): Promise<void> {
     const { access_token } = (await res.json()) as { access_token: string };
     const account = await fetch(`${LICHESS}/api/account`, { headers: { Authorization: `Bearer ${access_token}` } });
     const username = account.ok ? ((await account.json()) as { username?: string }).username ?? '' : '';
-    await updateSettings({ lichessToken: access_token, lichessAccount: username, ...(username ? { lichessUsername: username } : {}) });
+    await updateSettings({ lichessToken: access_token, lichessAccount: username, lichessScopes: LICHESS_SCOPES, ...(username ? { lichessUsername: username } : {}) });
     setStatus({});
   } catch (e) {
     setStatus({ error: (e as Error).message });
@@ -138,7 +142,7 @@ export async function disconnectLichess(): Promise<void> {
   if (lichessToken) {
     fetch(`${LICHESS}/api/token`, { method: 'DELETE', headers: { Authorization: `Bearer ${lichessToken}` } }).catch(() => {});
   }
-  await updateSettings({ lichessToken: '', lichessAccount: '' });
+  await updateSettings({ lichessToken: '', lichessAccount: '', lichessScopes: '' });
   setStatus({});
 }
 

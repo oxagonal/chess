@@ -1,5 +1,5 @@
 import { db, uid } from './db';
-import { getSettings } from './settings';
+import { getSettings, type AppSettings } from './settings';
 import { moveId, RepGraph } from '../lib/graph';
 import { toRepMove, edgesForLine } from '../lib/lines';
 import { graphToPgn, pgnToEdges, type ImportedEdge } from '../lib/pgn';
@@ -280,7 +280,20 @@ export async function exportPgn(repId: string): Promise<string> {
   });
 }
 
-/** Fetch a Lichess study (all chapters) as PGN. Accepts a study or chapter URL or bare id. */
+/** Whether the connected Lichess account lets us read its studies (private and unlisted ones too). */
+export function canReadStudies(s: Pick<AppSettings, 'lichessToken' | 'lichessScopes'>): boolean {
+  return !!s.lichessToken && s.lichessScopes.split(/\s+/).includes('study:read');
+}
+
+async function lichessHeaders(): Promise<HeadersInit> {
+  const s = await getSettings();
+  return s.lichessToken ? { Authorization: `Bearer ${s.lichessToken}` } : {};
+}
+
+/**
+ * Fetch a Lichess study (all chapters) as PGN. Accepts a study or chapter URL or bare id. Sent with
+ * your Lichess login, so your private and unlisted studies come through too.
+ */
 export async function fetchLichessStudy(urlOrId: string): Promise<string> {
   const m = urlOrId.match(/(?:study\/)?([A-Za-z0-9]{8})(?:\/([A-Za-z0-9]{8}))?/);
   if (!m) throw new Error('Could not find a study id in that URL');
@@ -288,9 +301,44 @@ export async function fetchLichessStudy(urlOrId: string): Promise<string> {
   const url = chapterId
     ? `https://lichess.org/api/study/${studyId}/${chapterId}.pgn?comments=true&variations=true&clocks=false`
     : `https://lichess.org/api/study/${studyId}.pgn?comments=true&variations=true&clocks=false`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(res.status === 404 ? 'Study not found (is it public?)' : `Lichess returned HTTP ${res.status}`);
-  return res.text();
+  const res = await fetch(url, { headers: await lichessHeaders() });
+  if (res.ok) return res.text();
+  if (res.status === 404 || res.status === 403 || res.status === 401) {
+    const s = await getSettings();
+    throw new Error(
+      canReadStudies(s)
+        ? 'Study not found — check the link, and that your connected Lichess account can see it.'
+        : s.lichessToken
+          ? 'Study not found or private — reconnect Lichess (allowing it to read your studies) to import private and unlisted ones.'
+          : 'Study not found or private — connect Lichess to import your private and unlisted studies.',
+    );
+  }
+  throw new Error(`Lichess returned HTTP ${res.status}`);
+}
+
+export interface LichessStudyInfo {
+  id: string;
+  name: string;
+  updatedAt: number;
+}
+
+/** Your own Lichess studies (private and unlisted included), most recently changed first. */
+export async function listMyStudies(): Promise<LichessStudyInfo[]> {
+  const s = await getSettings();
+  if (!s.lichessAccount) throw new Error('Connect Lichess first.');
+  const res = await fetch(`https://lichess.org/api/study/by/${encodeURIComponent(s.lichessAccount)}`, { headers: await lichessHeaders() });
+  if (!res.ok) throw new Error(res.status === 401 ? 'Your Lichess connection has expired — reconnect Lichess.' : `Lichess returned HTTP ${res.status}`);
+  const out: LichessStudyInfo[] = [];
+  for (const line of (await res.text()).split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const j = JSON.parse(line) as { id?: string; name?: string; updatedAt?: number; createdAt?: number };
+      if (j.id) out.push({ id: j.id, name: j.name ?? j.id, updatedAt: j.updatedAt ?? j.createdAt ?? 0 });
+    } catch {
+      /* skip a malformed line */
+    }
+  }
+  return out.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 /** Grade a card and append to the review log. */

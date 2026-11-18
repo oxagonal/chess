@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { addEdges, createRepertoire, fetchLichessStudy } from '../db/repertoire';
+import { addEdges, canReadStudies, createRepertoire, fetchLichessStudy, listMyStudies, type LichessStudyInfo } from '../db/repertoire';
+import { useSettings } from '../db/settings';
+import { startLichessLogin } from '../services/lichessAuth';
+import { ConnectLichessButton } from './LichessConnect';
 import { db } from '../db/db';
 import { getSettings, repTarget } from '../db/settings';
 import { colorName, loadScope } from '../db/scopes';
@@ -164,6 +167,8 @@ function SourceStep({ onLoaded, onError }: { onLoaded: (pgn: string, color: Colo
   };
   return (
     <div className="col" style={{ gap: 10 }}>
+      <MyStudies busy={busy} onPick={(id) => go(() => fetchLichessStudy(id))} />
+      <div className="muted small">or a study link</div>
       <div className="row">
         <input placeholder="https://lichess.org/study/…" value={url} onChange={(e) => setUrl(e.target.value)} style={{ flex: '1 1 300px' }} />
         <button className="primary" disabled={busy || !url.trim()} onClick={() => go(() => fetchLichessStudy(url))}>
@@ -197,6 +202,75 @@ function SourceStep({ onLoaded, onError }: { onLoaded: (pgn: string, color: Colo
           </select>
         </label>
       </div>
+    </div>
+  );
+}
+
+/** Your own Lichess studies — private and unlisted included — to pick from. */
+function MyStudies({ busy, onPick }: { busy: boolean; onPick: (id: string) => void }) {
+  const s = useSettings();
+  const [list, setList] = useState<LichessStudyInfo[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
+  const allowed = s.loaded && canReadStudies(s);
+  useEffect(() => {
+    if (!allowed) return;
+    let off = false;
+    listMyStudies()
+      .then((l) => !off && setList(l))
+      .catch((e) => !off && setError((e as Error).message));
+    return () => {
+      off = true;
+    };
+  }, [allowed]);
+  if (!s.loaded) return null;
+  if (!s.lichessToken)
+    return (
+      <div className="wizard-studies col" style={{ gap: 6 }}>
+        <b>Your Lichess studies</b>
+        <div className="muted small">Connect Lichess to pick from your own studies, private and unlisted ones included.</div>
+        <div>
+          <ConnectLichessButton />
+        </div>
+      </div>
+    );
+  if (!allowed)
+    return (
+      <div className="wizard-studies col" style={{ gap: 6 }}>
+        <b>Your Lichess studies</b>
+        <div className="muted small">
+          Your Lichess connection was made before Chess Prep could read studies. Reconnect once and allow it (read-only — it can't change
+          anything on Lichess); then come back here.
+        </div>
+        <div>
+          <button className="primary" onClick={() => void startLichessLogin()}>
+            Reconnect Lichess
+          </button>
+        </div>
+      </div>
+    );
+  const shown = (list ?? []).filter((x) => x.name.toLowerCase().includes(filter.trim().toLowerCase()));
+  return (
+    <div className="wizard-studies col" style={{ gap: 6 }}>
+      <div className="row">
+        <b>Your Lichess studies</b>
+        <span className="muted small">{s.lichessAccount}</span>
+        <span className="spacer" />
+        {list && list.length > 8 && <input placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: 180 }} />}
+      </div>
+      {error && <div className="error small">{error}</div>}
+      {!list && !error && <div className="muted small">Loading your studies…</div>}
+      {list && list.length === 0 && <div className="muted small">No studies on this account.</div>}
+      {shown.length > 0 && (
+        <div className="study-list">
+          {shown.map((st) => (
+            <button key={st.id} className="study-pick" disabled={busy} onClick={() => onPick(st.id)}>
+              <span className="study-name">{st.name}</span>
+              {st.updatedAt > 0 && <span className="muted small">{new Date(st.updatedAt).toLocaleDateString()}</span>}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

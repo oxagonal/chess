@@ -21,6 +21,8 @@ export interface AppSettings {
   lichessToken: string;
   /** Username of the connected Lichess account ('' when not connected or unknown). */
   lichessAccount: string;
+  /** Permissions the Lichess token was granted (space-separated, e.g. "study:read"); '' for none. */
+  lichessScopes: string;
   /** ISO date (YYYY-MM-DD): only import games played after this. */
   importSince: string;
   importTimeClasses: TimeClass[];
@@ -85,6 +87,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   otbName: '',
   lichessToken: '',
   lichessAccount: '',
+  lichessScopes: '',
   importSince: yearAgo(),
   importTimeClasses: ['blitz', 'rapid', 'classical', 'correspondence'],
   rating: 1500,
