@@ -40,10 +40,13 @@ export function evalScore(e: MoveEval): number {
 /* ------------------------------------------------------------- cloud eval */
 
 const cloudCache = new Map<string, EngineLine[] | null>();
+/** After Lichess says "too many requests", ask again only after a minute. */
+let cloudPausedUntil = 0;
 
 /** Lichess's cloud analysis of a position (its best lines), if it has one. */
 export async function cloudLines(key: string, signal?: AbortSignal): Promise<EngineLine[] | undefined> {
   if (cloudCache.has(key)) return cloudCache.get(key) ?? undefined;
+  if (Date.now() < cloudPausedUntil) return undefined;
   const fen = `${key} 0 1`;
   try {
     const res = await fetch(`https://lichess.org/api/cloud-eval?${new URLSearchParams({ fen, multiPv: '5' })}`, { signal });
@@ -51,6 +54,7 @@ export async function cloudLines(key: string, signal?: AbortSignal): Promise<Eng
       cloudCache.set(key, null);
       return undefined;
     }
+    if (res.status === 429) cloudPausedUntil = Date.now() + 60_000;
     if (!res.ok) return undefined; // rate limited etc. — the local engine covers it
     const data = (await res.json()) as { depth: number; pvs: { moves: string; cp?: number; mate?: number }[] };
     const lines = data.pvs.map((pv) => ({ eval: { cp: pv.cp, mate: pv.mate, depth: data.depth, source: 'cloud' as const }, moves: normalise(key, pv.moves.split(' ')) }));
@@ -182,8 +186,13 @@ export interface AnalysisStatus {
  * until cancelled) — a deeper cloud result is kept until the engine catches up. Returns a function
  * that cancels the search.
  */
-export function analysePosition(key: string, depth: number, multiPv: number, onUpdate: (lines: EngineLine[], status: AnalysisStatus) => void): () => void {
+export function analysePosition(key: string, depth: number, multiPv: number, report: (lines: EngineLine[], status: AnalysisStatus) => void): () => void {
   let cancelled = false;
+  // Everything found is shared with the explorer's Stockfish column.
+  const onUpdate = (lines: EngineLine[], status: AnalysisStatus) => {
+    publishLines(key, lines);
+    report(lines, status);
+  };
   const ctrl = new AbortController();
   const cacheKey = `${key}|${depth}|${multiPv}`;
 
@@ -231,6 +240,63 @@ export function analysePosition(key: string, depth: number, multiPv: number, onU
     ctrl.abort();
     engine.stop();
   };
+}
+
+/* ------------------------------------------- the explorer's Stockfish column */
+
+const latestLines = new Map<string, EngineLine[]>();
+const lineListeners = new Set<(key: string, lines: EngineLine[]) => void>();
+
+function publishLines(key: string, lines: EngineLine[]) {
+  latestLines.delete(key);
+  latestLines.set(key, lines);
+  if (latestLines.size > 64) latestLines.delete(latestLines.keys().next().value!);
+  for (const l of lineListeners) l(key, lines);
+}
+
+/** The latest best lines the Stockfish box found in a position (each gives its first move an eval). */
+export function engineLinesFor(key: string): EngineLine[] | undefined {
+  return latestLines.get(key);
+}
+
+/** Called whenever the Stockfish box finds better lines somewhere. Returns an unsubscribe function. */
+export function onEngineLines(cb: (key: string, lines: EngineLine[]) => void): () => void {
+  lineListeners.add(cb);
+  return () => {
+    lineListeners.delete(cb);
+  };
+}
+
+/**
+ * The evaluation after each of `ucis` in position `key` (White's point of view), from Lichess's cloud
+ * analysis: the position's own best lines first, then the position after each remaining move, one
+ * request at a time (cached, and shared with the Stockfish box). It never takes the local engine
+ * from the Stockfish box. Calls `onUpdate` as results arrive; returns a function that cancels.
+ */
+export function cloudMoveEvals(key: string, ucis: string[], onUpdate: (evals: Map<string, MoveEval>) => void): () => void {
+  const ctrl = new AbortController();
+  const out = new Map<string, MoveEval>();
+  (async () => {
+    try {
+      for (const l of (await cloudLines(key, ctrl.signal)) ?? []) {
+        const u = l.moves[0];
+        if (u && ucis.includes(u) && !out.has(u)) out.set(u, l.eval);
+      }
+      if (out.size) onUpdate(new Map(out));
+      const pos = posFromFen(key);
+      for (const u of ucis) {
+        if (out.has(u) || !pos) continue;
+        const after = playUci(pos, u);
+        const best = after && (await cloudLines(after.key, ctrl.signal))?.[0];
+        if (!best) continue;
+        out.set(u, best.eval);
+        onUpdate(new Map(out));
+      }
+    } catch {
+      /* cancelled */
+    }
+  })();
+  return () => ctrl.abort();
 }
 
 /* ------------------------------------------------------- game review */

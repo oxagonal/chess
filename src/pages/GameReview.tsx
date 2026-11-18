@@ -32,6 +32,9 @@ const OUTLINE: Record<MaterialRole, string> = { queen: '♕\uFE0E', rook: '♖\u
 
 const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
 
+/** Where each game's review was left this session (move, side line, board flipped). */
+const reviewPlaces = new Map<string, { cursor: number | null; flipped: boolean; sel: { id: string; at: number } | null }>();
+
 function sourceName(source: GameSource): string {
   return source === 'lichess' ? 'Lichess' : source === 'chesscom' ? 'Chess.com' : 'Over the board';
 }
@@ -41,16 +44,22 @@ function sourceName(source: GameSource): string {
  * the computer review, explorers), or one column on phones. The moves are always the game itself —
  * nothing you click changes them — and right-click (long-press on touch) annotates a move.
  */
-export function GameReview({ id }: { id: string }) {
+export function GameReview({ id, initialPly }: { id: string; initialPly?: number }) {
   const game = useLiveQuery(() => db.games.get(id), [id]);
   const graphs = useAllGraphs();
   const stacked = useMediaQuery('(max-width: 900px)');
-  const [cursor, setCursor] = useState<number | null>(null);
-  const [flipped, setFlipped] = useState(false);
+  // Coming back to a game (e.g. from the builder) finds it where you left it.
+  const place = `${id}|${initialPly ?? ''}`;
+  const left = reviewPlaces.get(place);
+  const [cursor, setCursor] = useState<number | null>(left ? left.cursor : (initialPly ?? null));
+  const [flipped, setFlipped] = useState(left?.flipped ?? false);
   const [menu, setMenu] = useState<AnnotationTarget | null>(null);
   const [layoutVersion, setLayoutVersion] = useState(0);
   /** Where the board is in a side line (`at` = moves into it), or null when it's on the game itself. */
-  const [sel, setSel] = useState<{ id: string; at: number } | null>(null);
+  const [sel, setSel] = useState<{ id: string; at: number } | null>(left?.sel ?? null);
+  useEffect(() => {
+    reviewPlaces.set(place, { cursor, flipped, sel });
+  }, [place, cursor, flipped, sel]);
   /** Side lines as just changed here, until the saved copy of the game catches up. */
   const [localLines, setLocalLines] = useState<SavedLine[] | null>(null);
   useEffect(() => {

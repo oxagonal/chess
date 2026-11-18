@@ -117,6 +117,8 @@ export interface MoveStat {
   draws: number;
   black: number;
   averageRating?: number;
+  /** When it was last played here (explorers built from your or a scouted player's games). */
+  lastPlayed?: number;
 }
 
 export interface PositionStats {
@@ -127,6 +129,8 @@ export interface PositionStats {
   black: number;
   moves: MoveStat[];
   opening?: { eco: string; name: string };
+  /** When the position was last reached (explorers built from games). */
+  lastPlayed?: number;
 }
 
 export function moveGames(m: MoveStat): number {

@@ -36,6 +36,37 @@ const TABS: Tab[] = [
   { path: 'settings', label: 'Settings', page: SettingsPage },
 ];
 
+/**
+ * Where you were in Games — the game you were reviewing, or a filtered list — so its tab takes you back
+ * there after you've been elsewhere (checking the line in the builder, drilling it…). Kept for the
+ * session. Tapping Games while in Games goes to the list.
+ */
+const LAST_GAMES_KEY = 'chess-prep:lastGames';
+
+function useLastGames(route: Route): string {
+  const [last, setLast] = useState(() => {
+    try {
+      return sessionStorage.getItem(LAST_GAMES_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  });
+  useEffect(() => {
+    if (route.path[0] !== 'games') return;
+    const sub = route.path[1];
+    // Not the over-the-board editor: what you typed there isn't kept anyway.
+    const here = sub === 'new' || sub === 'edit' ? '' : window.location.hash;
+    setLast(here);
+    try {
+      if (here) sessionStorage.setItem(LAST_GAMES_KEY, here);
+      else sessionStorage.removeItem(LAST_GAMES_KEY);
+    } catch {
+      /* storage unavailable: just not remembered */
+    }
+  }, [route]);
+  return last;
+}
+
 function useNow(intervalMs = 30_000) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -51,6 +82,8 @@ export function App() {
   const due = useLiveQuery(() => db.cards.where('due').belowOrEqual(now).filter((c) => c.state !== 0).count(), [now]);
   const tab = TABS.find((t) => t.path === (route.path[0] ?? '')) ?? TABS[0];
   const Page = tab.page;
+  const lastGames = useLastGames(route);
+  const tabHref = (t: Tab) => (t.path === 'games' && tab !== t && lastGames ? lastGames : href(t.path));
 
   useEffect(() => {
     document.title = due ? `(${due}) Chess Prep` : 'Chess Prep';
@@ -64,7 +97,7 @@ export function App() {
         </a>
         <nav className="nav row" style={{ flexWrap: 'nowrap' }}>
           {TABS.map((t) => (
-            <a key={t.path} href={href(t.path)} className={t === tab ? 'active' : ''} aria-current={t === tab ? 'page' : undefined}>
+            <a key={t.path} href={tabHref(t)} className={t === tab ? 'active' : ''} aria-current={t === tab ? 'page' : undefined}>
               <span className="nav-icon">{NAV_ICONS[t.path]}</span>
               <span className="nav-label">{t.label}</span>
               {t.path === 'train' && !!due && <span className="badge due">{due}</span>}

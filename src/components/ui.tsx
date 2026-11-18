@@ -103,6 +103,30 @@ export function timeAgo(ts: number): string {
   return `${Math.round(s / 86400)} d ago`;
 }
 
+const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+
+/** Short counts: 21, 5.8K, 1.4M. */
+export function shortCount(n: number): string {
+  return compact.format(n);
+}
+
+/** "today", "yesterday", "5 days ago", "1 month ago", "3 years ago" (calendar days). */
+export function agoLabel(ts: number, now = Date.now()): string {
+  const day = (t: number) => {
+    const d = new Date(t);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  };
+  const days = Math.round((day(now) - day(ts)) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 31) return `${days} days ago`;
+  const months = Math.floor(days / 30.44);
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
+  const years = Math.floor(days / 365.25);
+  return `${years} year${years === 1 ? '' : 's'} ago`;
+}
+
 export function ProgressBar({ value }: { value: number }) {
   return (
     <div className="progress">

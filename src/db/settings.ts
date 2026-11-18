@@ -6,6 +6,9 @@ import type { TimeClass } from '../lib/importers/common';
 import type { GameRange } from '../lib/gameRange';
 import type { Repertoire } from '../lib/types';
 
+/** Columns the explorer table can show (chosen with its ⚙ button). */
+export type ExplorerColumn = 'games' | 'share' | 'reach' | 'result' | 'eval' | 'last';
+
 export interface AppSettings {
   lichessUsername: string;
   chesscomUsername: string;
@@ -64,6 +67,8 @@ export interface AppSettings {
    * games" explorer tab). Longer than gameRange by default: probabilities need lots of games.
    */
   opponentRange: GameRange;
+  /** Explorer table: which columns are shown (synced with your other settings). */
+  explorerColumns: ExplorerColumn[];
 }
 
 function yearAgo(): string {
@@ -101,6 +106,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   builderNav: 'scoresheet',
   gameRange: '1m',
   opponentRange: '1y',
+  explorerColumns: ['games', 'share', 'reach', 'result', 'last'],
 };
 
 const KEY = 'settings';
