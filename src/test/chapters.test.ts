@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db, openDb } from '../db/db';
 import { addLine, createRepertoire, deleteMove, deleteRepertoire, loadGraph, mergeChapter, setMoveComment, splitChapter, splitOff } from '../db/repertoire';
 import { loadScopeGraph, repertoireScopeId } from '../db/scopes';
-import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, chapterGap, chapterTrunk, matchChapter, migrateCardRows, unionGraph } from '../lib/chapters';
+import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, chapterGap, chapterPosition, chapterTrunk, matchChapter, migrateCardRows, unionGraph } from '../lib/chapters';
+import openings from '../data/openings.json';
+import { buildOpeningIndex } from '../lib/openingNames';
 import { RepGraph } from '../lib/graph';
 import { movesFromLines } from '../lib/lines';
 import { playSan, START_KEY, startPos } from '../lib/chess';
@@ -138,6 +140,16 @@ describe('a chapter at a glance', () => {
     expect(key).toBe(keyAfter(['e4', 'c5', 'c3']));
     expect(chapterTrunk(new RepGraph('black', movesFromLines('c', 'black', ['e4 c5', 'd4 Nf6']))).trunk).toEqual([]);
   });
+  it("finds the position that defines its opening, not the chapter's single replies after it", () => {
+    const names = buildOpeningIndex(openings as [string, string, string][]);
+    // A Pirc chapter that only prepares 2.d4, then plays 2...Nf6: the Pirc is 1.e4 d6.
+    const pirc = new RepGraph('black', movesFromLines('p', 'black', ['e4 d6 d4 Nf6 Nc3 g6', 'e4 d6 d4 Nf6 f3 e5']));
+    const pos = chapterPosition(pirc, names);
+    expect(pos.moves.map((m) => m.san)).toEqual(['e4', 'd6']);
+    // Without names: everything up to where it branches.
+    expect(chapterPosition(pirc, undefined).moves.map((m) => m.san)).toEqual(['e4', 'd6', 'd4', 'Nf6']);
+  });
+
   it('gives its biggest gap from the start and among games reaching it', () => {
     const cov = {
       gaps: [

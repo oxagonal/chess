@@ -11,6 +11,7 @@
 import { turnOfKey, type Color } from './chess';
 import { RepGraph } from './graph';
 import type { RepMove } from './types';
+import { nameParts, type OpeningIndex } from './openingNames';
 
 /** A move's card: `${fromKey}|${san}` (your color is the side to move in fromKey). */
 export function cardIdOf(m: { fromKey: string; san: string }): string {
@@ -118,6 +119,31 @@ export function matchChapter(incoming: RepGraph, candidates: readonly { id: stri
   return best && { id: best.id, share: best.share };
 }
 
+/**
+ * The position that defines a chapter's opening — "1.e4 d6" for a Pirc chapter, "1.e4 c5 2.c3" for an
+ * Alapin — even if the chapter only goes on one way for a while after it (a Black chapter's single
+ * prepared reply isn't part of the opening's name). Along the chapter's trunk: the earliest position
+ * with the same opening and variation as the deepest named one. Without names, the whole trunk.
+ */
+export function chapterPosition(graph: RepGraph, names: OpeningIndex | undefined): { moves: RepMove[]; key: string } {
+  const { trunk, key } = chapterTrunk(graph);
+  if (!names) return { moves: trunk, key };
+  const group = (n: string) => {
+    const p = nameParts(n);
+    return p.variation ? `${p.family}: ${p.variation}` : p.family;
+  };
+  let deepest = -1;
+  for (let i = trunk.length - 1; i >= 0; i--) if (names.has(trunk[i].toKey)) {
+    deepest = i;
+    break;
+  }
+  if (deepest < 0) return { moves: trunk, key };
+  const target = group(names.get(trunk[deepest].toKey)!);
+  const first = trunk.findIndex((m, i) => i <= deepest && names.has(m.toKey) && group(names.get(m.toKey)!) === target);
+  const moves = trunk.slice(0, first + 1);
+  return { moves, key: moves[moves.length - 1].toKey };
+}
+
 /** Whether a line (SANs from the start) stays inside a graph's moves. */
 export function lineInGraph(graph: RepGraph, sans: readonly string[]): boolean {
   let key = graph.root;
@@ -134,7 +160,7 @@ export interface ChapterGap {
   sans: string[];
   /** How often it comes up, from the starting position. */
   prob: number;
-  /** …and among the games that reach the chapter's branch position (undefined if that's unknown). */
+  /** …and if the chapter's opening came up every game (among games reaching its position; undefined if unknown). */
   inChapter?: number;
 }
 
@@ -145,6 +171,7 @@ export interface ChapterGap {
 export function chapterGap(
   graph: RepGraph,
   cov: { gaps: { path: string[]; san: string; prob: number }[]; unfinished: { path: string[]; prob: number }[]; probs: Record<string, number> },
+  names?: OpeningIndex,
 ): ChapterGap | undefined {
   const holes = [
     ...cov.gaps.filter((g) => lineInGraph(graph, g.path)).map((g) => ({ sans: [...g.path, g.san], prob: g.prob })),
@@ -152,7 +179,7 @@ export function chapterGap(
   ];
   if (!holes.length) return undefined;
   const best = holes.reduce((a, b) => (b.prob > a.prob ? b : a));
-  const { key } = chapterTrunk(graph);
+  const { key } = chapterPosition(graph, names);
   const base = key === graph.root ? 1 : cov.probs[key];
   return { ...best, inChapter: base ? Math.min(1, best.prob / base) : undefined };
 }

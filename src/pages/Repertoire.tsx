@@ -4,7 +4,8 @@ import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { addEdges, deleteMove, setMoveAnnotation, splitOff } from '../db/repertoire';
 import { loadOpeningIndex, nameParts } from '../lib/openingNames';
-import { chapterOfMoveId } from '../lib/chapters';
+import { chapterOfMoveId, chapterPosition } from '../lib/chapters';
+import { useOpeningIndex } from '../components/ChapterTree';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
 import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepGraph } from '../hooks';
 import { cardIdOf, cardsOf } from '../lib/chapters';
@@ -84,9 +85,17 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const goalN = repTarget(colorScope, settings);
   const freshCoverage = colorScope && settings.loaded && isCoverageFresh(coverage, colorScope, settings) ? coverage : undefined;
   const reach = useLineReach(line.slice(0, cursor), rep?.color, colorGraph, settings, freshCoverage);
-  // The same position down this chapter's line only: this move order, split only between this
-  // chapter's own choices (the figure above adds every move order in every chapter of the color).
-  const branchReach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings);
+  // How often this position comes up if the chapter's opening came up every game: the figure above
+  // divided by how often the opening's position (e.g. 1.e4 d6 for a Pirc chapter) comes up.
+  const openingNames = useOpeningIndex();
+  const chapterOpening = useMemo(() => (graph ? chapterPosition(graph, openingNames) : undefined), [graph, openingNames]);
+  const openingPath = (chapterOpening?.moves ?? []).map((m) => ({ fromKey: m.fromKey, san: m.san, key: m.toKey }));
+  const openingReach = useLineReach(openingPath, rep?.color, colorGraph, settings, freshCoverage);
+  const here = line.slice(0, cursor);
+  const pastOpening =
+    !!chapterOpening && chapterOpening.moves.length > 0 && here.length > chapterOpening.moves.length && here.some((m) => m.key === chapterOpening.key);
+  const within =
+    pastOpening && reach.prob !== undefined && openingReach.prob ? { prob: Math.min(1, reach.prob / openingReach.prob), loading: reach.loading || openingReach.loading } : undefined;
   const [flipped, setFlipped] = useState(false);
   // The move whose annotation menu (symbols and note) is open, from a right-click.
   const [noteTarget, setNoteTarget] = useState<RepAnnotationTarget | null>(null);
@@ -591,7 +600,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const coverageBox = (
     <CoverageBox
       reach={reach}
-      branch={branchReach}
+      within={within}
+      openingLabel={formatLine((chapterOpening?.moves ?? []).map((m) => m.san))}
       colorLabel={rep ? `${rep.color === 'white' ? 'White' : 'Black'} chapters` : ''}
       inRep={inRep}
       score={coverage?.coverage?.[key]}
@@ -947,7 +957,8 @@ function useLineReach(
  */
 function CoverageBox({
   reach,
-  branch,
+  within,
+  openingLabel,
   colorLabel,
   inRep,
   score,
@@ -958,8 +969,9 @@ function CoverageBox({
   error,
 }: {
   reach: LineReach;
-  /** Down this chapter's line only. */
-  branch: LineReach;
+  /** If the chapter's opening came up every game (only past the opening's position). */
+  within?: { prob: number; loading: boolean };
+  openingLabel: string;
   colorLabel: string;
   inRep: boolean;
   score?: number;
@@ -981,15 +993,12 @@ function CoverageBox({
         <b style={{ opacity: reach.loading ? 0.5 : 1 }}>{reach.error ? '—' : p === undefined ? '…' : p === 0 ? 'never' : oneIn(p)}</b>
         <span>{p !== undefined && p >= 1 / 1.05 ? 'you reach this position' : `games reach here (all ${colorLabel})`}</span>
       </div>
-      <div
-        className="cov-stat"
-        title="How often you get here down this chapter's line: this move order only, your choices split only between this chapter's moves. Other move orders and other chapters can add to the figure before it."
-      >
-        <b style={{ opacity: branch.loading ? 0.5 : 1 }}>
-          {branch.error ? '—' : branch.prob === undefined ? '…' : branch.prob === 0 ? 'never' : oneIn(branch.prob)}
-        </b>
-        <span>down this chapter's line</span>
-      </div>
+      {within && (
+        <div className="cov-stat" title={`How often this position comes up if this chapter's opening (${openingLabel}) came up in every game.`}>
+          <b style={{ opacity: within.loading ? 0.5 : 1 }}>{within.prob === 0 ? 'never' : oneIn(within.prob)}</b>
+          <span>within this opening</span>
+        </div>
+      )}
       {inRep && (
         <div
           className="cov-stat"

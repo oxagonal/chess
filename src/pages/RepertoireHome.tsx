@@ -19,7 +19,7 @@ import { isCoverageFresh } from '../services/coverage';
 import { oneIn } from '../lib/coverage';
 import { linePaths } from '../lib/map';
 import { useCards, useChapterGraphs, useCoverage } from '../hooks';
-import { cardIdOf, chapterConflicts, chapterGap, chapterTrunk, type ChapterConflict } from '../lib/chapters';
+import { cardIdOf, chapterConflicts, chapterGap, chapterPosition, type ChapterConflict } from '../lib/chapters';
 import { formatLine, type Color } from '../lib/chess';
 import { isDue, isNew } from '../lib/srs';
 import type { Chapter, Collection, CoverageResult, ReviewCard } from '../lib/types';
@@ -30,7 +30,8 @@ import { href, navigate } from '../router';
 import { RepertoireMap } from './RepertoireMap';
 import { SuggestChapters } from '../components/SuggestChapters';
 import { ImportWizard } from '../components/ImportWizard';
-import { ChapterTree } from '../components/ChapterTree';
+import { ChapterTree, useOpeningIndex } from '../components/ChapterTree';
+import type { OpeningIndex } from '../lib/openingNames';
 
 /**
  * The Repertoire page: your chapters (one opening each, by color) and your repertoires (saved sets of
@@ -47,6 +48,7 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
   const settings = useSettings();
   const covWhite = useCoverage('white');
   const covBlack = useCoverage('black');
+  const names = useOpeningIndex();
   if (!chapters || !collections || !graphs || !cards) return null;
 
   // Each color's coverage run, if it's up to date: it gives every chapter's biggest gap.
@@ -126,6 +128,7 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
                 chapter={ch}
                 label={label}
                 graph={graphs.get(ch.id)}
+                names={names}
                 coverage={freshCov(color)}
                 counts={countsOf([ch.id])}
                 onImport={() => setImporting(importing === ch.id ? null : ch.id)}
@@ -208,6 +211,7 @@ function ChapterRow({
   chapter: r,
   label,
   graph,
+  names,
   coverage,
   counts,
   onImport,
@@ -217,6 +221,7 @@ function ChapterRow({
   chapter: Chapter;
   label: string;
   graph?: RepGraph;
+  names?: OpeningIndex;
   /** Its color's coverage run, when up to date. */
   coverage?: CoverageResult;
   counts: { total: number; due: number; fresh: number };
@@ -225,8 +230,8 @@ function ChapterRow({
   onMerge: () => void;
 }) {
   const lines = graph ? linePaths(graph).filter((l) => l.some((m) => m.mine)).length : 0;
-  const { trunk } = graph ? chapterTrunk(graph) : { trunk: [] };
-  const gap = graph && coverage ? chapterGap(graph, coverage) : undefined;
+  const opening = graph ? chapterPosition(graph, names).moves.map((m) => m.san) : [];
+  const gap = graph && coverage ? chapterGap(graph, coverage, names) : undefined;
   const target = coverage ? Math.round(1 / coverage.threshold) : 0;
   return (
     <div className="list-item chapter-row">
@@ -235,6 +240,11 @@ function ChapterRow({
           <a className="list-title" href={href(`repertoire/${r.id}`)} title={r.name}>
             {label}
           </a>
+          {opening.length > 0 && (
+            <a className="chapter-pos" href={href(`repertoire/${r.id}`, { line: opening.join(' ') })} title="The position that defines this chapter's opening">
+              {formatLine(opening)}
+            </a>
+          )}
         </div>
         <div className="list-meta">
           <span title={`${counts.total} of your moves to know, across ${lines} line${lines === 1 ? '' : 's'}`}>
@@ -251,8 +261,8 @@ function ChapterRow({
                   Biggest gap <b>{oneIn(gap.prob)}</b> games
                 </span>
                 {gap.inChapter !== undefined && (
-                  <span title="The same hole among the games that reach the position where this chapter branches">
-                    · <b>{oneIn(gap.inChapter)}</b> in this chapter
+                  <span title={`The same hole if this opening (${formatLine(opening) || 'the start'}) came up in every game`}>
+                    · <b>{oneIn(gap.inChapter)}</b> if you get this opening
                   </span>
                 )}
                 <a href={href(`repertoire/${r.id}`, { line: gap.sans.join(' ') })} className="chapter-gap-line" title={formatLine(gap.sans)}>
@@ -265,11 +275,6 @@ function ChapterRow({
           </div>
         )}
       </div>
-      {graph && graph.size > 0 && (
-        <a className="chapter-branch" href={href(`repertoire/${r.id}`, { line: trunk.map((m) => m.san).join(' ') })} title="Where this chapter branches">
-          <span className="chapter-branch-line">{formatLine(trunk.map((m) => m.san)) || 'Starting position'}</span>
-        </a>
-      )}
       <div className="list-buttons">
         <a className="btn small" href={href(`repertoire/${r.id}`)}>
           Edit
