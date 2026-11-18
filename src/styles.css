@@ -444,6 +444,26 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .sc-tip { position: absolute; top: 8px; width: 140px; padding: 8px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; pointer-events: none; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
 .sc-tip-row { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
 
+/* Import wizard: steps, chapter rows, and choosing between the moves a study gives you. */
+.wizard { border-color: var(--accent2); }
+.wizard-steps { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0; padding: 0; list-style: none; counter-reset: step; font-size: 13px; color: var(--faint); }
+.wizard-steps li { counter-increment: step; }
+.wizard-steps li::before { content: counter(step) '. '; }
+.wizard-steps li.on { color: var(--text); font-weight: 700; }
+.wizard-steps li.done { color: var(--muted); }
+.wizard-row { padding: 6px 10px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg2); }
+.wizard-row.faded > :not(input[type='checkbox']) { opacity: .5; }
+.warn { color: var(--warn); }
+.choose { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+.choose-board { width: min(360px, 100%); flex: none; }
+.choose-options { flex: 1 1 300px; min-width: 0; }
+.choose-option { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg2); cursor: pointer; }
+.choose-option.off { opacity: .55; }
+.choose-san { font-size: 16px; min-width: 52px; }
+.choose-wdl { width: 140px; }
+.choose-wdl .wdl { min-width: 0; }
+.choose-note { flex-basis: 100%; color: var(--muted); font-size: 12.5px; font-style: italic; }
+
 /* Suggesting chapters (splitting one by opening names). */
 .suggest { border-color: var(--accent2); }
 .suggest-list { gap: 6px; }

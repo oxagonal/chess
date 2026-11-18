@@ -14,6 +14,7 @@ const CREDITS: { name: string; url: string; what: string; license: string }[] = 
   { name: 'Dexie', url: 'https://dexie.org', what: 'in-browser storage', license: 'Apache-2.0' },
   { name: 'React', url: 'https://react.dev', what: 'user interface', license: 'MIT' },
   { name: 'Inter', url: 'https://rsms.me/inter/', what: 'typeface, by Rasmus Andersson', license: 'SIL OFL 1.1' },
+  { name: 'Lichess opening names', url: 'https://github.com/lichess-org/chess-openings', what: 'opening names (for suggesting chapters)', license: 'CC0 / public domain' },
 ];
 
 export function AboutPanel() {

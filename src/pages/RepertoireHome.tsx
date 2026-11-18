@@ -24,6 +24,7 @@ import { download } from '../services/backup';
 import { href, navigate } from '../router';
 import { RepertoireMap } from './RepertoireMap';
 import { SuggestChapters } from '../components/SuggestChapters';
+import { ImportWizard } from '../components/ImportWizard';
 
 /**
  * The Repertoire page: your chapters (one opening each, by color) and your repertoires (saved sets of
@@ -35,6 +36,7 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
   const cards = useCards();
   const [importing, setImporting] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState<string | null>(null);
+  const [wizard, setWizard] = useState(false);
   if (!chapters || !collections || !graphs || !cards) return null;
 
   const view = query.get('view') === 'map' ? 'map' : 'chapters';
@@ -82,7 +84,8 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
         White chapter.
       </p>
 
-      <NewChapter />
+      <NewChapter onImport={() => setWizard(true)} />
+      {wizard && <ImportWizard chapters={chapters} onClose={() => setWizard(false)} />}
 
       {chapters.length === 0 && <Empty>No chapters yet — create one above, or import a PGN or Lichess study into it.</Empty>}
       {COLORS.filter((c) => chapters.some((ch) => ch.color === c)).map((color) => (
@@ -113,7 +116,7 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
   );
 }
 
-function NewChapter() {
+function NewChapter({ onImport }: { onImport: () => void }) {
   const [name, setName] = useState('');
   const [color, setColor] = useState<Color>('white');
   const create = async () => {
@@ -139,6 +142,8 @@ function NewChapter() {
         <button className="primary" onClick={create}>
           Create
         </button>
+        <span className="spacer" />
+        <button onClick={onImport}>Import a Lichess study or PGN…</button>
       </div>
     </div>
   );

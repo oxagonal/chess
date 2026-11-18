@@ -2,6 +2,19 @@
 
 A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps:
 
+- **Chapters and repertoires** — your openings are *chapters* (one color's move tree from move 1, e.g.
+  "Italian" or "Caro-Kann, Exchange"). Training progress belongs to positions, not chapters: a move that's in
+  several chapters is one card, learned once. A *repertoire* is a saved set of chapters (say an Exchange
+  Caro-Kann and an Italian for one tournament) that you can train, measure and check — it says where its
+  chapters give you different moves in the same position. Train all of a color, a repertoire or one chapter.
+- **Map** — Repertoire → Map: each chapter as a row of squares, one per line, colored by how well you know
+  its weakest move (not learned, lapsed, learning, growing, solid; hollow when due), with lines by strength
+  over the last 30 days. Hover a square for the line, its position and its status, and practice it.
+- **Split into chapters** — a chapter's ⋯ menu suggests chapters from the opening names of its lines (by
+  position, so transposed move orders land together); rename, merge or leave out suggestions first.
+- **Import wizard** — Repertoire → *Import a Lichess study or PGN*: study chapters become chapters (or go into
+  existing ones), opponent replies rarer than 1 in N can be trimmed, and every position where the study gives
+  you more than one move is shown on a board, with explorer stats, to keep one, some or all.
 - **Repertoire builder** — build White and Black repertoires move by move on the board, with the Lichess
   opening explorer (at *your* rating), the masters database and your own games alongside. Positions are
   merged by FEN, so transpositions are handled automatically. A live **coverage score** shows, for the
@@ -162,4 +175,5 @@ Board: [chessground](https://github.com/lichess-org/chessground); chess logic:
 [chessops](https://github.com/niklasf/chessops); engine: [Stockfish](https://github.com/nmrugg/stockfish.js)
 (all GPL-3.0). Piece images: Colin M.L. Burnett (GPL-2.0-or-later). Scheduling:
 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs) (MIT); storage: Dexie (Apache-2.0); UI: React (MIT);
-font: Inter (OFL).
+font: Inter (OFL). Opening names: [lichess-org/chess-openings](https://github.com/lichess-org/chess-openings)
+(public domain / CC0), in `src/data/openings.json` (rebuilt by `scripts/openings-from-lichess.mjs`).

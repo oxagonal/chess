@@ -31,6 +31,11 @@ export interface ForwardOptions {
   threshold: number;
   /** Opponent positions less likely than this are not looked up (defaults to threshold). */
   queryCutoff?: number;
+  /**
+   * Every move of yours counts as played (each gets the whole probability) instead of your choices
+   * splitting it evenly — for an import, before you've picked between its alternatives.
+   */
+  pickAll?: boolean;
   onProgress?: (queried: number, current: string) => void;
   signal?: AbortSignal;
 }
@@ -77,8 +82,8 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
         if (p >= threshold && !isGameOver(key)) unfinished.push({ key, prob: p, path: pathSans(key), myTurn: true });
         continue;
       }
-      // Several prepared moves: assume you pick between them evenly.
-      for (const m of kids) add(m.toKey, p / kids.length);
+      // Several prepared moves: assume you pick between them evenly (or, for an import, play each).
+      for (const m of kids) add(m.toKey, opts.pickAll ? p : p / kids.length);
       continue;
     }
 
