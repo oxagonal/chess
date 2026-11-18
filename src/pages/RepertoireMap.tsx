@@ -7,16 +7,14 @@ import { startOfToday, useCards, useChapterGraphs, useCoverage } from '../hooks'
 import { chapterLines, STRENGTH_HINT, STRENGTH_LABEL, STRENGTHS, strengthHistory, type MapLine, type Strength } from '../lib/map';
 import { chapterPosition } from '../lib/chapters';
 import { compactLine, formatLine, type Color } from '../lib/chess';
-import { formatInterval } from '../lib/srs';
 import type { Chapter, Collection, CoverageResult } from '../lib/types';
 import { isCoverageFresh } from '../services/coverage';
-import { MiniBoard } from '../components/MiniBoard';
+import { LineCard } from '../components/LineCard';
 import { Empty } from '../components/ui';
 import { ChapterTree, useOpeningIndex } from '../components/ChapterTree';
 import type { RepGraph } from '../lib/graph';
 import { href, navigate } from '../router';
 
-const DAY = 86_400_000;
 /** Known well: the next review is a week or more away. */
 const WELL: Strength[] = ['growing', 'solid'];
 /** Strongest first, for bars and the legend. */
@@ -349,39 +347,9 @@ function LinePopover({ open, color, onEnter, onLeave, onClose }: { open: Open; c
 
   const sans = line.path.map((m) => m.san);
   const end = line.path[line.path.length - 1];
-  const nextDue = line.cards.filter((c) => c.state !== 0).reduce((a, c) => Math.min(a, c.due), Infinity);
-  const status =
-    line.strength === 'new' && !line.due
-      ? 'Not learned'
-      : line.due
-        ? line.overdueDays > 0
-          ? `Overdue ${line.overdueDays}d`
-          : 'Due today'
-        : Number.isFinite(nextDue)
-          ? `Due in ${formatInterval(nextDue - Date.now())}`
-          : '—';
   return (
     <div className="map-pop" ref={box} style={pos} onMouseEnter={onEnter} onMouseLeave={onLeave} role="dialog" aria-label={`Line ${open.index + 1} of ${chapter.name}`}>
-      <div className="map-eyebrow">{chapter.name}</div>
-      <div className="map-pop-title">Line {open.index + 1}</div>
-      <div className="map-pop-moves mono">{formatLine(sans)}</div>
-      <div className="map-pop-body">
-        <MiniBoard fen={end.toKey} orientation={color} size={148} />
-        <dl className="map-pop-stats">
-          <dt>Strength</dt>
-          <dd>
-            <span className={`str-swatch str-${line.strength}`} /> {STRENGTH_LABEL[line.strength]}
-          </dd>
-          <dt>Interval</dt>
-          <dd>{line.interval !== undefined ? formatInterval(Math.max(DAY / 24, line.interval)) : '—'}</dd>
-          <dt>Status</dt>
-          <dd className={line.due ? 'warn' : ''}>{status}</dd>
-          <dt>Reviews</dt>
-          <dd>{line.reviews}</dd>
-          <dt>Length</dt>
-          <dd>{Math.ceil(line.path.length / 2)} moves</dd>
-        </dl>
-      </div>
+      <LineCard eyebrow={chapter.name} title={`Line ${open.index + 1}`} line={line} color={color} />
       <div className="row map-pop-actions">
         <button className="primary small" onClick={() => navigate('train', { rep: chapter.id, mode: 'drill', at: end.toKey, t: String(Date.now()) })}>
           Practice ▸

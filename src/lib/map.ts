@@ -86,28 +86,30 @@ export function linePaths(graph: RepGraph): RepMove[][] {
   return out;
 }
 
+/** One line (a path of moves from the start) with where its cards stand. */
+export function mapLine(path: RepMove[], cardById: ReadonlyMap<string, ReviewCard>, now = Date.now(), startOfToday = now - (now % DAY)): MapLine {
+  const cards = path.filter((m) => m.mine).map((m) => cardById.get(cardIdOf(m))).filter((c): c is ReviewCard => !!c);
+  const learned = cards.filter((c) => c.state !== 0);
+  const due = cards.filter((c) => isDue(c, now));
+  return {
+    id: path[path.length - 1].id,
+    path,
+    cards,
+    strength: cards.length ? weakest(cards.map(strengthOf)) : 'solid',
+    due: due.length > 0,
+    overdueDays: due.length ? Math.max(...due.map((c) => Math.floor((now - c.due) / DAY))) : 0,
+    today: cards.some((c) => (c.lastReview ?? 0) >= startOfToday),
+    interval: learned.length ? Math.min(...learned.map((c) => c.due - (c.lastReview ?? c.due))) : undefined,
+    reviews: cards.reduce((n, c) => n + c.reps, 0),
+    createdAt: Math.max(...path.map((m) => m.createdAt)),
+  };
+}
+
 /** A chapter's lines, in the order they appear (depth-first, main moves first). */
 export function chapterLines(graph: RepGraph, cardById: ReadonlyMap<string, ReviewCard>, now = Date.now(), startOfToday = now - (now % DAY)): MapLine[] {
-  const make = (path: RepMove[]): MapLine => {
-    const cards = path.filter((m) => m.mine).map((m) => cardById.get(cardIdOf(m))).filter((c): c is ReviewCard => !!c);
-    const learned = cards.filter((c) => c.state !== 0);
-    const due = cards.filter((c) => isDue(c, now));
-    return {
-      id: path[path.length - 1].id,
-      path,
-      cards,
-      strength: cards.length ? weakest(cards.map(strengthOf)) : 'solid',
-      due: due.length > 0,
-      overdueDays: due.length ? Math.max(...due.map((c) => Math.floor((now - c.due) / DAY))) : 0,
-      today: cards.some((c) => (c.lastReview ?? 0) >= startOfToday),
-      interval: learned.length ? Math.min(...learned.map((c) => c.due - (c.lastReview ?? c.due))) : undefined,
-      reviews: cards.reduce((n, c) => n + c.reps, 0),
-      createdAt: Math.max(...path.map((m) => m.createdAt)),
-    };
-  };
   // Lines with none of your moves on them (an opponent move ending a branch) don't need knowing.
   return linePaths(graph)
-    .map(make)
+    .map((p) => mapLine(p, cardById, now, startOfToday))
     .filter((l) => l.cards.length > 0);
 }
 

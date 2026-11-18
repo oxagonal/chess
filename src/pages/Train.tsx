@@ -11,6 +11,8 @@ import { PositionTools } from '../components/PositionTools';
 import { ColorPill, Empty, ProgressBar, Stat } from '../components/ui';
 import { PHONE_QUERY, useCards, useChapterGraphs, useMediaQuery, startOfToday } from '../hooks';
 import { ChapterTree } from '../components/ChapterTree';
+import { LineCard } from '../components/LineCard';
+import { mapLine } from '../lib/map';
 import { COLORS, colorName, loadScopeGraph, scopeIdsFor, scopeOf, repertoireScopeId, useChaptersAndSets, type Scope } from '../db/scopes';
 import { cardsOf, chapterOfMoveId, sourcesOf, trainable, unionGraph } from '../lib/chapters';
 import { href, navigate } from '../router';
@@ -424,7 +426,21 @@ function Session({ setup }: { setup: SessionSetup }) {
   // A finished line waits for Continue (so you can edit it or its note) — unless Auto-advance is on,
   // which still stops after a missed move so you can write down why.
   const holdAtEnd = !!line && line.phase === 'quiz' && idx >= line.steps.length && (!live.trainAutoNext || !!noteMove);
+  // The lines you played (with the moves you missed), for the cards at the end of the session.
+  const playedRef = useRef(new Map<string, { scopeId: string; path: RepMove[]; missed: Set<string> }>());
+  const missedRef = useRef(new Set<string>());
+  useEffect(() => {
+    missedRef.current = new Set();
+  }, [line]);
+  const recordLine = () => {
+    if (!line || line.phase !== 'quiz' || !line.steps.length) return;
+    const path = line.steps.map((s) => s.move);
+    const key = path.map((m) => m.id).join(' ');
+    const had = playedRef.current.get(key);
+    playedRef.current.set(key, { scopeId: line.repId, path, missed: new Set([...(had?.missed ?? []), ...missedRef.current]) });
+  };
   const continueAfterLine = () => {
+    recordLine();
     setStats((s) => ({ ...s, lines: s.lines + 1 }));
     nextLine();
   };
@@ -456,6 +472,7 @@ function Session({ setup }: { setup: SessionSetup }) {
           setLastMove(undefined);
           setFeedback({ kind: 'info', text: 'Now play the line from memory.' });
         } else {
+          recordLine();
           setStats((s) => ({ ...s, lines: s.lines + 1 }));
           nextLine();
         }
@@ -504,7 +521,10 @@ function Session({ setup }: { setup: SessionSetup }) {
       }
       if (step.kind === 'practice') {
         const missed = wrong > 0 || hint;
-        if (missed) setNoteMove(noteFor(expected));
+        if (missed) {
+          setNoteMove(noteFor(expected));
+          missedRef.current.add(expected.san);
+        }
         feedbackToken.current++;
         setFeedback({ kind: missed ? 'hint' : 'good', text: <b>{missed ? `${expected.san} — keep it in mind.` : `✓ ${expected.san}`}</b> });
         // A drill counts every move you play as reviewed: one that isn't due yet has its interval
@@ -519,7 +539,10 @@ function Session({ setup }: { setup: SessionSetup }) {
       }
       gradedRef.current.add(expected.id);
       const failed = wrong > 0 || hint;
-      if (failed) setNoteMove(noteFor(expected));
+      if (failed) {
+        setNoteMove(noteFor(expected));
+        missedRef.current.add(expected.san);
+      }
       pendingRef.current.delete(expected.id);
       setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (failed ? 0 : 1), failed: s.failed + (failed ? 1 : 0) }));
       const body = (interval?: string) => (
@@ -623,7 +646,7 @@ function Session({ setup }: { setup: SessionSetup }) {
 
   if (finished) {
     return (
-      <div className="col" style={{ gap: 16, maxWidth: 640, margin: '0 auto' }}>
+      <div className="col" style={{ gap: 16, maxWidth: playedRef.current.size ? 1100 : 640, margin: '0 auto' }}>
         <div className="hero">
           <h1>Session complete</h1>
           <p className="muted">
@@ -658,6 +681,7 @@ function Session({ setup }: { setup: SessionSetup }) {
             </a>
           </div>
         </div>
+        <SessionCards played={[...playedRef.current.values()]} reps={reps} />
       </div>
     );
   }
@@ -883,6 +907,52 @@ function Session({ setup }: { setup: SessionSetup }) {
 
         {feedbackBox}
         {actions}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The lines you played this session as cards (like the map's): what you missed, and where each line
+ * stands now that this session's grades are in.
+ */
+function SessionCards({ played, reps }: { played: { scopeId: string; path: RepMove[]; missed: Set<string> }[]; reps: Map<string, Scope> }) {
+  const cards = useCards();
+  const { chapters } = useChaptersAndSets();
+  if (!played.length || !cards || !chapters) return null;
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  const now = Date.now();
+  const today = startOfToday();
+  // Missed lines first: they're the ones to look at.
+  const sorted = [...played].sort((a, b) => (b.missed.size ? 1 : 0) - (a.missed.size ? 1 : 0));
+  return (
+    <div className="col" style={{ gap: 10 }}>
+      <h2 style={{ margin: 0 }}>
+        {played.length} line{played.length === 1 ? '' : 's'} practiced
+      </h2>
+      <div className="session-cards">
+        {sorted.map(({ scopeId, path, missed }) => {
+          const last = path[path.length - 1];
+          const chapterId = chapterOfMoveId(sourcesOf(last)[0]);
+          const chapter = chapters.find((c) => c.id === chapterId);
+          const color = reps.get(scopeId)?.color ?? chapter?.color ?? 'white';
+          const line = mapLine(path, byId, now, today);
+          return (
+            <LineCard
+              key={path.map((m) => m.id).join(' ')}
+              className={`panel ${missed.size ? 'missed' : 'clean'}`}
+              eyebrow={chapter?.name ?? 'Line'}
+              title={missed.size ? <span className="warn-text">✗ Missed {[...missed].join(', ')}</span> : <span className="good-text">✓ All right</span>}
+              line={line}
+              color={color}
+              actions={
+                <a className="btn small" href={href(`repertoire/${chapterId}`, { line: path.map((m) => m.san).join(' ') })}>
+                  Open in builder
+                </a>
+              }
+            />
+          );
+        })}
       </div>
     </div>
   );
