@@ -39,6 +39,16 @@ export function AnnotationMenu({
   const [glyphs, setGlyphs] = useState<string[]>(annotation?.glyphs ?? []);
   const latest = useRef({ annotation, comment, onChange });
   latest.current = { annotation, comment, onChange };
+  const commentBox = useRef<HTMLTextAreaElement>(null);
+
+  // Straight into the comment, the cursor after what's written. (On a phone the keyboard comes up as
+  // the finger lifts — see annotateProps.)
+  useEffect(() => {
+    const t = commentBox.current;
+    if (!t) return;
+    t.focus({ preventScroll: true });
+    t.setSelectionRange(t.value.length, t.value.length);
+  }, []);
 
   // Keep it on screen.
   useEffect(() => {
@@ -112,6 +122,7 @@ export function AnnotationMenu({
       {section('Position', POSITION_GLYPHS)}
       {section('Observation', OBSERVATION_GLYPHS)}
       <textarea
+        ref={commentBox}
         className="anno-comment"
         rows={2}
         placeholder="Comment"
