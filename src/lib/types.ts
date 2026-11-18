@@ -138,6 +138,12 @@ export interface StoredGame {
   annotations?: Record<string, MoveAnnotation>;
   /** Lines you tried in the review (side lines off the game's moves), with their own annotations. */
   lines?: SavedLine[];
+  /** Your takeaways from the game, written in the review. */
+  takeaways?: string;
+  /** What the game says to work on (Tactics, Endgames, Time management…). */
+  workOn?: string[];
+  /** When you marked the review done — a ✓ beside the game on the Games tab. */
+  reviewedAt?: number;
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;
 }

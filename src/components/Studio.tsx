@@ -24,6 +24,11 @@ export interface StudioPanelDef {
   multiple?: boolean;
   /** The pane can't grow taller than its content (snaps to it), while it's alone in its pane. */
   fitHeight?: boolean;
+  /**
+   * For a kind of panel added after layouts were saved: the first time a saved layout opens without
+   * it, it's added as a tab beside this kind of panel (once — close it and it stays closed).
+   */
+  joins?: string;
   render: (api: DockviewPanelApi) => ReactNode;
 }
 
@@ -209,6 +214,39 @@ export function Studio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetSignal]);
 
+  // Which kinds of panel this device's saved layout has been offered, so newly added kinds show up
+  // once in layouts saved before they existed (see StudioPanelDef.joins).
+  const kindsKey = `${storageKey}:kinds`;
+  const offered = (): string[] | undefined => {
+    try {
+      return JSON.parse(localStorage.getItem(kindsKey) ?? 'null') ?? undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const rememberKinds = () => {
+    try {
+      localStorage.setItem(kindsKey, JSON.stringify(panels.map((p) => p.type)));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const addNewKinds = (api: DockviewApi) => {
+    const known = offered();
+    for (const def of panels) {
+      if (!def.joins || known?.includes(def.type) || api.getPanel(def.type)) continue;
+      const beside = api.getPanel(def.joins);
+      api.addPanel({
+        id: def.type,
+        component: 'panel',
+        title: def.title,
+        params: { type: def.type },
+        inactive: true,
+        ...(beside ? { position: { referencePanel: beside.id, direction: 'within' as const } } : {}),
+      });
+    }
+  };
+
   return (
     <Ctx.Provider value={{ defs }}>
       <DockviewReact
@@ -233,6 +271,8 @@ export function Studio({
             api.clear();
           }
           if (!restored) defaultLayout(api);
+          else addNewKinds(api);
+          rememberKinds();
           api.onDidLayoutChange(() => {
             clearTimeout(saveTimer.current);
             saveTimer.current = setTimeout(() => {

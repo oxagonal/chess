@@ -955,3 +955,17 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .choose-board .position-tools { margin-top: 8px; }
 .position-tools-panel { padding: 8px 10px; }
 .tp-info > .position-tools { flex: none; }
+
+/* Game review: takeaways, what to work on, done. */
+.takeaways-text { width: 100%; box-sizing: border-box; min-height: 84px; resize: vertical; }
+.tag-row { gap: 5px; }
+.tag-toggle { border-radius: 999px; padding: 3px 10px; font-weight: 500; color: var(--muted); background: transparent; }
+.tag-toggle.on, .tag-toggle.on:hover:not(:disabled) { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+.tag-add input { width: 110px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; }
+.studio-inner > .takeaways { padding-top: 10px; }
+.studio-dock .takeaways > h3 { display: none; }
+/* Games list: ✓ and the tags of a reviewed game. */
+.review-cell { white-space: normal; }
+.reviewed-check { color: var(--good); font-weight: 800; margin-right: 4px; cursor: help; }
+.badge.work-tag { background: rgba(74, 144, 217, 0.16); color: #a9c8ee; margin: 1px 3px 1px 0; }
+@media (max-width: 700px) { .tag-add input { font-size: 16px; } }

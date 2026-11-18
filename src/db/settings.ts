@@ -73,6 +73,8 @@ export interface AppSettings {
   opponentRange: GameRange;
   /** Explorer table: which columns are shown (synced with your other settings). */
   explorerColumns: ExplorerColumn[];
+  /** Game review: "work on" tags you've added yourself (offered after the built-in ones). */
+  workOnTags: string[];
 }
 
 function yearAgo(): string {
@@ -113,6 +115,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   gameRange: '1m',
   opponentRange: '1y',
   explorerColumns: ['games', 'share', 'reach', 'result', 'last'],
+  workOnTags: [],
 };
 
 const KEY = 'settings';

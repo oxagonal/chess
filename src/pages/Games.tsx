@@ -297,6 +297,7 @@ function GamesOverview({ query }: { query: URLSearchParams }) {
                   <th className="hide-sm" />
                   <th>Opponent</th>
                   <th>Result</th>
+                  <th title="✓ = review done, with what the game says to work on">Review</th>
                   <th className="hide-sm">Type</th>
                   <th className="hide-sm">Opening</th>
                   <th>Prep</th>
@@ -328,6 +329,18 @@ function GamesOverview({ query }: { query: URLSearchParams }) {
                         <span className={`badge ${g.userScore === 1 ? 'good' : g.userScore === 0 ? 'bad' : ''}`}>
                           {g.userScore === 1 ? 'Won' : g.userScore === 0 ? 'Lost' : g.userScore === 0.5 ? 'Draw' : '—'}
                         </span>
+                      </td>
+                      <td className="review-cell">
+                        {g.reviewedAt && (
+                          <span className="reviewed-check" title={`Reviewed ${fmtDate(g.reviewedAt)}${g.takeaways ? ` — ${g.takeaways}` : ''}`}>
+                            ✓
+                          </span>
+                        )}
+                        {g.workOn?.map((t) => (
+                          <span key={t} className="badge work-tag">
+                            {t}
+                          </span>
+                        ))}
                       </td>
                       <td className="small muted hide-sm">
                         {g.source === 'otb' ? 'OTB' : sourceName(g.source)} · {g.timeClass}

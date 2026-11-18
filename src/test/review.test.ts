@@ -6,6 +6,7 @@ import { canPromote, glyphsFromNags, lineTree, moveGlyph, nagsOf, otherGlyphs, p
 import { biggestSwingsFor, formatEvalShort, type GameReview } from '../lib/review';
 import { clocksAt, formatClock, formatMoveTime, inferIncrement, moveTimes, timeSpent } from '../lib/clocks';
 import { materialBalance } from '../lib/material';
+import { WORK_ON_TAGS, tagOptions, toggleTag } from '../lib/takeaways';
 import { playSan, startPos } from '../lib/chess';
 import { emptySnapshot, mergeSync } from '../lib/syncMerge';
 import type { StoredGame } from '../lib/types';
@@ -186,5 +187,18 @@ describe('side lines in the game review', () => {
   it('annotates a shared move in every line through it', () => {
     const next = withSharedLineNote(lines, c3, 0, { glyphs: ['!?'] });
     expect(next.map((l) => l.notes?.['0']?.glyphs)).toEqual([['!?'], undefined, ['!?']]);
+  });
+});
+
+describe('what a game says to work on', () => {
+  it('offers the built-in tags, then yours, each once', () => {
+    const o = tagOptions(['Pawn breaks', 'tactics'], ['Old tag']);
+    expect(o.slice(0, WORK_ON_TAGS.length)).toEqual(WORK_ON_TAGS);
+    expect(o.slice(WORK_ON_TAGS.length)).toEqual(['Pawn breaks', 'Old tag']);
+  });
+  it('toggles a tag, keeping the offered order', () => {
+    const o = tagOptions([]);
+    expect(toggleTag(['Endgames'], 'Tactics', o)).toEqual(['Tactics', 'Endgames']);
+    expect(toggleTag(['Tactics', 'Endgames'], 'tactics', o)).toEqual(['Endgames']);
   });
 });

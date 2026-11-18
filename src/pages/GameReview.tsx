@@ -34,6 +34,7 @@ import { EnginePanel } from '../components/EnginePanel';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { ChaptersPanel } from '../components/ChaptersPanel';
 import { GameReviewPanel } from '../components/GameReviewPanel';
+import { TakeawaysPanel } from '../components/TakeawaysPanel';
 import { AnnotationMenu, type AnnotationTarget } from '../components/AnnotationMenu';
 import { annotateProps } from '../components/NotePopover';
 import { Empty, fmtDate } from '../components/ui';
@@ -503,6 +504,9 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
     />
   );
 
+  // Your takeaways, what to work on, and "Done reviewing" (the ✓ on the Games tab).
+  const takeaways = <TakeawaysPanel key={game.id} game={game} />;
+
   if (stacked) {
     return (
       <div className="review-stacked col">
@@ -511,12 +515,15 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
         {movesPanel}
         {reviewPanel}
         {engine}
+        {takeaways}
         {annotationMenu}
       </div>
     );
   }
 
   const panels: StudioPanelDef[] = [
+    // What you take from the game; it joins layouts saved before it existed, beside the computer review.
+    { type: 'takeaways', title: 'Takeaways', joins: 'review', render: () => takeaways },
     { type: 'board', title: 'Board', render: () => <div className="board-pane">{boardPane}</div> },
     { type: 'stockfish', title: 'Stockfish', fitHeight: true, render: () => engine },
     { type: 'game', title: 'Game', fitHeight: true, render: () => gamePanel },
@@ -600,6 +607,7 @@ function defaultReviewLayout(api: DockviewApi) {
   add('moves', 'Moves', { referencePanel: 'stockfish', direction: 'below' });
   add('review', 'Computer review', { referencePanel: 'game', direction: 'below' });
   add('chapters', 'Chapters', { referencePanel: 'review', direction: 'within' });
+  add('takeaways', 'Takeaways', { referencePanel: 'review', direction: 'within' });
   api.getPanel('review')?.api.setActive();
   // The board's pane: as wide as the board can be tall (tab bar, two player bars and the buttons
   // take ~130px), leaving at least 280px on each side.
