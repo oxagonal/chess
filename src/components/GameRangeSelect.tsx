@@ -6,9 +6,20 @@ import { GAME_RANGES, type GameRange } from '../lib/gameRange';
  *  - "gameRange": your games themselves (forgot prep, slips, recent games)
  *  - "opponentRange": your games used as opponent statistics (coverage from your opponents, My games tab)
  */
-export function GameRangeSelect({ count, setting = 'gameRange' }: { count?: number; setting?: 'gameRange' | 'opponentRange' }) {
+export function GameRangeSelect({
+  count,
+  setting = 'gameRange',
+  value: shown,
+  onChange,
+}: {
+  count?: number;
+  setting?: 'gameRange' | 'opponentRange';
+  /** A period chosen just here (e.g. a list opened from the explorer) instead of the setting. */
+  value?: GameRange;
+  onChange?: (r: GameRange) => void;
+}) {
   const s = useSettings();
-  const value = s[setting];
+  const value = shown ?? s[setting];
   return (
     <span
       className="row"
@@ -19,7 +30,7 @@ export function GameRangeSelect({ count, setting = 'gameRange' }: { count?: numb
           : 'Which of your games count as opponent statistics (coverage from your own opponents, the My games tab). Longer periods give steadier numbers.'
       }
     >
-      <select value={value} onChange={(e) => updateSettings({ [setting]: e.target.value as GameRange })}>
+      <select value={value} onChange={(e) => (onChange ? onChange(e.target.value as GameRange) : updateSettings({ [setting]: e.target.value as GameRange }))}>
         {GAME_RANGES.map((r) => (
           <option key={r.value} value={r.value}>
             {r.label}

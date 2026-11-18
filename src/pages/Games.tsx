@@ -14,7 +14,10 @@ import type { ImportProgress } from '../lib/importers/common';
 import { MoveNote } from '../components/MoveNote';
 import { ColorPill, Empty, Stat, TableWrap, fmtDate, timeAgo } from '../components/ui';
 import { href, navigate } from '../router';
-import { rangeCutoff } from '../lib/gameRange';
+import { GAME_RANGES, rangeCutoff, type GameRange } from '../lib/gameRange';
+import { pathToPosition } from '../lib/mygames';
+import { PlayerGames } from './PlayerGames';
+import { PositionFilterNote } from '../components/PositionFilterNote';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { LichessAccount } from '../components/LichessConnect';
 import { OtbGameEditor } from './OtbGame';
@@ -29,8 +32,18 @@ export function GamesPage({ route }: PageProps) {
   const id = route.path[1];
   if (id === 'new') return <OtbGameEditor key="new" initialOpponent={route.query.get('opponent') ?? undefined} />;
   if (id === 'edit' && route.path[2]) return <OtbGameEditor key={route.path[2]} editId={route.path[2]} />;
-  if (id) return <GameReview key={id} id={id} />;
-  return <GamesOverview />;
+  // ?ply= opens the game at a position (e.g. from a list of the games that reached it).
+  const ply = Number(route.query.get('ply') ?? NaN);
+  const initialPly = Number.isInteger(ply) && ply >= 0 ? ply : undefined;
+  if (id) return <GameReview key={`${id}|${initialPly ?? ''}`} id={id} initialPly={initialPly} />;
+  // From the explorer's Players tab: a scouted player's games (in a position).
+  if (route.query.get('player')) return <PlayerGames key={route.query.toString()} query={route.query} />;
+  return <GamesOverview key={route.query.toString()} query={route.query} />;
+}
+
+/** A period from a link (?range=), if it's one we know. */
+function rangeParam(v: string | null): GameRange | undefined {
+  return GAME_RANGES.some((r) => r.value === v) ? (v as GameRange) : undefined;
 }
 
 function usePrepResults(games: StoredGame[] | undefined, graphs: RepWithGraph[] | undefined) {
@@ -132,14 +145,32 @@ function SyncPanel() {
 
 /* ---------------------------------------------------------------- overview */
 
-function GamesOverview() {
+function GamesOverview({ query }: { query: URLSearchParams }) {
   const games = useGames();
   const graphs = useAllGraphs();
   const results = usePrepResults(games, graphs);
   const [source, setSource] = useState<'all' | GameSource>('all');
-  const [color, setColor] = useState<'all' | 'white' | 'black'>('all');
+  const [color, setColor] = useState<'all' | 'white' | 'black'>(() => {
+    const c = query.get('color');
+    return c === 'white' || c === 'black' ? c : 'all';
+  });
   const [tc, setTc] = useState('all');
-  const { gameRange } = useSettings();
+  const { gameRange: rangeSetting } = useSettings();
+  // Opened from the explorer's 🔍: only games that reached its position (and played its move), over
+  // the explorer's period, so the list matches the count you clicked.
+  const at = query.get('at') ?? undefined;
+  const atMove = query.get('move') ?? undefined;
+  const [rangeHere, setRangeHere] = useState<GameRange | undefined>(() => rangeParam(query.get('range')));
+  const gameRange = rangeHere ?? rangeSetting;
+  const paths = useMemo(() => {
+    if (!games || at === undefined) return undefined;
+    const out = new Map<string, string[]>();
+    for (const g of games) {
+      const p = pathToPosition(g.sans, at, atMove);
+      if (p) out.set(g.id, p);
+    }
+    return out;
+  }, [games, at, atMove]);
   const [kind, setKind] = useState<'all' | PrepKind>('all');
   const [limit, setLimit] = useState(100);
   const [applyMsg, setApplyMsg] = useState<string | null>(null);
@@ -153,9 +184,10 @@ function GamesOverview() {
         (source === 'all' || g.source === source) &&
         (color === 'all' || g.userColor === color) &&
         (tc === 'all' || g.timeClass === tc) &&
+        (!paths || paths.has(g.id)) &&
         g.playedAt >= cutoff,
     );
-  }, [games, source, color, tc, gameRange]);
+  }, [games, source, color, tc, gameRange, paths]);
   const summary = useMemo(() => summarize(filtered, results), [filtered, results]);
   const shown = filtered.filter((g) => kind === 'all' || results.get(g.id)?.kind === kind);
 
@@ -237,8 +269,11 @@ function GamesOverview() {
                 </option>
               ))}
             </select>
-            <GameRangeSelect />
+            <GameRangeSelect value={rangeHere} onChange={rangeHere ? setRangeHere : undefined} />
           </div>
+          {paths && (
+            <PositionFilterNote path={filtered.length ? paths.get(filtered[0].id) : undefined} move={atMove} count={filtered.length} clearHref={href('games')} />
+          )}
 
           <div className="panel">
             <div className="row">
@@ -273,7 +308,11 @@ function GamesOverview() {
                   const opp = g.userColor === 'white' ? g.black : g.white;
                   const oppElo = g.userColor === 'white' ? g.blackElo : g.whiteElo;
                   return (
-                    <tr key={g.id} className="clickable" onClick={() => navigate(`games/${encodeURIComponent(g.id)}`)}>
+                    <tr
+                      key={g.id}
+                      className="clickable"
+                      onClick={() => navigate(`games/${encodeURIComponent(g.id)}`, paths?.has(g.id) ? { ply: String(paths.get(g.id)!.length) } : undefined)}
+                    >
                       <td className="small nowrap">
                         <span className="hide-sm">{fmtDate(g.playedAt)}</span>
                         <span className="show-sm">{shortDate(g.playedAt)}</span>
@@ -308,6 +347,7 @@ function GamesOverview() {
               </tbody>
             </table>
             </TableWrap>
+            {!shown.length && <Empty>No games match these filters.</Empty>}
             </div>
             {shown.length > limit && (
               <div style={{ textAlign: 'center', marginTop: 8 }}>

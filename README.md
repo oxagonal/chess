@@ -19,6 +19,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   (your over-the-board games against them, plus any PGN you paste), or find them by name in the
   **over-the-board games database** (13 million games from Lumbra's Gigabase, exported and deployed as a
   separate static site — see `gamesdb/SPEC.md`), and see what they play in the position you're on.
+- **Explorer columns** — the explorer's ⚙ picks its columns (games, %, 1 in N, Stockfish eval, result, last
+  played; saved with your settings, so they sync). In *My games* and *Players* each move shows when it was
+  last played, and 🔍 lists the games behind a move or the position (any move order) on the Games tab.
 - **Spaced repetition** — every one of your moves is a card scheduled with [FSRS](https://github.com/open-spaced-repetition/ts-fsrs).
   *Learn* shows new lines and then has you replay them from memory; *Review* plays each due position out
   from the starting position (opponent moves and moves that aren't due are played for you) and asks only

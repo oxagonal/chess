@@ -810,3 +810,16 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
   .builder-phone .explorer table td { padding: 5px 6px; }
   .builder-phone .explorer .tabs button { font-size: 12px; padding: 4px 8px; min-height: 30px; }
 }
+
+/* Explorer: ⚙ column chooser, and the 🔍 links to the games behind a row. */
+.columns-pop { min-width: 270px; gap: 0; }
+.columns-pop > .menu-note { border-top: none; margin-top: 0; padding: 4px 10px 6px; }
+.columns-pop label.check { padding: 7px 10px; border-radius: 6px; align-items: flex-start; font-size: 13px; line-height: 1.35; }
+.columns-pop label.check:hover { background: var(--panel3); }
+.columns-pop label.check input { margin-top: 2px; }
+.explorer-cols { padding: 3px 8px; font-size: 14px; color: var(--muted); }
+.icon-btn { padding: 4px 7px; color: var(--muted); }
+.icon-btn:hover { color: var(--text); }
+.explorer th .list-actions { min-height: 0; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--text); background: var(--panel2); }

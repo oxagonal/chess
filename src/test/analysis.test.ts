@@ -5,7 +5,7 @@ import { computeCoverage, oneIn, likelyPositions } from '../lib/coverage';
 import { analyzeGame, summarize } from '../lib/prep';
 import { parseLichessGame } from '../lib/importers/lichess';
 import { parseChessComGame, archiveMonthIndex } from '../lib/importers/chesscom';
-import { GameStatsIndex } from '../lib/mygames';
+import { GameStatsIndex, pathToPosition } from '../lib/mygames';
 import { bandsForRating, toLichessRating } from '../lib/ratings';
 import { keysAlong } from '../lib/pgn';
 import { START_KEY } from '../lib/chess';
@@ -201,6 +201,29 @@ describe('my-games explorer + ratings', () => {
     const s = idx.get(START_KEY)!;
     expect(s.total).toBe(2);
     expect(s.moves.map((m) => [m.san, m.white])).toEqual([['e4', 2]]);
+  });
+
+  it('knows when each move was last played, and finds the games in a position', () => {
+    const games = [
+      game('e4 c5 Nf3 d6', 'white', { playedAt: 100 }),
+      game('Nf3 c5 e4 d6', 'white', { playedAt: 300 }), // same position by another move order
+      game('e4 c5 Nf3 Nc6', 'white', { playedAt: 200 }),
+      game('e4 e5', 'white', { playedAt: 0 }), // undated
+    ];
+    const idx = new GameStatsIndex(games);
+    expect(idx.get(START_KEY)!.lastPlayed).toBe(300);
+    const start = idx.get(START_KEY)!;
+    expect(start.moves.find((m) => m.san === 'e4')!.lastPlayed).toBe(200);
+    expect(start.moves.find((m) => m.san === 'Nf3')!.lastPlayed).toBe(300);
+    // After 1. e4 c5 2. Nf3 (Black to move): three games, two of them went on d6.
+    const key = keysAlong(['e4', 'c5', 'Nf3']).keys[3];
+    const at = idx.get(key)!;
+    expect(at.total).toBe(3);
+    expect(at.moves.find((m) => m.san === 'd6')!.lastPlayed).toBe(300);
+    expect(games.map((g) => pathToPosition(g.sans, key)?.join(' '))).toEqual(['e4 c5 Nf3', 'Nf3 c5 e4', 'e4 c5 Nf3', undefined]);
+    expect(games.map((g) => !!pathToPosition(g.sans, key, 'd6'))).toEqual([true, true, false, false]);
+    // A position counts only when a move is played from it, as in the explorer.
+    expect(pathToPosition(['e4', 'c5', 'Nf3'], key)).toBeUndefined();
   });
 
   it('picks explorer rating bands', () => {
