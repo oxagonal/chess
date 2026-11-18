@@ -118,7 +118,7 @@ export function RepertoireMap({
             </div>
             <div className="map-tiles">
               <Tile value={due} label="due now" />
-              <Tile value={counts.lapsed} label="lapsed" />
+              <Tile value={counts.lapsed} label="missed last time" />
               <Tile value={counts.new} label="not learned" />
             </div>
             <StrengthBar counts={counts} />

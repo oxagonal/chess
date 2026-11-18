@@ -123,12 +123,12 @@ function InsightsView({ repId }: { repId: string }) {
         <Stat value={pct(insights.recentAccuracy)} label="Accuracy (30 days)" hint={`${insights.recentAttempts} training attempts in the last 30 days`} />
         <Stat value={pct(t.recall)} label="Recall now" hint="Average chance you'd remember each learned move today" />
         <Stat value={`${t.learned}/${t.moves}`} label="Moves learned" />
-        <Stat value={t.gameSlips} label="Slips in games" hint={`Times you left your prep in real games (${rangeLabel(gameRange).toLowerCase()})`} />
+        <Stat value={t.gameSlips} label="Forgot prep in games" hint={`Times you played something other than your prepared move in real games (${rangeLabel(gameRange).toLowerCase()})`} />
         <Stat value={t.surprises} label="Opponent surprises" hint={`Games where the opponent left your repertoire (${rangeLabel(gameRange).toLowerCase()})`} />
       </div>
 
       <div className="row small">
-        <span>Games counted for slips &amp; surprises</span>
+        <span>Games counted for forgotten prep &amp; surprises</span>
         <GameRangeSelect count={recentGames?.length} />
       </div>
 
@@ -143,7 +143,7 @@ function InsightsView({ repId }: { repId: string }) {
                 <th className="num hide-sm">Learned</th>
                 <th className="num hide-sm">Accuracy</th>
                 <th className="num hide-sm">Recall</th>
-                <th className="num hide-sm" title="Times you left prep here in real games">Slips</th>
+                <th className="num hide-sm" title="Times you played something other than your prepared move here in real games">Forgot in games</th>
                 <th>Mastery</th>
                 <th />
               </tr>
@@ -171,7 +171,7 @@ function InsightsView({ repId }: { repId: string }) {
                 <th className="hide-sm">Difficulty</th>
                 <th className="num hide-sm">Accuracy</th>
                 <th className="num hide-sm">Recall</th>
-                <th className="num hide-sm">Slips</th>
+                <th className="num hide-sm" title="Times you played something other than your prepared move here in real games">Forgot in games</th>
                 <th>Mastery</th>
                 <th className="hide-sm">Next</th>
                 <th />

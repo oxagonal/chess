@@ -8,7 +8,7 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   Caro-Kann and an Italian for one tournament) that you can train, measure and check — it says where its
   chapters give you different moves in the same position. Train all of a color, a repertoire or one chapter.
 - **Map** — Repertoire → Map: each chapter as a row of squares, one per line, colored by how well you know
-  its weakest move (not learned, lapsed, learning, growing, solid; hollow when due), with lines by strength
+  its weakest move (not learned, missed last time, learning, growing, solid; hollow when due), with lines by strength
   over the last 30 days. Hover a square for the line, its position and its status, and practice it.
 - **Split into chapters** — a chapter's ⋯ menu suggests chapters from the opening names of its lines (by
   position, so transposed move orders land together); rename, merge or leave out suggestions first.

@@ -15,14 +15,14 @@ export type Strength = 'new' | 'lapsed' | 'learning' | 'growing' | 'solid';
 export const STRENGTHS: Strength[] = ['new', 'lapsed', 'learning', 'growing', 'solid'];
 export const STRENGTH_LABEL: Record<Strength, string> = {
   new: 'Not learned',
-  lapsed: 'Lapsed',
+  lapsed: 'Missed',
   learning: 'Learning',
   growing: 'Growing',
   solid: 'Solid',
 };
 export const STRENGTH_HINT: Record<Strength, string> = {
   new: 'not learned yet',
-  lapsed: 'missed at its last review',
+  lapsed: 'a move on it was wrong the last time it came up in training',
   learning: 'next review in under a week',
   growing: 'next review in 1–4 weeks',
   solid: 'next review a month or more away',

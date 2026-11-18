@@ -3,7 +3,7 @@ import { GAME_RANGES, type GameRange } from '../lib/gameRange';
 
 /**
  * A period filter for your games, stored in Settings so it's shared everywhere it applies.
- *  - "gameRange": your games themselves (forgot prep, slips, recent games)
+ *  - "gameRange": your games themselves (forgot prep, recent games)
  *  - "opponentRange": your games used as opponent statistics (coverage from your opponents, My games tab)
  */
 export function GameRangeSelect({
@@ -26,7 +26,7 @@ export function GameRangeSelect({
       style={{ gap: 6, flexWrap: 'nowrap' }}
       title={
         setting === 'gameRange'
-          ? 'Which games count for forgotten prep and slips — applies everywhere. Older games may predate changes to your repertoire.'
+          ? 'Which games count for forgotten prep — applies everywhere. Older games may predate changes to your repertoire.'
           : 'Which of your games count as opponent statistics (coverage from your own opponents, the My games tab). Longer periods give steadier numbers.'
       }
     >
