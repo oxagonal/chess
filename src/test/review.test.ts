@@ -89,6 +89,10 @@ describe('symbols in PGN', () => {
     expect(glyphsFromNags([1, 2])).toEqual(['?']); // one move symbol: the last wins
     expect(sanWithGlyphs('Nf3', ['!?', '±', 'N'])).toBe('Nf3!? ± N');
     expect(sanWithGlyphs('e4', undefined)).toBe('e4');
+    // Miss: a move symbol like the others (it replaces ?), with no PGN code to export.
+    expect(toggleGlyph(['?'], '✗')).toEqual(['✗']);
+    expect(sanWithGlyphs('Nf3', ['✗'])).toBe('Nf3✗');
+    expect(nagsOf(['✗', '±'])).toEqual([16]);
   });
 });
 

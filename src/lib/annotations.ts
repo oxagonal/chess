@@ -7,8 +7,8 @@
 export interface Glyph {
   symbol: string;
   name: string;
-  /** PGN numeric annotation glyph ($n). */
-  nag: number;
+  /** PGN numeric annotation glyph ($n); none for symbols PGN has no code for (Miss). */
+  nag?: number;
 }
 
 export const MOVE_GLYPHS: Glyph[] = [
@@ -17,6 +17,8 @@ export const MOVE_GLYPHS: Glyph[] = [
   { symbol: '!?', name: 'Interesting move', nag: 5 },
   { symbol: '?!', name: 'Dubious move', nag: 6 },
   { symbol: '?', name: 'Mistake', nag: 2 },
+  // A missed chance (a win or a tactic you didn't take), like Chess.com's Miss.
+  { symbol: '✗', name: 'Miss' },
   { symbol: '??', name: 'Blunder', nag: 4 },
   { symbol: '□', name: 'Only move', nag: 7 },
   { symbol: '⨀', name: 'Zugzwang', nag: 22 },
@@ -51,7 +53,10 @@ export function glyphName(symbol: string): string {
 
 /** PGN $n codes for these symbols (for export). */
 export function nagsOf(glyphs: readonly string[] | undefined): number[] {
-  return (glyphs ?? []).flatMap((g) => (BY_SYMBOL.has(g) ? [BY_SYMBOL.get(g)!.nag] : []));
+  return (glyphs ?? []).flatMap((g) => {
+    const nag = BY_SYMBOL.get(g)?.nag;
+    return nag === undefined ? [] : [nag];
+  });
 }
 
 /** The symbols for PGN $n codes, tidied like toggleGlyph would leave them (unknown codes are dropped). */
@@ -131,6 +136,8 @@ export function glyphClass(symbol: string | undefined): string {
       return 'g-mistake';
     case '??':
       return 'g-blunder';
+    case '✗':
+      return 'g-miss';
     case '□':
     case '⨀':
       return 'g-only';
