@@ -450,6 +450,15 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .split-off-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }
 .split-off { border-top: 1px solid var(--border-soft); padding-top: 8px; }
 
+/* Repertoire page header: actions as buttons, help on demand. */
+.rep-head { gap: 10px; }
+.pop-anchor { position: relative; }
+.pop-box { position: absolute; top: calc(100% + 6px); right: 0; z-index: 60; width: min(320px, calc(100vw - 24px)); padding: 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55); }
+.help-btn { width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 50%; font-weight: 750; color: var(--muted); }
+.help-pop { left: 0; right: auto; width: min(380px, calc(100vw - 24px)); font-size: 13.5px; color: var(--muted); }
+.help-pop p { margin: 0 0 8px; }
+.help-pop b { color: var(--text); }
+
 /* Jumping between chapters: the builder's title as a switcher, and the Chapters panel. */
 .chapter-switcher { position: relative; min-width: 0; }
 .chapter-switch-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: none; padding: 2px 6px 2px 0; min-height: 0; max-width: 100%; }

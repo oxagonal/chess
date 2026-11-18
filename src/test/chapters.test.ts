@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, openDb } from '../db/db';
-import { addLine, createRepertoire, deleteMove, deleteRepertoire, loadGraph, mergeChapter, setMoveComment, splitChapter, splitOff } from '../db/repertoire';
+import { addLine, chapterForNewLine, createRepertoire, deleteMove, deleteRepertoire, deleteUnionMove, loadGraph, mergeChapter, setMoveComment, splitChapter, splitOff } from '../db/repertoire';
 import { loadScopeGraph, repertoireScopeId } from '../db/scopes';
 import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, chapterGap, chapterPosition, chapterTrunk, matchChapter, migrateCardRows, unionGraph } from '../lib/chapters';
 import openings from '../data/openings.json';
@@ -166,6 +166,28 @@ describe('a chapter at a glance', () => {
     // Rarer than the target, it still shows — from the run's sub-threshold holes.
     expect(chapterGap(g, { gaps: [], unfinished: [], minorGaps: [{ path: ['e4', 'c5', 'c3', 'd5'], san: 'Nf3', prob: 0.00125 }], probs: {}, threshold: 0.005 })).toMatchObject({ prob: 0.00125, beyondTarget: true });
     expect(chapterGap(g, { gaps: [], unfinished: [], probs: {} })).toBeUndefined();
+  });
+});
+
+describe('browsing all of a color', () => {
+  it('files a new line in the chapter it continues, or a new chapter named after its opening', async () => {
+    const alapin = await createRepertoire('Alapin', 'black');
+    await addLine(alapin.id, ['e4', 'c5', 'c3', 'd5']);
+    const union = (await loadScopeGraph('black'))!.graph;
+    expect(await chapterForNewLine('black', ['e4', 'c5', 'c3', 'Nf6'], union)).toBe(alapin.id);
+    const fresh = await chapterForNewLine('black', ['d4', 'd5', 'c4', 'c6'], union);
+    expect(fresh).not.toBe(alapin.id);
+    expect((await db.repertoires.get(fresh))!.name).toBe('Slav Defense');
+  });
+
+  it('deletes a move from every chapter that has it', async () => {
+    const a = await createRepertoire('A', 'white');
+    const b = await createRepertoire('B', 'white');
+    await addLine(a.id, ['e4', 'e5', 'Nf3']);
+    await addLine(b.id, ['e4', 'c6', 'd4']);
+    const union = (await loadScopeGraph('white'))!.graph;
+    await deleteUnionMove(union.edge(START_KEY, 'e4')!);
+    expect(await db.moves.count()).toBe(0);
   });
 });
 
