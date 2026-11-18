@@ -20,6 +20,7 @@ import { MoveNote } from '../components/MoveNote';
 import { MoveList } from '../components/MoveList';
 import { EnginePanel } from '../components/EnginePanel';
 import { ExplorerPanel } from '../components/ExplorerPanel';
+import { ChaptersPanel } from '../components/ChaptersPanel';
 import { GameReviewPanel } from '../components/GameReviewPanel';
 import { AnnotationMenu, type AnnotationTarget } from '../components/AnnotationMenu';
 import { annotateProps } from '../components/NotePopover';
@@ -476,6 +477,8 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
     { type: 'moves', title: 'Moves', render: () => movesPanel },
     { type: 'review', title: 'Computer review', render: () => reviewPanel },
     { type: 'explorer', title: 'Explorer', multiple: true, render: () => explorer },
+    // Your chapters of this color — those with the game's position first — to open in the builder.
+    { type: 'chapters', title: 'Chapters', render: () => <ChaptersPanel color={game.userColor} line={replay.sans.slice(0, cur)} /> },
   ];
   return (
     <div className="builder studio review-studio">
@@ -550,6 +553,8 @@ function defaultReviewLayout(api: DockviewApi) {
   add('stockfish', 'Stockfish', { referencePanel: 'board', direction: 'right' });
   add('moves', 'Moves', { referencePanel: 'stockfish', direction: 'below' });
   add('review', 'Computer review', { referencePanel: 'game', direction: 'below' });
+  add('chapters', 'Chapters', { referencePanel: 'review', direction: 'within' });
+  api.getPanel('review')?.api.setActive();
   // The board's pane: as wide as the board can be tall (tab bar, two player bars and the buttons
   // take ~130px), leaving at least 280px on each side.
   const board = Math.max(320, Math.min(api.height - 130, api.width - 2 * 280 - 16));

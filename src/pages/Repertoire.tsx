@@ -6,6 +6,7 @@ import { addEdges, deleteMove, setMoveAnnotation, splitOff } from '../db/reperto
 import { loadOpeningIndex, nameParts } from '../lib/openingNames';
 import { chapterGap, chapterOfMoveId, chapterPosition } from '../lib/chapters';
 import { useOpeningIndex } from '../components/ChapterTree';
+import { ChaptersPanel, ChapterSwitcher } from '../components/ChaptersPanel';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
 import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepGraph } from '../hooks';
 import { cardIdOf, cardsOf } from '../lib/chapters';
@@ -36,7 +37,8 @@ import { RepGraph } from '../lib/graph';
 
 export function RepertoirePage({ route }: PageProps) {
   const id = route.path[1];
-  if (id) return <Builder repId={id} initialLine={route.query.get('line') ?? ''} />;
+  // Keyed by chapter: switching chapters starts the builder afresh at the line it was opened with.
+  if (id) return <Builder key={id} repId={id} initialLine={route.query.get('line') ?? ''} />;
   return <RepertoireHome query={route.query} />;
 }
 
@@ -374,7 +376,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const lichessUrl = `https://lichess.org/analysis/standard/${`${key} 0 1`.replace(/ /g, '_')}?color=${orientation}`;
   const header = (
     <div className="builder-head">
-      <h1 title={rep.name}>{rep.name}</h1>
+      <ChapterSwitcher chapter={rep} line={line.slice(0, cursor).map((m) => m.san)} />
       <ColorPill color={rep.color} />
       {!phone && <span className="muted small">{counts}</span>}
       {phone && <span className="spacer" />}
@@ -750,6 +752,11 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     },
     { type: 'explorer', title: 'Explorer', multiple: true, render: () => (zen ? hidden : explorer) },
     {
+      type: 'chapters',
+      title: 'Chapters',
+      render: () => (zen ? hidden : <ChaptersPanel color={rep.color} line={line.slice(0, cursor).map((m) => m.san)} current={rep.id} />),
+    },
+    {
       type: 'coverage',
       title: 'Coverage',
       fitHeight: true,
@@ -778,6 +785,8 @@ function defaultBuilderLayout(api: DockviewApi) {
   add('stockfish', 'Stockfish', { referencePanel: 'board', direction: 'right' }, { initialWidth: Math.round(api.width * 0.56) });
   add('moves', 'Moves', { referencePanel: 'stockfish', direction: 'below' });
   add('explorer', 'Explorer', { referencePanel: 'moves', direction: 'below' });
+  add('chapters', 'Chapters', { referencePanel: 'explorer', direction: 'within' });
+  api.getPanel('explorer')?.api.setActive();
   add('coverage', 'Coverage', { referencePanel: 'board', direction: 'below' }, { initialHeight: 96 });
   // Stockfish starts at the height of a header and three lines (it snaps to its content anyway).
   api.getPanel('stockfish')?.group.api.setSize({ height: 160 });

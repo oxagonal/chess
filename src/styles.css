@@ -448,6 +448,32 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .split-off-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }
 .split-off { border-top: 1px solid var(--border-soft); padding-top: 8px; }
 
+/* Jumping between chapters: the builder's title as a switcher, and the Chapters panel. */
+.chapter-switcher { position: relative; min-width: 0; }
+.chapter-switch-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: none; padding: 2px 6px 2px 0; min-height: 0; max-width: 100%; }
+.chapter-switch-btn h1 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chapter-switch-btn:hover h1, .chapter-switch-btn[aria-expanded='true'] h1 { color: var(--accent); }
+.chapter-switch-caret { color: var(--faint); font-size: 13px; }
+.chapter-switch-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: min(420px, calc(100vw - 24px)); max-height: min(70vh, 560px); overflow: auto;
+  padding: 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+.chapters-panel { display: flex; flex-direction: column; gap: 10px; padding: 8px 10px; }
+.chapter-switch-pop .chapters-panel { padding: 0; }
+.cp-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-bottom: 4px; }
+.cp-here-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.cp-chip { border: none; cursor: pointer; }
+.cp-chip:hover { background: var(--accent2); color: #fff; }
+.cp-filter { width: 100%; }
+.cp-groups { display: flex; flex-direction: column; gap: 12px; }
+.cp-family { display: flex; flex-direction: column; }
+.cp-family-name { font-size: 12px; color: var(--muted); font-weight: 650; margin: 4px 0 2px; }
+.cp-item { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; background: transparent; border: none; border-radius: 6px; padding: 5px 8px; min-height: 0; }
+.cp-item:hover { background: var(--panel3); }
+.cp-item.current { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.cp-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp-line { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
 /* A chapter row: counts, its biggest gap, and where it branches. */
 .chapter-pos { font-size: 13.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; font-variant-numeric: tabular-nums; }
 .chapter-pos:hover { color: var(--text); }
