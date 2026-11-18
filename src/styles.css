@@ -446,6 +446,7 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .miniboard .mb-w { color: #fff; -webkit-text-stroke: 1px #222; }
 .miniboard .mb-b { color: #1a1a1a; }
 
+.anno-actions { gap: 6px; flex-wrap: wrap; }
 /* Splitting a line off by hand (in the builder's right-click menu). */
 .split-off-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }
 .split-off { border-top: 1px solid var(--border-soft); padding-top: 8px; }

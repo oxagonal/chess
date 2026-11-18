@@ -472,18 +472,32 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
           : void saveAnnotation(game.id, menu.ply, next)
       }
       extra={
-        menuLine && canPromote(lines, menuLine, menu.index!) ? (
+        <div className="row anno-actions">
+          {menuLine && canPromote(lines, menuLine, menu.index!) && (
+            <button
+              className="small"
+              title="List this variation first among the moves tried here (the game's own move stays the main line)"
+              onClick={() => {
+                writeLines(promoteLine(lines, menuLine, menu.index!));
+                closeMenu();
+              }}
+            >
+              ↑ Promote variation
+            </button>
+          )}
+          {/* The position after this move in your whole repertoire of this color, ready to add moves. */}
           <button
             className="small"
-            title="List this variation first among the moves tried here (the game's own move stays the main line)"
+            title={`Open the position after this move with all your ${game.userColor === 'white' ? 'White' : 'Black'} chapters, to add your prep there`}
             onClick={() => {
-              writeLines(promoteLine(lines, menuLine, menu.index!));
+              const sans = menuLine ? [...replay.sans.slice(0, menuLine.from), ...menuLine.sans.slice(0, menu.index! + 1)] : replay.sans.slice(0, menu.ply + 1);
               closeMenu();
+              navigate(`repertoire/${game.userColor}`, { line: sans.join(' ') });
             }}
           >
-            ↑ Promote variation
+            Open in all {game.userColor === 'white' ? 'White' : 'Black'}
           </button>
-        ) : undefined
+        </div>
       }
       onClose={closeMenu}
     />
