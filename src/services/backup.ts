@@ -1,5 +1,6 @@
 import { db } from '../db/db';
 import { noteLocalDataReplaced } from './cloudSync';
+import { migrateCardRows } from '../lib/chapters';
 
 /** The Lichess login is a credential: kept out of backup files, and kept on this device across restores. */
 const CREDENTIALS = ['lichessToken', 'lichessAccount'] as const;
@@ -13,10 +14,13 @@ function withoutCredentials(row: KvRow): KvRow {
   return { ...row, value };
 }
 
-const TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players'] as const;
+const TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players', 'collections'] as const;
+
+/** 2: chapters (cards per position and move, repertoires as collections). Version 1 files are upgraded on restore. */
+const BACKUP_VERSION = 2;
 
 export async function exportBackup(): Promise<string> {
-  const out: Record<string, unknown> = { app: 'chess-prep', version: 1, exportedAt: new Date().toISOString() };
+  const out: Record<string, unknown> = { app: 'chess-prep', version: BACKUP_VERSION, exportedAt: new Date().toISOString() };
   for (const t of TABLES) out[t] = await db.table(t).toArray();
   out.kv = (out.kv as KvRow[]).map(withoutCredentials);
   return JSON.stringify(out);
@@ -25,6 +29,15 @@ export async function exportBackup(): Promise<string> {
 export async function importBackup(json: string): Promise<void> {
   const data = JSON.parse(json) as Record<string, unknown[]>;
   if ((data as unknown as { app?: string }).app !== 'chess-prep') throw new Error('Not a Chess Prep backup file');
+  const version = Number((data as unknown as { version?: number }).version ?? 1);
+  if (version > BACKUP_VERSION) throw new Error('This backup was made by a newer version of Chess Prep — reload the app to update.');
+  if (version < 2) {
+    // From before chapters: cards per position and move; old per-repertoire coverage runs dropped.
+    const next = migrateCardRows((data.cards ?? []) as Record<string, unknown>[], (data.reviewLog ?? []) as Record<string, unknown>[]);
+    data.cards = next.cards;
+    data.reviewLog = next.logs;
+    data.coverage = [];
+  }
   await db.transaction('rw', [...TABLES.map((t) => db.table(t)), db.syncState], async () => {
     const current = (await db.kv.get(SETTINGS_KEY))?.value as Record<string, unknown> | undefined;
     for (const t of TABLES) {

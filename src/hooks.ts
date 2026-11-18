@@ -3,6 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
 import { RepGraph } from './lib/graph';
 import type { Repertoire, RepMove } from './lib/types';
+import { unionGraph } from './lib/chapters';
+import { COLORS, colorName } from './db/scopes';
 import type { RepWithGraph } from './lib/prep';
 import { useSettings } from './db/settings';
 import { rangeCutoff } from './lib/gameRange';
@@ -20,8 +22,25 @@ export function useRepGraph(repId: string | undefined) {
   return { rep, graph, loading: found === undefined || moves === undefined };
 }
 
-/** Every repertoire with its graph (used for prep analysis of games). */
+/**
+ * Each color's chapters as one union graph (scope 'white' / 'black'), for checking games against
+ * your prep: a game is in your prep if any chapter of your color has it.
+ */
 export function useAllGraphs(): RepWithGraph[] | undefined {
+  const reps = useLiveQuery(() => db.repertoires.toArray(), []);
+  const moves = useLiveQuery(() => db.moves.toArray(), []);
+  return useMemo(() => {
+    if (!reps || !moves) return undefined;
+    const colorOf = new Map(reps.map((r) => [r.id, r.color]));
+    return COLORS.map((color) => ({
+      rep: { id: color, name: `All ${colorName(color)} chapters`, color },
+      graph: unionGraph(color, moves.filter((m: RepMove) => colorOf.get(m.repId) === color)),
+    }));
+  }, [reps, moves]);
+}
+
+/** Each chapter's own graph, by chapter id (for per-chapter counts; cardsOf gives its cards). */
+export function useChapterGraphs(): Map<string, RepGraph> | undefined {
   const reps = useLiveQuery(() => db.repertoires.toArray(), []);
   const moves = useLiveQuery(() => db.moves.toArray(), []);
   return useMemo(() => {
@@ -32,16 +51,18 @@ export function useAllGraphs(): RepWithGraph[] | undefined {
       if (arr) arr.push(m);
       else by.set(m.repId, [m]);
     }
-    return reps.map((rep) => ({ rep, graph: new RepGraph(rep.color, by.get(rep.id) ?? []) }));
+    return new Map(reps.map((r) => [r.id, new RepGraph(r.color, by.get(r.id) ?? [])]));
   }, [reps, moves]);
 }
 
-export function useCards(repId?: string) {
-  return useLiveQuery(() => (repId ? db.cards.where('repId').equals(repId).toArray() : db.cards.toArray()), [repId]);
+/** Every card (filter to a graph's with cardsOf). */
+export function useCards() {
+  return useLiveQuery(() => db.cards.toArray(), []);
 }
 
-export function useCoverage(repId: string | undefined) {
-  return useLiveQuery(() => (repId ? db.coverage.get(repId) : undefined), [repId]);
+/** The stored coverage run of a scope ('white', 'black', a chapter or `set:<id>`). */
+export function useCoverage(scopeId: string | undefined) {
+  return useLiveQuery(() => (scopeId ? db.coverage.get(scopeId) : undefined), [scopeId]);
 }
 
 export function useGames() {

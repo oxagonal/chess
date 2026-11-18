@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
 import type { PageProps } from '../App';
 import { repTarget, updateSettings, useSettings } from '../db/settings';
-import { setRepertoireTarget } from '../db/repertoire';
+import { setScopeTarget, useChaptersAndSets, useScopeGraph } from '../db/scopes';
+import { chapterForLine } from '../lib/chapters';
+import { defaultScope, ScopeSelect } from '../components/ScopeSelect';
 import { OneInNSlider } from '../components/OneInNSlider';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { repertoireDepth } from '../lib/depth';
-import { useCoverage, useRepertoires, useRepGraph } from '../hooks';
+import { useCoverage } from '../hooks';
 import { runCoverage, sourceLabel, effectiveBands } from '../services/coverage';
 import { likelyPositions, oneIn, pct } from '../lib/coverage';
 import { formatLine } from '../lib/chess';
@@ -15,22 +17,16 @@ import type { ProbabilitySource } from '../lib/types';
 import { bandLabel } from '../lib/ratings';
 
 export function CoveragePage({ route }: PageProps) {
-  const reps = useRepertoires();
-  const repId = route.path[1] ?? reps?.[0]?.id;
-  if (!reps) return null;
-  if (!reps.length) return <Empty>Create a repertoire first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
+  const { chapters, collections } = useChaptersAndSets();
+  if (!chapters || !collections) return null;
+  const repId = route.path[1] ?? defaultScope(chapters);
+  if (!chapters.length) return <Empty>Create a chapter first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
   return (
     <div className="col" style={{ gap: 16 }}>
       <div className="row">
         <h1 style={{ margin: 0 }}>Coverage</h1>
         <span className="spacer" />
-        <select value={repId} onChange={(e) => navigate(`coverage/${e.target.value}`)}>
-          {reps.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name} ({r.color})
-            </option>
-          ))}
-        </select>
+        {repId && <ScopeSelect value={repId} onChange={(id) => navigate(`coverage/${id}`)} chapters={chapters} collections={collections} />}
       </div>
       {repId && <CoverageView key={repId} repId={repId} />}
     </div>
@@ -40,7 +36,7 @@ export function CoveragePage({ route }: PageProps) {
 type Tab = 'gaps' | 'unfinished' | 'positions';
 
 function CoverageView({ repId }: { repId: string }) {
-  const { rep, graph } = useRepGraph(repId);
+  const { scope: rep, graph } = useScopeGraph(repId);
   const result = useCoverage(repId);
   const settings = useSettings();
   const [running, setRunning] = useState(false);
@@ -69,7 +65,8 @@ function CoverageView({ repId }: { repId: string }) {
   const n = repTarget(rep, settings);
   const stale = result && rep.updatedAt > result.computedAt;
   const paramsChanged = result && (result.paramsLabel !== sourceLabel(settings) || Math.abs(result.threshold - 1 / n) > 1e-12);
-  const openLine = (sans: string[]) => navigate(`repertoire/${repId}`, { line: sans.join(' ') });
+  // Open a line in the chapter it belongs to (the deepest of its moves that a chapter has).
+  const openLine = (sans: string[]) => navigate(`repertoire/${chapterForLine(graph, sans) ?? rep.chapterIds[0]}`, { line: sans.join(' ') });
   const myPositions = positions.filter((p) => p.myTurn);
   const mine = result ? repertoireDepth(graph, result) : undefined;
   const linesDone = mine?.lines ?? 0;
@@ -90,7 +87,7 @@ function CoverageView({ repId }: { repId: string }) {
           repertoire doesn't answer are <b>gaps</b>.
         </p>
         <div className="row" style={{ marginTop: 8 }}>
-          <OneInNSlider value={n} onChange={(v) => setRepertoireTarget(repId, v)} label={`Coverage target for ${rep.name}`} color={rep.color} />
+          <OneInNSlider value={n} onChange={(v) => void setScopeTarget(rep, v)} label={`Coverage target for ${rep.name}`} color={rep.color} />
           <label className="field">
             <span>Opponent moves from</span>
             <select value={settings.probabilitySource} onChange={(e) => updateSettings({ probabilitySource: e.target.value as ProbabilitySource })}>

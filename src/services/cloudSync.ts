@@ -11,6 +11,7 @@ import { db as appDb, type ChessDB } from '../db/db';
 import { markQuiet, onLocalChange } from '../db/changes';
 import {
   SYNC_FORMAT,
+  upgradeSyncDoc,
   SYNC_TABLES,
   emptySnapshot,
   mergeSync,
@@ -167,6 +168,8 @@ export async function syncOnce(db: ChessDB, transport: Transport, opts: { replac
   for (let attempt = 0; ; attempt++) {
     const remote = await transport.read();
     if (remote.doc && remote.doc.format > SYNC_FORMAT) throw new Error('Your synced data was saved by a newer version of Chess Prep — reload the app to update.');
+    // Saved by an older version: bring it up to date first (e.g. cards from before chapters).
+    if (remote.doc) remote.doc = upgradeSyncDoc(remote.doc);
     const read = await readLocal(db);
     const result = mergeSync({
       local: replace ? emptySnapshot() : read.snap,

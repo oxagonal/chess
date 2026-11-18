@@ -120,7 +120,7 @@ describe('drilling ahead of time', () => {
     const DAY = 86_400_000;
     const t0 = Date.UTC(2026, 0, 1);
     // A learned move reviewed on Jan 1 with a 46-day interval.
-    let c = grade(newCard({ id: 'x', repId: 'r', fromKey: 'k', san: 'e4' }, t0 - 3 * DAY), Rating.Good, undefined, t0 - 3 * DAY);
+    let c = grade(newCard({ id: 'x', color: 'white', fromKey: 'k', san: 'e4' }, t0 - 3 * DAY), Rating.Good, undefined, t0 - 3 * DAY);
     c = { ...c, state: State.Review, stability: 46, lastReview: t0, due: t0 + 46 * DAY };
     // Drilled 23 days early, then nine more times that day and once a day for a week.
     let now = t0 + 23 * DAY;
@@ -242,7 +242,7 @@ describe('trainer planning', () => {
   });
 
   it('orders cards shallow-first, or by probability when known', () => {
-    const cards = g.myMoves().map((m) => newCard({ id: m.id, repId: 'r', fromKey: m.fromKey, san: m.san }));
+    const cards = g.myMoves().map((m) => newCard({ id: m.id, color: 'white', fromKey: m.fromKey, san: m.san }));
     const ordered = orderCards(cards, g);
     expect(ordered[0].san).toBe('e4');
     const bb5 = byLine(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
@@ -254,7 +254,7 @@ describe('trainer planning', () => {
 describe('SRS', () => {
   it('schedules: Good pushes the card out, Again brings it back soon', () => {
     const now = Date.UTC(2026, 0, 1);
-    const c0 = newCard({ id: 'a', repId: 'r', fromKey: START_KEY, san: 'e4' }, now);
+    const c0 = newCard({ id: 'a', color: 'white', fromKey: START_KEY, san: 'e4' }, now);
     expect(c0.state).toBe(State.New);
     expect(isDue(c0, now)).toBe(false);
     let c = grade(c0, Rating.Good, undefined, now);

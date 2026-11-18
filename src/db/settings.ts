@@ -37,6 +37,8 @@ export interface AppSettings {
    * repertoire's target is set on the Coverage page — use repTarget() rather than reading this.
    */
   oneInN: number;
+  /** Coverage targets of "all White" / "all Black" ('white' / 'black' → N), set on the Coverage page. */
+  scopeTargets: Record<string, number>;
 
   newPerDay: number;
   requestRetention: number;
@@ -92,6 +94,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   speeds: ['blitz', 'rapid', 'classical'],
   probabilitySource: 'lichess',
   oneInN: 200,
+  scopeTargets: {},
   newPerDay: 15,
   requestRetention: 0.9,
   maxIntervalDays: 365,

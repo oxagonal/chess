@@ -136,7 +136,7 @@ describe('sync between two devices', () => {
     tick();
     const c5 = (await phone.cards.toArray()).find((c) => c.san === 'c5')!;
     await phone.cards.update(c5.id, { reps: 1, state: 2, lastReview: clock });
-    await phone.reviewLog.add({ cardId: c5.id, repId: rep.id, rating: 3, state: 0, reviewedAt: clock, source: 'review' });
+    await phone.reviewLog.add({ cardId: c5.id, color: 'black', rating: 3, state: 0, reviewedAt: clock, source: 'review' });
     tick();
     await addLine(rep.id, ['e4', 'c5', 'Nc3', 'Nc6']);
 
@@ -181,7 +181,7 @@ describe('sync between two devices', () => {
     expect((await phone.moves.toArray()).map((m) => m.san).sort()).toEqual(['Nf3', 'c5', 'e4']);
   });
 
-  it('deleting a repertoire removes its moves, cards and history on the other device', async () => {
+  it('deleting a chapter removes its moves and cards on the other device, and keeps the review history', async () => {
     const rep = await createRepertoire('W', 'white');
     await addLine(rep.id, ['e4', 'e5', 'Nf3']);
     const [card] = await db.cards.toArray();
@@ -197,7 +197,8 @@ describe('sync between two devices', () => {
     await phone.cards.update(card.id, { reps: 5 });
     await sync(db);
     await sync(phone);
-    for (const t of ['repertoires', 'moves', 'cards', 'reviewLog'] as SyncTable[]) expect(await phone.table(t).count()).toBe(0);
+    for (const t of ['repertoires', 'moves', 'cards'] as SyncTable[]) expect(await phone.table(t).count()).toBe(0);
+    expect(await phone.reviewLog.count()).toBe(1);
   });
 
   it('keeps this device’s Lichess connection out of the synced copy', async () => {

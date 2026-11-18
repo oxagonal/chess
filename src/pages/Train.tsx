@@ -3,20 +3,22 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import type { Chess } from 'chessops/chess';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
-import { getSettings, repTarget, updateSettings, useSettings, type AppSettings } from '../db/settings';
+import { getSettings, updateSettings, useSettings, type AppSettings } from '../db/settings';
 import { gradeCard } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
 import { Board, type Arrow } from '../components/Board';
 import { ColorPill, Empty, ProgressBar, Stat } from '../components/ui';
-import { PHONE_QUERY, useCards, useMediaQuery, useRepertoires, startOfToday } from '../hooks';
+import { PHONE_QUERY, useCards, useMediaQuery, startOfToday } from '../hooks';
+import { COLORS, colorName, loadScopeGraph, scopeIdsFor, scopeOf, repertoireScopeId, useChaptersAndSets, type Scope } from '../db/scopes';
+import { cardsOf, chapterOfMoveId, sourcesOf, unionGraph } from '../lib/chapters';
 import { href, navigate } from '../router';
 import { formatLine, playUci, startPos } from '../lib/chess';
-import { RepGraph } from '../lib/graph';
+import type { RepGraph } from '../lib/graph';
 import { asQuiz, filterByProbability, moveOrders, orderCards, planLine, type PlannedStep } from '../lib/trainer';
 import { Builder } from './Repertoire';
 import { computeInsights, movesForLine, movesUnder } from '../lib/insights';
 import { formatInterval, isDue, isNew, Rating } from '../lib/srs';
-import type { Repertoire, RepMove, ReviewCard } from '../lib/types';
+import type { CoverageResult, RepMove, ReviewCard } from '../lib/types';
 
 /** review = due moves, learn = new moves, drill = extra practice of a chosen line / your weakest moves. */
 type SessionMode = 'review' | 'learn' | 'drill';
@@ -42,29 +44,56 @@ export function TrainPage({ route }: PageProps) {
 
 /* ---------------------------------------------------------------- chooser */
 
+/**
+ * The coverage run that decides which positions are likely enough to train (Settings → only likely
+ * positions): the scope's own, else its color's — a chapter rarely has a run of its own, and how
+ * often a position comes up doesn't depend on which chapter it's in.
+ */
+function coverageFor(scope: Scope, runs: readonly CoverageResult[] | undefined): CoverageResult | undefined {
+  return runs?.find((r) => r.repId === scope.id) ?? runs?.find((r) => r.repId === scope.color);
+}
+
 function TrainChooser() {
-  const reps = useRepertoires();
+  const { chapters, collections } = useChaptersAndSets();
+  const moves = useLiveQuery(() => db.moves.toArray(), []);
   const cards = useCards();
   const settings = useSettings();
   const learnedToday = useLiveQuery(learnedTodayCount, []);
   const coverage = useLiveQuery(() => db.coverage.toArray(), []);
   const now = Date.now();
-  if (!reps || !cards) return null;
-  if (!reps.length) return <Empty>Create a repertoire first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
+  if (!chapters || !collections || !moves || !cards || !settings.loaded) return null;
+  if (!chapters.length) return <Empty>Create a chapter first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
 
   const newLeft = Math.max(0, settings.newPerDay - (learnedToday ?? 0));
-  const countsFor = (repIds: string[]) => {
-    let rc = cards.filter((c) => repIds.includes(c.repId));
-    if (settings.trainOnlyLikely) {
-      rc = repIds.flatMap((id) => {
-        const cov = coverage?.find((c) => c.repId === id);
-        const mine = rc.filter((c) => c.repId === id);
-        return cov ? filterByProbability(mine, cov.probs, 1 / repTarget(reps.find((r) => r.id === id), settings)) : mine;
-      });
-    }
+  const countsFor = (scopeId: string) => {
+    const rc = scopeIdsFor(scopeId).flatMap((id) => {
+      const scope = scopeOf(id, chapters, collections, settings);
+      if (!scope) return [];
+      const ids = new Set(scope.chapterIds);
+      let mine = cardsOf(unionGraph(scope.color, moves.filter((m) => ids.has(m.repId))), cards);
+      const cov = settings.trainOnlyLikely ? coverageFor(scope, coverage) : undefined;
+      if (cov) mine = filterByProbability(mine, cov.probs, cov.threshold);
+      return mine;
+    });
     return { due: rc.filter((c) => isDue(c, now)).length, fresh: rc.filter(isNew).length };
   };
-  const all = countsFor(reps.map((r) => r.id));
+  const all = countsFor('all');
+  const row = (scopeId: string, title: ReactNode, color?: 'white' | 'black', sub?: string) => {
+    const c = countsFor(scopeId);
+    return (
+      <div key={scopeId} className="list-item">
+        <div className="list-main">
+          <div className="list-head">
+            {color && <ColorPill color={color} />}
+            <span className="list-title">{title}</span>
+            {sub && <span className="muted small">{sub}</span>}
+          </div>
+          <Counts due={c.due} fresh={c.fresh} />
+        </div>
+        <SessionButtons rep={scopeId} due={c.due} fresh={Math.min(c.fresh, newLeft)} unlearned={c.fresh} />
+      </div>
+    );
+  };
 
   return (
     <div className="col" style={{ gap: 16 }}>
@@ -76,36 +105,24 @@ function TrainChooser() {
       </div>
       {settings.trainOnlyLikely && (
         <div className="note">
-          Only training positions reached at least as often as each repertoire's coverage target (repertoires with a Coverage run). Change this
-          in Settings.
+          Only training positions reached at least as often as the coverage target (where Coverage has been run for that color or
+          repertoire). Change this in Settings.
         </div>
       )}
       <div className="panel list">
-        <div className="list-item">
-          <div className="list-main">
-            <div className="list-head">
-              <span className="list-title">All repertoires</span>
-            </div>
-            <Counts due={all.due} fresh={all.fresh} />
-          </div>
-          <SessionButtons rep="all" due={all.due} fresh={Math.min(all.fresh, newLeft)} unlearned={all.fresh} />
-        </div>
-        {reps.map((r) => {
-          const c = countsFor([r.id]);
-          return (
-            <div key={r.id} className="list-item">
-              <div className="list-main">
-                <div className="list-head">
-                  <ColorPill color={r.color} />
-                  <span className="list-title">{r.name}</span>
-                </div>
-                <Counts due={c.due} fresh={c.fresh} />
-              </div>
-              <SessionButtons rep={r.id} due={c.due} fresh={Math.min(c.fresh, newLeft)} unlearned={c.fresh} />
-            </div>
-          );
-        })}
+        {row('all', 'Everything')}
+        {COLORS.filter((c) => chapters.some((ch) => ch.color === c)).map((c) => row(c, `All ${colorName(c)} chapters`, c))}
       </div>
+      {collections.length > 0 && (
+        <>
+          <h3 style={{ margin: 0 }}>Repertoires</h3>
+          <div className="panel list">
+            {collections.map((r) => row(repertoireScopeId(r.id), r.name, r.color, `${r.chapterIds.length} chapter${r.chapterIds.length === 1 ? '' : 's'}`))}
+          </div>
+        </>
+      )}
+      <h3 style={{ margin: 0 }}>Chapters</h3>
+      <div className="panel list">{chapters.map((r) => row(r.id, r.name, r.color))}</div>
       <p className="muted small">
         <b>Learn</b> shows you new moves of your repertoire line by line, then has you replay them from memory — moves you already know
         are played for you. <b>Review</b> quizzes moves that are due: you play the whole line from move 1 to the end of the branch, so
@@ -134,7 +151,7 @@ function SessionButtons({ rep, due, fresh, unlearned }: { rep: string; due: numb
   const learn = () => {
     if (fresh) navigate('train', { rep, mode: 'learn', t: String(Date.now()) });
     else if (unlearned) navigate('train', { rep, mode: 'learn', extra: String(EXTRA_BATCH), t: String(Date.now()) });
-    else navigate(rep === 'all' ? 'repertoire' : `repertoire/${rep}`);
+    else navigate(rep === 'all' || rep === 'white' || rep === 'black' || rep.startsWith('set:') ? 'repertoire' : `repertoire/${rep}`);
   };
   return (
     <div className="list-buttons">
@@ -161,7 +178,8 @@ async function learnedTodayCount(): Promise<number> {
 
 interface SessionSetup {
   mode: SessionMode;
-  reps: Map<string, Repertoire>;
+  /** The scopes trained (one per color), by id; lines and graphs are keyed by scope id. */
+  reps: Map<string, Scope>;
   graphs: Map<string, RepGraph>;
   queue: ReviewCard[];
   settings: AppSettings;
@@ -178,22 +196,25 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
     let cancelled = false;
     (async () => {
       const s = await getSettings();
-      const reps = repParam === 'all' ? await db.repertoires.toArray() : [await db.repertoires.get(repParam)].filter((r): r is Repertoire => !!r);
+      const reps: Scope[] = [];
       const graphs = new Map<string, RepGraph>();
       const probs = new Map<string, Record<string, number>>();
       const queue: ReviewCard[] = [];
       const notes: string[] = [];
       const now = Date.now();
-      for (const rep of reps) {
-        const moves = await db.moves.where('repId').equals(rep.id).toArray();
-        const graph = new RepGraph(rep.color, moves);
+      const runs = await db.coverage.toArray();
+      for (const id of scopeIdsFor(repParam)) {
+        const loaded = await loadScopeGraph(id);
+        if (!loaded) continue;
+        const { scope: rep, graph } = loaded;
+        reps.push(rep);
         graphs.set(rep.id, graph);
-        const cards = await db.cards.where('repId').equals(rep.id).toArray();
+        const cards = cardsOf(graph, await db.cards.where('color').equals(rep.color).toArray());
         // A line you picked yourself trains every move in it, learned or not.
         // Drilling a chosen line or move takes every move in it, learned or not (drilling one counts as
         // learning it); the weakest-moves drill only has learned moves to choose from.
         let pool = cards.filter((c) => (mode === 'review' ? isDue(c, now) : mode === 'learn' ? isNew(c) : at || under ? true : !isNew(c)));
-        const cov = await db.coverage.get(rep.id);
+        const cov = coverageFor(rep, runs);
         if (cov) probs.set(rep.id, cov.probs);
         if (mode === 'drill') {
           if (at) {
@@ -203,7 +224,8 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
             const ids = movesUnder(graph, under);
             pool = pool.filter((c) => ids.has(c.id));
           } else {
-            const logs = await db.reviewLog.where('repId').equals(rep.id).toArray();
+            const inScope = new Set(cards.map((c) => c.id));
+            const logs = (await db.reviewLog.where('color').equals(rep.color).toArray()).filter((l) => inScope.has(l.cardId));
             const weak = computeInsights({ graph, cards, logs }).moves.filter((m) => m.mastery !== undefined).slice(0, WEAK_DRILL_SIZE);
             const ids = new Set(weak.map((m) => m.card.id));
             pool = pool.filter((c) => ids.has(c.id));
@@ -212,8 +234,8 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
           continue;
         }
         if (s.trainOnlyLikely) {
-          if (cov) pool = filterByProbability(pool, cov.probs, 1 / repTarget(rep, s));
-          else notes.push(`“${rep.name}” has no Coverage run yet, so all of its moves are included.`);
+          if (cov) pool = filterByProbability(pool, cov.probs, cov.threshold);
+          else notes.push(`No Coverage run for ${colorName(rep.color)} yet, so all of “${rep.name}” is included.`);
         }
         queue.push(...orderCards(pool, graph, cov?.probs));
       }
@@ -259,6 +281,9 @@ interface LineState {
 
 type Feedback = { kind: 'good' | 'bad' | 'hint' | 'show' | 'info'; text: ReactNode } | null;
 
+/** The note to show for a move you missed: its first chapter's (a union move can stand for several). */
+const noteFor = (m: RepMove) => ({ id: sourcesOf(m)[0], san: m.san });
+
 /** Steps the app plays for you: the opponent's moves, and your moves that aren't being asked. */
 function playedForYou(step: PlannedStep): boolean {
   return step.kind === 'auto';
@@ -268,7 +293,9 @@ function Session({ setup }: { setup: SessionSetup }) {
   const { mode, reps, queue, settings } = setup;
   // Graphs are refreshed after you edit a line mid-session (Edit line), so keep them in a ref.
   const graphsRef = useRef(setup.graphs);
-  const [editing, setEditing] = useState<{ repId: string; line: string } | null>(null);
+  const [editing, setEditing] = useState<{ repId: string; chapterId: string; line: string } | null>(null);
+  // Cards are per color; each color has one scope in a session.
+  const scopeIdOf = useMemo(() => new Map([...reps.values()].map((r) => [r.color, r.id])), [reps]);
   const pendingRef = useRef(new Set(queue.map((c) => c.id)));
   const [line, setLine] = useState<LineState | null>(null);
   const [idx, setIdx] = useState(0);
@@ -302,7 +329,8 @@ function Session({ setup }: { setup: SessionSetup }) {
     const pending = pendingRef.current;
     for (const card of queue) {
       if (!pending.has(card.id)) continue;
-      const graph = graphsRef.current.get(card.repId);
+      const scopeId = scopeIdOf.get(card.color) ?? '';
+      const graph = graphsRef.current.get(scopeId);
       const move = graph?.byId.get(card.id);
       if (!graph || !move) {
         pending.delete(card.id);
@@ -310,7 +338,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       }
       // A transposed position: each review takes the next move order into it (most common first),
       // so over time you practice reaching it every way your repertoire allows.
-      const orders = moveOrders(graph, move.fromKey, setup.probs.get(card.repId));
+      const orders = moveOrders(graph, move.fromKey, setup.probs.get(scopeId));
       let index = orders.length ? card.reps % orders.length : 0;
       const learn = mode === 'learn';
       const seen = !learn && skipRepeatsRef.current ? seenRef.current : undefined;
@@ -334,7 +362,7 @@ function Session({ setup }: { setup: SessionSetup }) {
         continue;
       }
       setLine({
-        repId: card.repId,
+        repId: scopeId,
         steps,
         phase: mode === 'learn' ? 'show' : 'quiz',
         order: orders.length > 1 ? { index, count: orders.length } : undefined,
@@ -349,7 +377,7 @@ function Session({ setup }: { setup: SessionSetup }) {
     }
     setLine(null);
     setFinished(true);
-  }, [mode, queue, setup.probs]);
+  }, [mode, queue, setup.probs, scopeIdOf]);
 
   useEffect(() => {
     nextLine();
@@ -365,15 +393,17 @@ function Session({ setup }: { setup: SessionSetup }) {
     setStats((s) => ({ ...s, lines: s.lines + 1 }));
     nextLine();
   };
-  const editLine = () => line && setEditing({ repId: line.repId, line: line.steps.map((s) => s.move.san).join(' ') });
-  // Back from the builder: reload that repertoire (moves may have been added or deleted), then go on.
+  // Edit line opens the line in the chapter its last move comes from.
+  const editLine = () => {
+    const last = line?.steps[line.steps.length - 1];
+    if (!line || !last) return;
+    setEditing({ repId: line.repId, chapterId: chapterOfMoveId(sourcesOf(last.move)[0]), line: line.steps.map((s) => s.move.san).join(' ') });
+  };
+  // Back from the builder: reload what's being trained (moves may have been added or deleted), then go on.
   const finishEditing = async () => {
     if (!editing) return;
-    const rep = reps.get(editing.repId);
-    if (rep) {
-      const moves = await db.moves.where('repId').equals(rep.id).toArray();
-      graphsRef.current = new Map(graphsRef.current).set(rep.id, new RepGraph(rep.color, moves));
-    }
+    const loaded = await loadScopeGraph(editing.repId);
+    if (loaded) graphsRef.current = new Map(graphsRef.current).set(editing.repId, loaded.graph);
     setEditing(null);
     continueAfterLine();
   };
@@ -439,7 +469,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       }
       if (step.kind === 'practice') {
         const missed = wrong > 0 || hint;
-        if (missed) setNoteMove({ id: expected.id, san: expected.san });
+        if (missed) setNoteMove(noteFor(expected));
         feedbackToken.current++;
         setFeedback({ kind: missed ? 'hint' : 'good', text: <b>{missed ? `${expected.san} — keep it in mind.` : `✓ ${expected.san}`}</b> });
         // A drill counts every move you play as reviewed: one that isn't due yet has its interval
@@ -454,7 +484,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       }
       gradedRef.current.add(expected.id);
       const failed = wrong > 0 || hint;
-      if (failed) setNoteMove({ id: expected.id, san: expected.san });
+      if (failed) setNoteMove(noteFor(expected));
       pendingRef.current.delete(expected.id);
       setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (failed ? 0 : 1), failed: s.failed + (failed ? 1 : 0) }));
       const body = (interval?: string) => (
@@ -489,14 +519,14 @@ function Session({ setup }: { setup: SessionSetup }) {
     setWrong(w);
     if (w >= 2) {
       setHint(true);
-      setNoteMove({ id: expected.id, san: expected.san });
+      setNoteMove(noteFor(expected));
     }
     setFeedback({ kind: 'bad', text: <>✗ {r.san} is not your prep. {w >= 2 ? 'The arrow shows your move.' : 'Try again.'}</> });
   };
 
   const showAnswer = () => {
     setHint(true);
-    if (step && waiting) setNoteMove({ id: step.move.id, san: step.move.san });
+    if (step && waiting) setNoteMove(noteFor(step.move));
     setWrong((w) => Math.max(1, w));
   };
 
@@ -568,7 +598,7 @@ function Session({ setup }: { setup: SessionSetup }) {
   const prevStep = line && idx > 0 ? line.steps[idx - 1] : undefined;
   const pathSoFar = line ? line.steps.slice(0, idx).map((s) => s.move.san) : [];
 
-  if (editing) return <Builder key={editing.line} repId={editing.repId} initialLine={editing.line} onDone={() => void finishEditing()} />;
+  if (editing) return <Builder key={editing.line} repId={editing.chapterId} initialLine={editing.line} onDone={() => void finishEditing()} />;
 
   const modeName = mode === 'learn' ? 'Learn' : mode === 'drill' ? 'Drill' : 'Review';
   const counter = `${total - pendingRef.current.size} / ${total}`;

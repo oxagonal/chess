@@ -14,12 +14,12 @@ describe('insights', () => {
   const find = (san: string, after: string) => mine.find((m) => m.san === san && graph.pathTo(m.fromKey)!.map((x) => x.san).join(' ') === after)!;
 
   // Learn every move once with Good; then make the Najdorf-ish d4 and Ba4 hard
-  const learned = (m: (typeof mine)[number]) => grade(newCard({ id: m.id, repId: 'r', fromKey: m.fromKey, san: m.san }, NOW - 20 * 86400e3), Rating.Good, undefined, NOW - 20 * 86400e3);
+  const learned = (m: (typeof mine)[number]) => grade(newCard({ id: m.id, color: 'white', fromKey: m.fromKey, san: m.san }, NOW - 20 * 86400e3), Rating.Good, undefined, NOW - 20 * 86400e3);
   const cards: ReviewCard[] = mine.map(learned);
-  const logs: ReviewLogEntry[] = mine.map((m) => ({ cardId: m.id, repId: 'r', rating: 3, state: 0, reviewedAt: NOW - 20 * 86400e3, source: 'learn' }));
+  const logs: ReviewLogEntry[] = mine.map((m) => ({ cardId: m.id, color: 'white', rating: 3, state: 0, reviewedAt: NOW - 20 * 86400e3, source: 'learn' }));
   const d4 = find('d4', 'e4 c5 Nf3 d6');
   const ba4 = find('Ba4', 'e4 e5 Nf3 Nc6 Bb5 a6');
-  for (let i = 0; i < 3; i++) logs.push({ cardId: d4.id, repId: 'r', rating: 1, state: 2, reviewedAt: NOW - 86400e3, source: 'review' });
+  for (let i = 0; i < 3; i++) logs.push({ cardId: d4.id, color: 'white', rating: 1, state: 2, reviewedAt: NOW - 86400e3, source: 'review' });
   const ins = computeInsights({ graph, cards, logs, gameSlips: new Map([[ba4.id, 2]]), now: NOW });
 
   it('ranks moves missed in training or games as weakest', () => {

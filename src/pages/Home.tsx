@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { useSettings } from '../db/settings';
-import { useAllGraphs, useCards, useLearnedToday, useRecentGames, useRepertoires, startOfToday } from '../hooks';
+import { useAllGraphs, useCards, useChapterGraphs, useLearnedToday, useRecentGames, useRepertoires, startOfToday } from '../hooks';
+import { cardsOf } from '../lib/chapters';
 import { rangeLabel } from '../lib/gameRange';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { analyzeGame, summarize } from '../lib/prep';
@@ -16,6 +17,7 @@ export function HomePage() {
   const games = useRecentGames();
   const allGameCount = useLiveQuery(() => db.games.count(), []);
   const graphs = useAllGraphs();
+  const chapterGraphs = useChapterGraphs();
   const settings = useSettings();
   const learnedToday = useLearnedToday();
   const reviewsToday = useLiveQuery(() => db.reviewLog.where('reviewedAt').aboveOrEqual(startOfToday()).count(), []);
@@ -97,11 +99,12 @@ export function HomePage() {
 
       <div className="grid2">
         <div className="panel">
-          <h2>Repertoires</h2>
+          <h2>Chapters</h2>
           {reps.length === 0 && <p className="muted">None yet.</p>}
           <div className="col">
             {reps.map((r) => {
-              const rc = cards.filter((c) => c.repId === r.id);
+              const g = chapterGraphs?.get(r.id);
+              const rc = g ? cardsOf(g, cards) : [];
               const d = rc.filter((c) => isDue(c, now)).length;
               const n = rc.filter(isNew).length;
               return (

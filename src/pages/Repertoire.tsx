@@ -2,24 +2,17 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
-import {
-  addEdges,
-  createRepertoire,
-  deleteMove,
-  deleteRepertoire,
-  exportPgn,
-  fetchLichessStudy,
-  importPgn,
-  renameRepertoire,
-  setMoveAnnotation,
-} from '../db/repertoire';
+import { addEdges, deleteMove, setMoveAnnotation } from '../db/repertoire';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
-import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepertoires, useRepGraph } from '../hooks';
+import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepGraph } from '../hooks';
+import { cardIdOf, cardsOf } from '../lib/chapters';
+import { useScopeGraph } from '../db/scopes';
 import type { StudioPanelDef } from '../components/Studio';
 // The studio (dockview) loads only when the desktop builder opens it — phones never download it.
 const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
 import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import { Board } from '../components/Board';
+import { RepertoireHome } from './RepertoireHome';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { InlineMoves } from '../components/InlineMoves';
 import { annotateProps } from '../components/NotePopover';
@@ -36,208 +29,12 @@ import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, stat
 import type { AppSettings } from '../db/settings';
 import { type CoverageResult, type PositionStats, type RepMove, type Repertoire } from '../lib/types';
 import { isDue, isNew } from '../lib/srs';
-import { download } from '../services/backup';
 import type { RepGraph } from '../lib/graph';
 
 export function RepertoirePage({ route }: PageProps) {
   const id = route.path[1];
   if (id) return <Builder repId={id} initialLine={route.query.get('line') ?? ''} />;
-  return <RepertoireList />;
-}
-
-/* ------------------------------------------------------------------ list */
-
-function RepertoireList() {
-  const reps = useRepertoires();
-  const cards = useCards();
-  const [name, setName] = useState('');
-  const [color, setColor] = useState<Color>('white');
-  const [importing, setImporting] = useState<string | null>(null);
-
-  const create = async () => {
-    const rep = await createRepertoire(name, color);
-    setName('');
-    navigate(`repertoire/${rep.id}`);
-  };
-
-  const now = Date.now();
-  return (
-    <div className="col" style={{ gap: 16 }}>
-      <div className="row">
-        <h1>Repertoires</h1>
-      </div>
-      <div className="panel">
-        <h2>New repertoire</h2>
-        <div className="row">
-          <input placeholder="Name, e.g. “Black vs 1.e4”" value={name} onChange={(e) => setName(e.target.value)} style={{ minWidth: 260 }} />
-          <select value={color} onChange={(e) => setColor(e.target.value as Color)}>
-            <option value="white">I play White</option>
-            <option value="black">I play Black</option>
-          </select>
-          <button className="primary" onClick={create}>
-            Create
-          </button>
-        </div>
-        <p className="muted small" style={{ marginTop: 8 }}>
-          Tip: keep one repertoire per color, or split them (e.g. Black vs 1.e4 and Black vs 1.d4) — game analysis checks all repertoires
-          of the color you played.
-        </p>
-      </div>
-
-      {reps && reps.length === 0 && <Empty>No repertoires yet — create one above.</Empty>}
-      {reps && reps.length > 0 && (
-        <div className="panel list">
-          {reps.map((r) => {
-            const rc = cards?.filter((c) => c.repId === r.id) ?? [];
-            const due = rc.filter((c) => isDue(c, now)).length;
-            const fresh = rc.filter(isNew).length;
-            return (
-              <div key={r.id} className="list-item">
-                <div className="list-main">
-                  <div className="list-head">
-                    <ColorPill color={r.color} />
-                    <a className="list-title" href={href(`repertoire/${r.id}`)}>
-                      {r.name}
-                    </a>
-                  </div>
-                  <div className="list-meta">
-                    <span>
-                      {rc.length} move{rc.length === 1 ? '' : 's'} to know
-                    </span>
-                    {due > 0 && <span className="badge due">{due} due</span>}
-                    {fresh > 0 && <span className="badge new">{fresh} new</span>}
-                  </div>
-                </div>
-                <div className="list-buttons">
-                  <a className="btn small" href={href(`repertoire/${r.id}`)}>
-                    Edit
-                  </a>
-                  <a className="btn small" href={href('train', { rep: r.id, mode: 'review' })}>
-                    Train
-                  </a>
-                  <a className="btn small" href={href(`coverage/${r.id}`)}>
-                    Coverage
-                  </a>
-                  <MoreMenu>
-                    <button onClick={() => setImporting(importing === r.id ? null : r.id)}>Import PGN or study…</button>
-                    <button onClick={async () => download(`${r.name.replace(/[^\w-]+/g, '_')}.pgn`, await exportPgn(r.id), 'application/x-chess-pgn')}>
-                      Export PGN
-                    </button>
-                    <button
-                      onClick={() => {
-                        const n = prompt('Rename repertoire', r.name);
-                        if (n) renameRepertoire(r.id, n);
-                      }}
-                    >
-                      Rename…
-                    </button>
-                    <button
-                      className="danger"
-                      onClick={() => {
-                        if (confirm(`Delete “${r.name}” and all its training progress?`)) deleteRepertoire(r.id);
-                      }}
-                    >
-                      Delete…
-                    </button>
-                  </MoreMenu>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {importing && <ImportPanel repId={importing} onClose={() => setImporting(null)} />}
-    </div>
-  );
-}
-
-function ImportPanel({ repId, onClose }: { repId: string; onClose: () => void }) {
-  const rep = useLiveQuery(() => db.repertoires.get(repId), [repId]);
-  const panelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [repId]);
-  const [text, setText] = useState('');
-  const [study, setStudy] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
-  const [errors, setErrors] = useState<string[]>([]);
-
-  const run = async (pgn: string) => {
-    setBusy(true);
-    setResult(null);
-    setErrors([]);
-    try {
-      const r = await importPgn(repId, pgn);
-      setResult(`Imported ${r.games} game(s)/chapter(s): ${r.mineAdded} new move${r.mineAdded === 1 ? '' : 's'} to learn.`);
-      setErrors(r.errors);
-    } catch (e) {
-      setErrors([(e as Error).message]);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="panel" ref={panelRef} style={{ scrollMarginTop: 12 }}>
-      <div className="row">
-        <h2>Import into “{rep?.name}”</h2>
-        <span className="spacer" />
-        <button className="ghost" onClick={onClose}>
-          ✕
-        </button>
-      </div>
-      <p className="muted">
-        Paste PGN (variations and comments are kept), upload a .pgn file, or pull a public Lichess study. Moves merge into the existing
-        repertoire; transpositions are joined automatically.
-      </p>
-      <div className="col">
-        <textarea rows={6} placeholder="1. e4 c5 2. Nf3 (2. c3 d5) d6 3. d4 ..." value={text} onChange={(e) => setText(e.target.value)} />
-        <div className="row">
-          <button className="primary" disabled={busy || !text.trim()} onClick={() => run(text)}>
-            Import PGN
-          </button>
-          <label className="btn">
-            Upload .pgn
-            <input
-              type="file"
-              accept=".pgn,text/plain"
-              style={{ display: 'none' }}
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (f) run(await f.text());
-              }}
-            />
-          </label>
-          <span className="spacer" />
-          <input placeholder="https://lichess.org/study/…" value={study} onChange={(e) => setStudy(e.target.value)} style={{ minWidth: 260 }} />
-          <button
-            disabled={busy || !study.trim()}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await run(await fetchLichessStudy(study));
-              } catch (e) {
-                setErrors([(e as Error).message]);
-                setBusy(false);
-              }
-            }}
-          >
-            Import study
-          </button>
-        </div>
-        {result && <div className="note">{result}</div>}
-        {errors.length > 0 && (
-          <div className="error">
-            {errors.slice(0, 8).map((e, i) => (
-              <div key={i}>{e}</div>
-            ))}
-            {errors.length > 8 && <div>…and {errors.length - 8} more</div>}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  return <RepertoireHome />;
 }
 
 /* --------------------------------------------------------------- builder */
@@ -271,16 +68,20 @@ const toEdges = (l: LineMove[]) => l.map((m) => ({ fromKey: m.fromKey, toKey: m.
  */
 export function Builder({ repId, initialLine, onDone }: { repId: string; initialLine: string; onDone?: () => void }) {
   const { rep, graph, loading } = useRepGraph(repId);
-  const cards = useCards(repId);
-  const coverage = useCoverage(repId);
+  const allCards = useCards();
+  const cards = useMemo(() => (graph && allCards ? cardsOf(graph, allCards) : undefined), [graph, allCards]);
+  // Coverage is of all this color's chapters together: an Italian chapter isn't "missing" 1...c5 if
+  // your Sicilian chapter answers it. The run is kept live as you edit.
+  const { scope: colorScope, graph: colorGraph } = useScopeGraph(rep?.color);
+  const coverage = useCoverage(rep?.color);
   const settings = useSettings();
-  const live = useLiveCoverage(repId, rep, graph, settings, coverage);
+  const live = useLiveCoverage(rep?.color ?? '', colorScope, colorGraph, settings, coverage);
   const [line, setLine] = useState<LineMove[]>(() => lineFromSans(initialLine.split(/\s+/).filter(Boolean)));
   const [cursor, setCursor] = useState(line.length);
   // Only trust a coverage run that matches the current repertoire and settings.
-  const goalN = repTarget(rep, settings);
-  const freshCoverage = rep && settings.loaded && isCoverageFresh(coverage, rep, settings) ? coverage : undefined;
-  const reach = useLineReach(line.slice(0, cursor), rep?.color, graph, settings, freshCoverage);
+  const goalN = repTarget(colorScope, settings);
+  const freshCoverage = colorScope && settings.loaded && isCoverageFresh(coverage, colorScope, settings) ? coverage : undefined;
+  const reach = useLineReach(line.slice(0, cursor), rep?.color, colorGraph, settings, freshCoverage);
   const [flipped, setFlipped] = useState(false);
   // The move whose annotation menu (symbols and note) is open, from a right-click.
   const [noteTarget, setNoteTarget] = useState<RepAnnotationTarget | null>(null);
@@ -450,10 +251,20 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   };
 
   // The most common hole: an opponent reply you don't answer, or your move with nothing prepared.
+  // Only this chapter's: a gap in another chapter is fixed there.
   const biggestGap = useMemo(() => {
-    if (!freshCoverage) return undefined;
-    const g = freshCoverage.gaps[0];
-    const u = freshCoverage.unfinished[0];
+    if (!freshCoverage || !graph) return undefined;
+    const inChapter = (sans: string[]) => {
+      let key = graph.root;
+      for (const san of sans) {
+        const m = graph.edge(key, san);
+        if (!m) return false;
+        key = m.toKey;
+      }
+      return true;
+    };
+    const g = freshCoverage.gaps.find((x) => inChapter(x.path));
+    const u = freshCoverage.unfinished.find((x) => inChapter(x.path));
     const pick =
       g && (!u || g.prob >= u.prob)
         ? { sans: [...g.path, g.san], prob: g.prob }
@@ -462,7 +273,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           : undefined;
     if (!pick) return undefined;
     return { ...pick, label: formatLine(pick.sans) || 'the starting position' };
-  }, [freshCoverage]);
+  }, [freshCoverage, graph]);
 
   const jumpToBiggestGap = () => {
     if (!biggestGap) return;
@@ -598,7 +409,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               <button onClick={() => navigate('train', { rep: rep.id, mode: 'review' })}>
                 Review <span className="badge due">{dueCount}</span>
               </button>
-              <button onClick={() => navigate(`coverage/${rep.id}`)}>Coverage</button>
+              <button onClick={() => navigate(`coverage/${rep.color}`)}>Coverage</button>
               <button onClick={() => navigate(`insights/${rep.id}`)}>Insights</button>
             </>
           )}
@@ -617,7 +428,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           <a className="btn small" href={href('train', { rep: rep.id, mode: 'review' })}>
             Review <span className="badge due">{dueCount}</span>
           </a>
-          <a className="btn small" href={href(`coverage/${rep.id}`)}>
+          <a className="btn small" href={href(`coverage/${rep.color}`)}>
             Coverage
           </a>
           <a className="btn small" href={href(`insights/${rep.id}`)}>
@@ -845,7 +656,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
       color={rep.color}
       title={myTurn ? 'Your move' : "Opponent's replies"}
       saved={children.map((c) => {
-        const card = cardById.get(c.id);
+        const card = cardById.get(cardIdOf(c));
         const childProb = coverage?.probs[c.toKey];
         const prepared = coverage?.coverage?.[c.toKey];
         return {
@@ -1021,7 +832,7 @@ function plural(n: number, word: string) {
 
 function useLiveCoverage(
   repId: string,
-  rep: Repertoire | undefined,
+  rep: Pick<Repertoire, 'updatedAt' | 'oneInN'> | undefined,
   graph: RepGraph | undefined,
   settings: AppSettings & { loaded: boolean },
   stored: CoverageResult | undefined,
