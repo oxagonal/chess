@@ -219,24 +219,30 @@ export function chapterGap(
 ): ChapterGap | undefined {
   const gaps = [...cov.gaps, ...(cov.minorGaps ?? [])];
   const unfinished = [...cov.unfinished, ...(cov.minorUnfinished ?? [])];
+  // A hole belongs to the chapter when it's under the chapter's opening position — a hole right after
+  // 1.e4 c5 is the business of the chapter whose opening that is, not of every Sicilian chapter.
+  const { key } = chapterPosition(graph, names, chapterName);
+  const under = (sans: readonly string[]) => {
+    if (key === graph.root) return lineInGraph(graph, sans);
+    let k = graph.root;
+    let through = false;
+    for (const san of sans) {
+      const m = graph.edge(k, san);
+      if (!m) return false;
+      k = m.toKey;
+      if (k === key) through = true;
+    }
+    return through;
+  };
   const holes = [
-    ...gaps.filter((g) => lineInGraph(graph, g.path)).map((g) => ({ sans: [...g.path, g.san], prob: g.prob })),
-    ...unfinished.filter((u) => lineInGraph(graph, u.path)).map((u) => ({ sans: u.path, prob: u.prob })),
+    ...gaps.filter((g) => under(g.path)).map((g) => ({ sans: [...g.path, g.san], prob: g.prob })),
+    ...unfinished.filter((u) => under(u.path)).map((u) => ({ sans: u.path, prob: u.prob })),
   ];
   if (!holes.length) return undefined;
   const best = holes.reduce((a, b) => (b.prob > a.prob ? b : a));
-  // "In this opening" only for a hole that's under the opening's position (the hole's own move order
-  // passes through it) and rarer than the opening — otherwise the ratio means nothing.
-  const { key } = chapterPosition(graph, names, chapterName);
+  // "In this opening": as if the opening came up every game.
   const base = key === graph.root ? 1 : cov.probs[key];
-  let through = key === graph.root;
-  for (let k = graph.root, i = 0; !through && i < best.sans.length; i++) {
-    const m = graph.edge(k, best.sans[i]);
-    if (!m) break;
-    k = m.toKey;
-    if (k === key) through = true;
-  }
-  const inChapter = through && base && best.prob < base ? best.prob / base : undefined;
+  const inChapter = key !== graph.root && base && best.prob < base ? best.prob / base : undefined;
   return { ...best, inChapter, beyondTarget: cov.threshold !== undefined && best.prob < cov.threshold };
 }
 

@@ -166,6 +166,11 @@ describe('a chapter at a glance', () => {
     // Rarer than the target, it still shows — from the run's sub-threshold holes.
     expect(chapterGap(g, { gaps: [], unfinished: [], minorGaps: [{ path: ['e4', 'c5', 'c3', 'd5'], san: 'Nf3', prob: 0.00125 }], probs: {}, threshold: 0.005 })).toMatchObject({ prob: 0.00125, beyondTarget: true });
     expect(chapterGap(g, { gaps: [], unfinished: [], probs: {} })).toBeUndefined();
+    // A hole right after 1.e4 c5 is the business of the chapter whose opening that is, not the Alapin's.
+    const early = { gaps: [{ path: ['e4', 'c5'], san: 'b3', prob: 0.01 }], unfinished: [], probs: {} };
+    const open = new RepGraph('black', movesFromLines('o', 'black', ['e4 c5 Nf3 e6', 'e4 c5 d4 cxd4']));
+    expect(chapterGap(g, early)).toBeUndefined();
+    expect(chapterGap(open, early)?.sans).toEqual(['e4', 'c5', 'b3']);
   });
 });
 
