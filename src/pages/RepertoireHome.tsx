@@ -18,7 +18,6 @@ import { useSettings } from '../db/settings';
 import { isCoverageFresh } from '../services/coverage';
 import { oneIn } from '../lib/coverage';
 import { linePaths } from '../lib/map';
-import { MiniBoard } from '../components/MiniBoard';
 import { useCards, useChapterGraphs, useCoverage } from '../hooks';
 import { cardIdOf, chapterConflicts, chapterGap, chapterTrunk, type ChapterConflict } from '../lib/chapters';
 import { formatLine, type Color } from '../lib/chess';
@@ -226,7 +225,7 @@ function ChapterRow({
   onMerge: () => void;
 }) {
   const lines = graph ? linePaths(graph).filter((l) => l.some((m) => m.mine)).length : 0;
-  const { trunk, key } = graph ? chapterTrunk(graph) : { trunk: [], key: '' };
+  const { trunk } = graph ? chapterTrunk(graph) : { trunk: [] };
   const gap = graph && coverage ? chapterGap(graph, coverage) : undefined;
   const target = coverage ? Math.round(1 / coverage.threshold) : 0;
   return (
@@ -267,8 +266,7 @@ function ChapterRow({
         )}
       </div>
       {graph && graph.size > 0 && (
-        <a className="chapter-branch hide-sm" href={href(`repertoire/${r.id}`, { line: trunk.map((m) => m.san).join(' ') })} title="Where this chapter branches">
-          <MiniBoard fen={key} orientation={r.color} size={64} />
+        <a className="chapter-branch" href={href(`repertoire/${r.id}`, { line: trunk.map((m) => m.san).join(' ') })} title="Where this chapter branches">
           <span className="chapter-branch-line">{formatLine(trunk.map((m) => m.san)) || 'Starting position'}</span>
         </a>
       )}
