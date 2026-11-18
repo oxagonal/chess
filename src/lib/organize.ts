@@ -34,7 +34,17 @@ function majority<T>(items: T[]): { value: T; share: number } | undefined {
 
 export function chapterInfo(chapter: Chapter, graph: RepGraph, names: OpeningIndex | undefined): ChapterInfo {
   const lines = linePaths(graph);
-  const short = (family: string) => (chapter.name.startsWith(`${family}: `) ? chapter.name.slice(family.length + 2) : chapter.name);
+  // Inside its family's group: "Sicilian Defense: Four Knights Variation" → "Four Knights Variation",
+  // "Sicilian Defense — other lines" → "Other lines".
+  const short = (family: string) => {
+    for (const sep of [': ', ' — ']) {
+      if (chapter.name.startsWith(family + sep) && chapter.name.length > family.length + sep.length) {
+        const rest = chapter.name.slice(family.length + sep.length);
+        return rest[0].toUpperCase() + rest.slice(1);
+      }
+    }
+    return chapter.name;
+  };
   if (!lines.length) return { firstMove: 'Empty', family: 'Empty', eco: '~', short: chapter.name };
   const first = majority(lines.map((l) => l[0].san))!;
   const firstMove = first.share >= MAJORITY ? `${chapter.color === 'white' ? '' : 'vs '}1.${first.value}` : SEVERAL_FIRST;
@@ -90,7 +100,15 @@ export function organize(chapters: readonly Chapter[], graphs: ReadonlyMap<strin
     .map(([firstMove, fams]) => ({
       firstMove,
       families: [...fams.values()]
-        .map((f) => ({ ...f, chapters: f.chapters.sort((a, b) => (a.info.eco < b.info.eco ? -1 : a.info.eco > b.info.eco ? 1 : a.chapter.name.localeCompare(b.chapter.name))) }))
+        .map((f) => ({
+          ...f,
+          // ECO order, with an opening's catch-all ("… — other lines") last.
+          chapters: f.chapters.sort(
+            (a, b) =>
+              Number(/ — other lines$/.test(a.chapter.name)) - Number(/ — other lines$/.test(b.chapter.name)) ||
+              (a.info.eco < b.info.eco ? -1 : a.info.eco > b.info.eco ? 1 : a.chapter.name.localeCompare(b.chapter.name)),
+          ),
+        }))
         .sort((a, b) => (a.eco < b.eco ? -1 : a.eco > b.eco ? 1 : a.family.localeCompare(b.family))),
     }))
     .sort((a, b) => firstRank(a.firstMove) - firstRank(b.firstMove) || a.firstMove.localeCompare(b.firstMove));

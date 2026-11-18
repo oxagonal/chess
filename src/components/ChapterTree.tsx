@@ -78,6 +78,13 @@ export function ChapterTree({
           <details key={key} className="panel ctree-first" open={open[key] ?? true} onToggle={(e) => setOpen(key, e.currentTarget.open)}>
             <summary className="ctree-summary">
               <span className="ctree-title">{g.firstMove}</span>
+              {/* One opening under this first move: no second folder, its name goes up here. */}
+              {g.families.length === 1 && (
+                <>
+                  <span className="ctree-family-name">· {g.families[0].family}</span>
+                  {g.families[0].eco !== '~' && <span className="ctree-eco">{g.families[0].eco}</span>}
+                </>
+              )}
               <span className="muted small">
                 {ids.length} chapter{ids.length === 1 ? '' : 's'}
               </span>
@@ -85,7 +92,10 @@ export function ChapterTree({
               {summary?.(ids)}
             </summary>
             <div className="list">
-              {g.families.map((f) => {
+              {g.families.length === 1 &&
+                g.families[0].chapters.map((c) => <div key={c.chapter.id}>{row(c.chapter, c.info.short)}</div>)}
+              {g.families.length > 1 &&
+                g.families.map((f) => {
                 if (f.chapters.length === 1) return <div key={f.family}>{row(f.chapters[0].chapter, f.chapters[0].chapter.name)}</div>;
                 const fkey = `${g.firstMove}|${f.family}`;
                 const fids = f.chapters.map((c) => c.chapter.id);

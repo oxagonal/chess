@@ -41,6 +41,9 @@ describe('organizing chapters', () => {
     const out = organize(chapters, graphs, names, 'black');
     const e4 = out.find((g) => g.firstMove === 'vs 1.e4')!;
     expect(e4.families.map((f) => [f.family, f.chapters.length])).toEqual([['Sicilian Defense', 2]]);
+    // Inside its family a chapter drops the family's name: "Sicilian Defense — other lines" → "Other lines".
+    const { chapters: c2, graphs: g2 } = make([{ name: 'Sicilian Defense — other lines', color: 'black', lines: ['e4 c5 d4 cxd4 c3'] }]);
+    expect(organize(c2, g2, names, 'black')[0].families[0].chapters[0].info.short).toBe('Other lines');
     expect(out.find((g) => g.firstMove === 'vs 1.d4')!.families[0].family).toBe('Semi-Slav Defense');
     const mixed = out.find((g) => g.families.some((f) => f.family === SEVERAL_OPENINGS));
     expect(mixed?.firstMove).toBe('Several first moves');
