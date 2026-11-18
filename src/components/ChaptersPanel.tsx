@@ -38,7 +38,7 @@ export function ChaptersPanel({ color, line, current, onPicked }: { color: Color
   const open = (ch: Chapter) => {
     const g = graphs.get(ch.id);
     const here = !!key && !!g && line.length > 0 && g.has(key);
-    const sans = here ? [...line] : g ? chapterPosition(g, names).moves.map((m) => m.san) : [];
+    const sans = here ? [...line] : g ? chapterPosition(g, names, ch.name).moves.map((m) => m.san) : [];
     onPicked?.();
     navigate(`repertoire/${ch.id}`, sans.length ? { line: sans.join(' ') } : undefined);
   };
@@ -46,7 +46,7 @@ export function ChaptersPanel({ color, line, current, onPicked }: { color: Color
   const q = filter.trim().toLowerCase();
   const item = (ch: Chapter, label: string) => {
     const g = graphs.get(ch.id);
-    const opening = g ? compactLine(chapterPosition(g, names).moves.map((m) => m.san)) : '';
+    const opening = g ? compactLine(chapterPosition(g, names, ch.name).moves.map((m) => m.san)) : '';
     return (
       <button key={ch.id} className={`cp-item ${ch.id === current ? 'current' : ''}`} onClick={() => open(ch)} title={ch.name}>
         <span className="cp-name">{label}</span>
@@ -59,7 +59,7 @@ export function ChaptersPanel({ color, line, current, onPicked }: { color: Color
     <div className="chapters-panel">
       {alsoHere.length > 0 && (
         <div className="cp-here">
-          <div className="cp-label">This position is also in</div>
+          <div className="cp-label">{current ? 'This position is also in' : 'This position is in'}</div>
           <div className="cp-here-list">
             {alsoHere.map((c) => (
               <button key={c.id} className="chip cp-chip" onClick={() => open(c)}>
@@ -69,6 +69,17 @@ export function ChaptersPanel({ color, line, current, onPicked }: { color: Color
           </div>
         </div>
       )}
+      <button
+        className={`cp-item cp-all ${current === undefined ? 'current' : ''}`}
+        onClick={() => {
+          onPicked?.();
+          navigate(`repertoire/${color}`, line.length ? { line: line.join(' ') } : undefined);
+        }}
+        title="Every chapter of this color as one tree"
+      >
+        <span className="cp-name">All {color === 'white' ? 'White' : 'Black'} chapters</span>
+        <span className="cp-line">one tree · new moves go into the chapter they belong to</span>
+      </button>
       <input className="cp-filter" placeholder="Find a chapter" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
       <div className="cp-groups">
         {groups.map((g) => {

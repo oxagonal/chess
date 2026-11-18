@@ -60,9 +60,17 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
   const view = query.get('view') === 'map' ? 'map' : 'chapters';
   const color: Color = query.get('color') === 'black' || (query.get('color') !== 'white' && !chapters.some((c) => c.color === 'white')) ? 'black' : 'white';
   const tabs = (
-    <div className="row">
+    <div className="row rep-head">
       <h1 style={{ margin: 0 }}>Repertoire</h1>
+      <HelpButton />
       <span className="spacer" />
+      <a className="btn primary" href={href(`repertoire/${color}`)} title={`Every ${colorName(color)} chapter as one tree, in the studio — new moves go into the chapter they belong to`}>
+        Open all {colorName(color)}
+      </a>
+      <NewChapterButton color={color} />
+      <button onClick={() => setWizard(true)} title="Import a Lichess study (yours too, private or unlisted) or a PGN">
+        Import
+      </button>
       <div className="segmented" role="tablist" aria-label="View">
         <button role="tab" aria-selected={view === 'chapters'} className={view === 'chapters' ? 'active' : ''} onClick={() => navigate('repertoire', { color })}>
           Chapters
@@ -88,6 +96,7 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
     return (
       <div className="col" style={{ gap: 16 }}>
         {tabs}
+        {wizard && <ImportWizard chapters={chapters} onClose={() => setWizard(false)} />}
         <RepertoireMap color={color} setId={query.get('set') ?? undefined} chapters={chapters} collections={collections} />
       </div>
     );
@@ -107,17 +116,10 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
   return (
     <div className="col" style={{ gap: 16 }}>
       {tabs}
-      <p className="muted" style={{ margin: 0 }}>
-        A <b>chapter</b> is one opening, from the first move — “Italian”, “Caro-Kann, Exchange”. A move that's in several chapters is learned
-        once. A <b>repertoire</b> is a set of chapters you play together, to cram before a tournament; training “All White” covers every
-        White chapter.
-      </p>
-
-      <NewChapter key={color} defaultColor={color} onImport={() => setWizard(true)} />
       {wizard && <ImportWizard chapters={chapters} onClose={() => setWizard(false)} />}
 
       <div className="row">{colorSwitch}</div>
-      {shown.length === 0 && <Empty>No {colorName(color)} chapters yet — create one above, or import a PGN or Lichess study.</Empty>}
+      {shown.length === 0 && <Empty>No {colorName(color)} chapters yet — add one with New chapter, import a Lichess study, or open all {colorName(color)} and start playing moves.</Empty>}
       {shown.length > 0 && (
         <div className="col" style={{ gap: 8 }}>
           <div className="row">
@@ -166,35 +168,89 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
   );
 }
 
-function NewChapter({ defaultColor, onImport }: { defaultColor: Color; onImport: () => void }) {
+/** A small popover anchored to its button; closes on a click outside or Escape. */
+function usePopover() {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('pointerdown', away);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('pointerdown', away);
+      window.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+  return { open, setOpen, box };
+}
+
+function NewChapterButton({ color: initial }: { color: Color }) {
+  const { open, setOpen, box } = usePopover();
   const [name, setName] = useState('');
-  const [color, setColor] = useState<Color>(defaultColor);
+  const [color, setColor] = useState<Color>(initial);
+  useEffect(() => setColor(initial), [initial]);
   const create = async () => {
     const rep = await createRepertoire(name || (color === 'white' ? 'New White chapter' : 'New Black chapter'), color);
     setName('');
+    setOpen(false);
     navigate(`repertoire/${rep.id}`);
   };
   return (
-    <div className="panel">
-      <h2>New chapter</h2>
-      <div className="row">
-        <input
-          placeholder="Name, e.g. “Italian” or “Caro-Kann, Exchange”"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && void create()}
-          style={{ minWidth: 260 }}
-        />
-        <select value={color} onChange={(e) => setColor(e.target.value as Color)}>
-          <option value="white">I play White</option>
-          <option value="black">I play Black</option>
-        </select>
-        <button className="primary" onClick={create}>
-          Create
-        </button>
-        <span className="spacer" />
-        <button onClick={onImport}>Import a Lichess study or PGN…</button>
-      </div>
+    <div className="pop-anchor" ref={box}>
+      <button onClick={() => setOpen(!open)} aria-expanded={open}>
+        + New chapter
+      </button>
+      {open && (
+        <div className="pop-box col" style={{ gap: 8 }}>
+          <input
+            autoFocus
+            placeholder="Name, e.g. “Italian”"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void create()}
+          />
+          <div className="row">
+            <select value={color} onChange={(e) => setColor(e.target.value as Color)}>
+              <option value="white">I play White</option>
+              <option value="black">I play Black</option>
+            </select>
+            <span className="spacer" />
+            <button className="primary small" onClick={create}>
+              Create
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** What chapters and repertoires are — on demand, not taking up the page. */
+function HelpButton() {
+  const { open, setOpen, box } = usePopover();
+  return (
+    <div className="pop-anchor" ref={box}>
+      <button className="help-btn" onClick={() => setOpen(!open)} aria-expanded={open} aria-label="What are chapters and repertoires?">
+        ?
+      </button>
+      {open && (
+        <div className="pop-box help-pop">
+          <p>
+            A <b>chapter</b> is one opening, from the first move — “Italian”, “Caro-Kann, Exchange”. A move that's in several chapters is
+            learned once: your progress belongs to positions, not chapters.
+          </p>
+          <p>
+            <b>Open all</b> shows every chapter of a color as one tree in the studio; moves you add there go into the chapter they belong to
+            (or a new one named after the opening).
+          </p>
+          <p style={{ marginBottom: 0 }}>
+            A <b>repertoire</b> is a set of chapters you play together — to cram before a tournament. Training “All White” covers every White
+            chapter.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -244,8 +300,8 @@ function ChapterRow({
   onMerge: () => void;
 }) {
   const lines = graph ? linePaths(graph).filter((l) => l.some((m) => m.mine)).length : 0;
-  const opening = graph ? chapterPosition(graph, names).moves.map((m) => m.san) : [];
-  const gap = graph && coverage ? chapterGap(graph, coverage, names) : undefined;
+  const opening = graph ? chapterPosition(graph, names, r.name).moves.map((m) => m.san) : [];
+  const gap = graph && coverage ? chapterGap(graph, coverage, names, r.name) : undefined;
   const target = coverage ? Math.round(1 / coverage.threshold) : 0;
   const gapTitle = gap
     ? `Biggest gap: ${compactLine(gap.sans)} — ${oneIn(gap.prob)} games${gap.inChapter !== undefined ? `, ${oneIn(gap.inChapter)} of games in this opening` : ''}. ` +

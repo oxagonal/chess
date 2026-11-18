@@ -240,7 +240,7 @@ function ChapterStrips({
     const dueCount = lines.filter((l) => l.due).length;
     const fresh = lines.some((l) => l.strength === 'new');
     const g = allGraphs?.get(chapter.id);
-    const opening = g ? compactLine(chapterPosition(g, names).moves.map((m) => m.san)) : '';
+    const opening = g ? compactLine(chapterPosition(g, names, chapter.name).moves.map((m) => m.san)) : '';
     const practice = () =>
       navigate('train', { rep: chapter.id, mode: dueCount ? 'review' : fresh ? 'learn' : 'drill', t: String(Date.now()) });
     return (

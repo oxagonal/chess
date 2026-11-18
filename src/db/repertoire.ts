@@ -7,7 +7,9 @@ import { grade, gradeAhead, newCard, Rating } from '../lib/srs';
 import { START_KEY, type Color } from '../lib/chess';
 import type { Collection, Repertoire, RepMove, ReviewCard, ReviewSource } from '../lib/types';
 import type { Grade } from 'ts-fsrs';
-import { cardIdOf } from '../lib/chapters';
+import { cardIdOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
+import { loadOpeningIndex, nameParts } from '../lib/openingNames';
+import { playSan, startPos } from '../lib/chess';
 import { cleanAnnotation, type MoveAnnotation } from '../lib/annotations';
 
 export async function createRepertoire(name: string, color: Color): Promise<Repertoire> {
@@ -155,6 +157,44 @@ export async function mergeChapter(fromId: string, intoId: string) {
         c.chapterIds = [...new Set(c.chapterIds.map((x) => (x === fromId ? intoId : x)))];
       });
   });
+}
+
+/**
+ * Where a line added while browsing all of a color's chapters goes: the chapter of the deepest move
+ * of it you already have (`union` is that color's union graph); a line that's new from the first
+ * move gets a new chapter, named after the opening it reaches.
+ */
+export async function chapterForNewLine(color: Color, sans: readonly string[], union: RepGraph | undefined): Promise<string> {
+  let key = START_KEY;
+  let last: RepMove | undefined;
+  for (const san of sans) {
+    const m = union?.edge(key, san);
+    if (!m) break;
+    last = m;
+    key = m.toKey;
+  }
+  if (last) return chapterOfMoveId(sourcesOf(last)[0]);
+  const names = await loadOpeningIndex().catch(() => undefined);
+  let name = '';
+  let pos = startPos();
+  for (const san of sans) {
+    const r = playSan(pos, san);
+    if (!r) break;
+    pos = r.pos;
+    const n = names?.get(r.key);
+    if (n) {
+      const p = nameParts(n);
+      name = p.variation ? `${p.family}: ${p.variation}` : p.family;
+    }
+  }
+  return (await createRepertoire(name || `${color === 'white' ? 'White' : 'Black'}: 1.${sans[0] ?? ''}`, color)).id;
+}
+
+/** Delete a move of a union graph: from every chapter that has it (with what only it led to there). */
+export async function deleteUnionMove(move: RepMove): Promise<number> {
+  let n = 0;
+  for (const id of sourcesOf(move)) n += await deleteMove(chapterOfMoveId(id), id);
+  return n;
 }
 
 export async function renameRepertoire(id: string, name: string) {

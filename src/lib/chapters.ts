@@ -125,23 +125,56 @@ export function matchChapter(incoming: RepGraph, candidates: readonly { id: stri
  * prepared reply isn't part of the opening's name). Along the chapter's trunk: the earliest position
  * with the same opening and variation as the deepest named one. Without names, the whole trunk.
  */
-export function chapterPosition(graph: RepGraph, names: OpeningIndex | undefined): { moves: RepMove[]; key: string } {
+export function chapterPosition(graph: RepGraph, names: OpeningIndex | undefined, chapterName?: string): { moves: RepMove[]; key: string } {
   const { trunk, key } = chapterTrunk(graph);
   if (!names) return { moves: trunk, key };
   const group = (n: string) => {
     const p = nameParts(n);
     return p.variation ? `${p.family}: ${p.variation}` : p.family;
   };
-  let deepest = -1;
-  for (let i = trunk.length - 1; i >= 0; i--) if (names.has(trunk[i].toKey)) {
-    deepest = i;
-    break;
+  const named = [...graph.reachableKeys()].flatMap((k) => (names.has(k) ? [{ k, n: names.get(k)! }] : []));
+  // The chapter's opening: its own name when that's an opening it has (chapters made by splitting
+  // are named that way); else the variation most of its lines end up in, if most do; else the opening.
+  let match: (n: string) => boolean = () => false;
+  if (chapterName && named.some((x) => group(x.n) === chapterName)) match = (n) => group(n) === chapterName;
+  else if (chapterName && named.some((x) => nameParts(x.n).family === chapterName)) match = (n) => nameParts(n).family === chapterName;
+  else {
+    const ends: string[] = [];
+    for (const leaf of graph.leaves()) {
+      const path = graph.pathTo(leaf) ?? [];
+      for (let i = path.length - 1; i >= 0; i--) {
+        const n = names.get(path[i].toKey);
+        if (n) {
+          ends.push(n);
+          break;
+        }
+      }
+    }
+    if (!ends.length) return { moves: trunk, key };
+    const top = (xs: string[]) => {
+      const c = new Map<string, number>();
+      for (const x of xs) c.set(x, (c.get(x) ?? 0) + 1);
+      let best = xs[0];
+      for (const [x, v] of c) if (v > (c.get(best) ?? 0)) best = x;
+      return { value: best, share: (c.get(best) ?? 0) / xs.length };
+    };
+    const variation = top(ends.map(group));
+    if (variation.share >= 0.6) match = (n) => group(n) === variation.value;
+    else {
+      const family = top(ends.map((n) => nameParts(n).family)).value;
+      match = (n) => nameParts(n).family === family;
+    }
   }
-  if (deepest < 0) return { moves: trunk, key };
-  const target = group(names.get(trunk[deepest].toKey)!);
-  const first = trunk.findIndex((m, i) => i <= deepest && names.has(m.toKey) && group(names.get(m.toKey)!) === target);
-  const moves = trunk.slice(0, first + 1);
-  return { moves, key: moves[moves.length - 1].toKey };
+  // …and the earliest position in the chapter with that name (a Dutch chapter that also plays
+  // 1...e6 first is still 1.d4 f5; a King's Indian, Fianchetto is the fianchetto position).
+  let best: RepMove[] | undefined;
+  for (const { k, n } of named) {
+    if (!match(n)) continue;
+    const path = graph.pathTo(k);
+    if (path && (!best || path.length < best.length)) best = path;
+  }
+  if (!best?.length) return { moves: trunk, key };
+  return { moves: best, key: best[best.length - 1].toKey };
 }
 
 /** Whether a line (SANs from the start) stays inside a graph's moves. */
@@ -182,6 +215,7 @@ export function chapterGap(
     threshold?: number;
   },
   names?: OpeningIndex,
+  chapterName?: string,
 ): ChapterGap | undefined {
   const gaps = [...cov.gaps, ...(cov.minorGaps ?? [])];
   const unfinished = [...cov.unfinished, ...(cov.minorUnfinished ?? [])];
@@ -191,9 +225,19 @@ export function chapterGap(
   ];
   if (!holes.length) return undefined;
   const best = holes.reduce((a, b) => (b.prob > a.prob ? b : a));
-  const { key } = chapterPosition(graph, names);
+  // "In this opening" only for a hole that's under the opening's position (the hole's own move order
+  // passes through it) and rarer than the opening — otherwise the ratio means nothing.
+  const { key } = chapterPosition(graph, names, chapterName);
   const base = key === graph.root ? 1 : cov.probs[key];
-  return { ...best, inChapter: base ? Math.min(1, best.prob / base) : undefined, beyondTarget: cov.threshold !== undefined && best.prob < cov.threshold };
+  let through = key === graph.root;
+  for (let k = graph.root, i = 0; !through && i < best.sans.length; i++) {
+    const m = graph.edge(k, best.sans[i]);
+    if (!m) break;
+    k = m.toKey;
+    if (k === key) through = true;
+  }
+  const inChapter = through && base && best.prob < base ? best.prob / base : undefined;
+  return { ...best, inChapter, beyondTarget: cov.threshold !== undefined && best.prob < cov.threshold };
 }
 
 /** A position where chapters played together give you different moves. */

@@ -2,15 +2,15 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
-import { addEdges, deleteMove, setMoveAnnotation, splitOff } from '../db/repertoire';
+import { addEdges, chapterForNewLine, deleteMove, deleteUnionMove, setMoveAnnotation, splitOff } from '../db/repertoire';
 import { loadOpeningIndex, nameParts } from '../lib/openingNames';
-import { chapterGap, chapterOfMoveId, chapterPosition } from '../lib/chapters';
+import { chapterGap, chapterOfMoveId, chapterPosition, sourcesOf } from '../lib/chapters';
 import { useOpeningIndex } from '../components/ChapterTree';
 import { ChaptersPanel, ChapterSwitcher } from '../components/ChaptersPanel';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
 import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepGraph } from '../hooks';
 import { cardIdOf, cardsOf } from '../lib/chapters';
-import { useScopeGraph } from '../db/scopes';
+import { colorName, useScopeGraph } from '../db/scopes';
 import type { StudioPanelDef } from '../components/Studio';
 // The studio (dockview) loads only when the desktop builder opens it — phones never download it.
 const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
@@ -73,7 +73,22 @@ const toEdges = (l: LineMove[]) => l.map((m) => ({ fromKey: m.fromKey, toKey: m.
  * training" instead of the links that would leave the session.
  */
 export function Builder({ repId, initialLine, onDone }: { repId: string; initialLine: string; onDone?: () => void }) {
-  const { rep, graph, loading } = useRepGraph(repId);
+  // `repId` is a chapter — or 'white' / 'black': all of that color's chapters as one tree, like a
+  // repertoire from before chapters. Then new moves are filed in the chapter the line continues (or
+  // a new chapter named after its opening), and deletes and notes apply to every chapter with the move.
+  const colorMode = repId === 'white' || repId === 'black';
+  const chapterData = useRepGraph(colorMode ? undefined : repId);
+  const colorData = useScopeGraph(colorMode ? repId : undefined);
+  const rep: Repertoire | undefined = colorMode
+    ? colorData.scope && { id: repId, name: `All ${colorName(repId as Color)} chapters`, color: repId as Color, createdAt: 0, updatedAt: colorData.scope.updatedAt }
+    : chapterData.rep;
+  const graph = colorMode ? colorData.graph : chapterData.graph;
+  const loading = colorMode ? colorData.loading : chapterData.loading;
+  /** Save a line (from the start): into this chapter, or — browsing a color — the chapter it belongs in. */
+  const saveLine = async (path: LineMove[], opts?: { known?: boolean }) => {
+    const target = colorMode ? await chapterForNewLine(repId as Color, path.map((m) => m.san), graph) : repId;
+    return addEdges(target, toEdges(path), opts);
+  };
   const allCards = useCards();
   const cards = useMemo(() => (graph && allCards ? cardsOf(graph, allCards) : undefined), [graph, allCards]);
   // Coverage is of all this color's chapters together: an Italian chapter isn't "missing" 1...c5 if
@@ -91,7 +106,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // How often this position comes up if the chapter's opening came up every game: the figure above
   // divided by how often the opening's position (e.g. 1.e4 d6 for a Pirc chapter) comes up.
   const openingNames = useOpeningIndex();
-  const chapterOpening = useMemo(() => (graph ? chapterPosition(graph, openingNames) : undefined), [graph, openingNames]);
+  const chapterOpening = useMemo(() => (graph && rep && !colorMode ? chapterPosition(graph, openingNames, rep.name) : undefined), [graph, openingNames, rep, colorMode]);
   const openingPath = (chapterOpening?.moves ?? []).map((m) => ({ fromKey: m.fromKey, san: m.san, key: m.toKey }));
   const openingReach = useLineReach(openingPath, rep?.color, colorGraph, settings, freshCoverage);
   const here = line.slice(0, cursor);
@@ -146,7 +161,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     if ((add || autoAdd) && graph) {
       // Adding requires the whole path to be in the repertoire, so add any missing earlier moves too.
       const path = [...line.slice(0, cursor), item];
-      await addEdges(repId, toEdges(path));
+      await saveLine(path);
     }
   };
 
@@ -260,7 +275,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
       setLine(path);
       setCursor(path.length);
       setMemState({ status: 'searching' });
-      const { mineAdded } = await addEdges(repId, toEdges(path), { known: true });
+      const { mineAdded } = await saveLine(path, { known: true });
       setMemAdded((n) => n + mineAdded);
       return;
     }
@@ -272,10 +287,10 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // (Rarer than the target too: the real biggest hole, not "none".)
   const biggestGap = useMemo(() => {
     if (!freshCoverage || !graph) return undefined;
-    const pick = chapterGap(graph, freshCoverage);
+    const pick = chapterGap(graph, freshCoverage, openingNames, rep?.name);
     if (!pick) return undefined;
     return { ...pick, label: formatLine(pick.sans) || 'the starting position' };
-  }, [freshCoverage, graph]);
+  }, [freshCoverage, graph, openingNames, rep?.name]);
 
   const jumpToBiggestGap = () => {
     if (!biggestGap) return;
@@ -285,7 +300,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   };
 
   const addLineToRep = async () => {
-    const { added } = await addEdges(repId, toEdges(line.slice(0, cursor)));
+    const { added } = await saveLine(line.slice(0, cursor));
     setMessage(`Added ${added} move${added === 1 ? '' : 's'}.`);
     setTimeout(() => setMessage(null), 2500);
   };
@@ -293,7 +308,10 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const removeMove = async (moveId: string, san: string) => {
     const n = graph ? countBelow(graph, moveId) : 1;
     if (n > 1 && !confirm(`Delete ${san} and the ${n - 1} move(s) that follow it?`)) return;
-    await deleteMove(repId, moveId);
+    const m = graph?.byId.get(moveId);
+    if (colorMode) {
+      if (m) await deleteUnionMove(m);
+    } else await deleteMove(repId, moveId);
   };
 
   // Play from memory on a phone shows the line as text in a small box: keep the current move in it.
@@ -333,7 +351,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // Right-click (long-press on touch) a saved move to annotate it: symbols and a note, like a Lichess
   // study. Not in Play from memory. `ply` is the move's place from the start (for its move number).
   const annotate = (m: RepMove | undefined, ply: number) =>
-    m && !zen ? annotateProps((x, y) => setNoteTarget({ id: m.id, san: m.san, ply, x, y })) : {};
+    m && !zen ? annotateProps((x, y) => setNoteTarget({ id: sourcesOf(m)[0], sources: sourcesOf(m), san: m.san, ply, x, y })) : {};
   // A saved move as written in the notation: its symbols after it, colored like Lichess.
   const shown = (m: RepMove) => ({
     san: sanWithGlyphs(m.san, m.glyphs),
@@ -746,7 +764,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     {
       type: 'chapters',
       title: 'Chapters',
-      render: () => (zen ? hidden : <ChaptersPanel color={rep.color} line={line.slice(0, cursor).map((m) => m.san)} current={rep.id} />),
+      render: () => (zen ? hidden : <ChaptersPanel color={rep.color} line={line.slice(0, cursor).map((m) => m.san)} current={colorMode ? undefined : rep.id} />),
     },
     {
       type: 'coverage',
@@ -1007,7 +1025,8 @@ function CoverageBox({
   );
 }
 
-type RepAnnotationTarget = AnnotationTarget & { id: string };
+/** `id`: the chapter move to read; `sources`: every chapter move it stands for (all get the change). */
+type RepAnnotationTarget = AnnotationTarget & { id: string; sources?: string[] };
 
 /** The annotation menu for a saved repertoire move: reads the move's latest symbols and note, saves as you go. */
 function RepAnnotationMenu({ target, onClose }: { target: RepAnnotationTarget; onClose: () => void }) {
@@ -1017,7 +1036,7 @@ function RepAnnotationMenu({ target, onClose }: { target: RepAnnotationTarget; o
     <AnnotationMenu
       target={target}
       annotation={{ glyphs: move.glyphs, comment: move.comment }}
-      onChange={(a) => void setMoveAnnotation(target.id, a)}
+      onChange={(a) => void Promise.all((target.sources ?? [target.id]).map((id) => setMoveAnnotation(id, a)))}
       onClose={onClose}
       extra={<SplitOffForm move={move} onDone={onClose} />}
     />
