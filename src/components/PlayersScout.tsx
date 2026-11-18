@@ -2,14 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { deletePlayer, refreshPlayerGames, savePlayer } from '../services/players';
-import { otbGamesVs, pgnGamesOf } from '../lib/players';
+import { defaultPlayerSince, inWindow, onlineWindow, otbGamesVs, pgnGamesOf } from '../lib/players';
+import { useSettings } from '../db/settings';
+import { TIME_CLASSES, type TimeClass } from '../lib/importers/common';
 import { readPgnGames, sameName, similarNames } from '../lib/otb';
 import { href } from '../router';
 import type { Color } from '../lib/chess';
 import type { DbLink, Player, StoredGame } from '../lib/types';
 import type { NameEntry } from '../lib/gamesdb';
 import { searchPlayers } from '../services/gamesdb';
-import { MoreMenu, timeAgo } from './ui';
+import { MoreMenu, fmtDate, timeAgo } from './ui';
 
 const STORE_KEY = 'chess-prep:scoutPlayer';
 
@@ -48,21 +50,24 @@ export function usePlayerGames(playerId: string | undefined): ScoutGames | undef
   const player = useLiveQuery(async () => (playerId ? ((await db.players.get(playerId)) ?? null) : null), [playerId]);
   const cached = useLiveQuery(() => (playerId ? db.playerGames.where('playerId').equals(playerId).toArray() : []), [playerId]);
   const myOtb = useLiveQuery(() => db.games.where('source').equals('otb').toArray(), []);
+  const { importTimeClasses, loaded } = useSettings();
   return useMemo(() => {
     if (player === null) return null;
-    if (!player || !cached || !myOtb) return undefined;
-    const online = cached.filter((g) => g.source !== 'otb');
+    if (!player || !cached || !myOtb || !loaded) return undefined;
+    // Online games in the period and time controls chosen for the player (narrowing it hides the rest).
+    const win = onlineWindow(player, importTimeClasses);
+    const online = cached.filter((g) => g.source !== 'otb' && inWindow(g, win));
     const fromDb = cached.filter((g) => g.source === 'otb');
     const otb = otbGamesVs(player, myOtb);
     const pgn = pgnGamesOf(player).games;
     const newest = online.reduce((m, g) => Math.max(m, g.playedAt), 0) || undefined;
     return {
       player,
-      games: [...cached, ...otb, ...pgn],
+      games: [...online, ...fromDb, ...otb, ...pgn],
       counts: { online: online.length, db: fromDb.length, otb: otb.length, pgn: pgn.length },
       newest,
     };
-  }, [player, cached, myOtb]);
+  }, [player, cached, myOtb, importTimeClasses, loaded]);
 }
 
 /** Which of a player's games to show: everything, their online games, or over-the-board ones (yours vs them + PGN). */
@@ -142,7 +147,9 @@ export function PlayersBar({ playerId, onSelect, as, onAs, source, onSource, sco
           setEditing(null);
           if (saved) {
             onSelect(saved.id);
-            refreshed.delete(saved.id);
+            // Download what the player's (new) period and time controls ask for.
+            if (hasSources(saved)) void update(saved);
+            else refreshed.delete(saved.id);
           }
         }}
       />
@@ -224,8 +231,11 @@ export function PlayersBar({ playerId, onSelect, as, onAs, source, onSource, sco
               <b>Online:</b>{' '}
               {accounts ? (
                 <>
-                  {c.online} game{c.online === 1 ? '' : 's'} from {accounts}
-                  {scout?.newest ? ` · latest ${timeAgo(scout.newest)}` : ''}
+                  {c.online} game{c.online === 1 ? '' : 's'} from {accounts} ({windowLabel(p)})
+                  {scout?.newest ? ` · latest ${timeAgo(scout.newest)}` : ''}{' '}
+                  <button className="linklike" onClick={() => setEditing(p)}>
+                    change
+                  </button>
                 </>
               ) : (
                 <>
@@ -304,6 +314,11 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
   const [pgn, setPgn] = useState(player?.pgn ?? '');
   const [busy, setBusy] = useState(false);
   const [links, setLinks] = useState<DbLink[]>(player?.dbLinks ?? []);
+  const { importTimeClasses } = useSettings();
+  // Their online games: since when ('' = all of them) and which time controls.
+  const [since, setSince] = useState(player?.since ?? defaultPlayerSince());
+  const [classes, setClasses] = useState<TimeClass[] | undefined>(player?.timeClasses);
+  const tcs = classes ?? importTimeClasses;
   const opponents = useLiveQuery(async () => {
     const games = await db.games.where('source').equals('otb').toArray();
     return games.map((g) => (g.userColor === 'white' ? g.black : g.white));
@@ -323,7 +338,18 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
   }, [pgn, name, lichess, chesscom]);
   const save = async () => {
     setBusy(true);
-    onDone(await savePlayer({ id: player?.id, name: name.trim() || lichess.trim() || chesscom.trim(), lichess, chesscom, pgn, dbLinks: links }));
+    onDone(
+      await savePlayer({
+        id: player?.id,
+        name: name.trim() || lichess.trim() || chesscom.trim(),
+        lichess,
+        chesscom,
+        pgn,
+        dbLinks: links,
+        since,
+        timeClasses: tcs,
+      }),
+    );
   };
   return (
     <div className="col scout-editor" style={{ gap: 10 }}>
@@ -369,6 +395,36 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
           <input value={chesscom} onChange={(e) => setChesscom(e.target.value)} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
         </label>
       </div>
+      {(lichess.trim() || chesscom.trim()) && (
+        <div className="col player-window" style={{ gap: 6 }}>
+          <div className="row" style={{ alignItems: 'flex-end' }}>
+            <label className="field">
+              <span>Download their online games since</span>
+              <input type="date" value={since} onChange={(e) => setSince(e.target.value)} />
+            </label>
+            <button className={`small ${since === '' ? 'blue' : ''}`} onClick={() => setSince('')} title="Every game they've played — big accounts take a few minutes the first time">
+              All their games
+            </button>
+          </div>
+          <div className="row">
+            <span className="muted small">Time controls:</span>
+            {TIME_CLASSES.map((t) => (
+              <label key={t} className="check small">
+                <input
+                  type="checkbox"
+                  checked={tcs.includes(t)}
+                  onChange={() => setClasses(tcs.includes(t) ? tcs.filter((x) => x !== t) : TIME_CLASSES.filter((x) => x === t || tcs.includes(x)))}
+                />
+                {t}
+              </label>
+            ))}
+          </div>
+          <div className="muted small">
+            {since === '' ? 'All their games' : `Games since ${dayLabel(since)}`} — an earlier date or more time controls
+            downloads the older games; a later one just hides them. Over-the-board database games always come in full.
+          </div>
+        </div>
+      )}
       <DbLinker name={name} links={links} onChange={setLinks} />
       <label className="field">
         <span>Their games as PGN (optional)</span>
@@ -388,6 +444,16 @@ function PlayerEditor({ player, onDone }: { player?: Player; onDone: (saved?: Pl
 }
 
 const hasSources = (p: Player) => !!(p.lichess || p.chesscom || p.dbLinks?.length);
+
+/** "Nov 18, 2025" for "2025-11-18" (that calendar day, whatever the time zone). */
+const dayLabel = (iso: string) => fmtDate(new Date(`${iso}T00:00:00`).getTime());
+
+/** "since Nov 18, 2025 · blitz, rapid" or "all games · every time control". */
+function windowLabel(p: Player): string {
+  const when = p.since === '' ? 'all games' : `since ${dayLabel(p.since || defaultPlayerSince())}`;
+  const tc = p.timeClasses?.length ? (p.timeClasses.length === TIME_CLASSES.length ? 'every time control' : p.timeClasses.join(', ')) : 'your time controls';
+  return `${when} · ${tc}`;
+}
 
 /** Search the over-the-board games database and tick the names that are this player. */
 function DbLinker({ name, links, onChange }: { name: string; links: DbLink[]; onChange: (l: DbLink[]) => void }) {

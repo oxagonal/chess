@@ -5,6 +5,32 @@
 import { hashString, readPgnGames, sameName } from './otb';
 import { opposite } from './chess';
 import type { Player, StoredGame } from './types';
+import type { TimeClass } from './importers/common';
+
+const YEAR = 365 * 86_400_000;
+
+/** The date a year back (YYYY-MM-DD), where a new player's downloads start. */
+export function defaultPlayerSince(now = Date.now()): string {
+  return new Date(now - YEAR).toISOString().slice(0, 10);
+}
+
+/**
+ * Which of a player's online games are wanted: played since `since` (epoch ms, 0 = all of them) in
+ * `timeClasses` — the player's own choice, else a year back in the time controls you import.
+ */
+export function onlineWindow(
+  player: Pick<Player, 'since' | 'timeClasses'>,
+  yourTimeClasses: TimeClass[],
+  now = Date.now(),
+): { since: number; timeClasses: TimeClass[] } {
+  const since = player.since === '' ? 0 : player.since ? new Date(`${player.since}T00:00:00Z`).getTime() || 0 : now - YEAR;
+  return { since, timeClasses: player.timeClasses?.length ? player.timeClasses : yourTimeClasses };
+}
+
+/** Whether a downloaded online game falls in the window (narrowing it hides games at once). */
+export function inWindow(g: Pick<StoredGame, 'playedAt' | 'timeClass'>, w: { since: number; timeClasses: TimeClass[] }): boolean {
+  return g.playedAt >= w.since && w.timeClasses.includes(g.timeClass as TimeClass);
+}
 
 /** Your over-the-board games against this player, turned around so they're the "user". */
 export function otbGamesVs(player: Player, myGames: readonly StoredGame[]): StoredGame[] {

@@ -20,6 +20,7 @@ import {
 } from '../lib/gamesdb';
 import { GAMES_DB_URL, searchPlayers } from '../services/gamesdb';
 import { refreshPlayerGames, savePlayer } from '../services/players';
+import { inWindow, onlineWindow } from '../lib/players';
 
 /** The vectors in gamesdb/SPEC.md — the exporter must produce exactly these. */
 const VECTORS = [
@@ -126,6 +127,66 @@ describe('searching and linking (fake database)', () => {
     await savePlayer({ ...p, dbLinks: [{ id: 6, name: 'Paul Iinuma', games: 1 }] });
     await refreshPlayerGames((await db.players.get(p.id))!);
     expect((await db.playerGames.where('playerId').equals(p.id).toArray()).map((g) => g.black)).toEqual(['Paul Iinuma']);
+  });
+});
+
+describe("a scouted player's online games", () => {
+  const sinceAsked: number[] = [];
+  beforeEach(async () => {
+    await Promise.all(db.tables.map((t) => t.clear()));
+    sinceAsked.length = 0;
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+    });
+    // Lichess's export: note the period asked for, send no games.
+    vi.stubGlobal('fetch', async (url: string) => {
+      const u = new URL(url);
+      expect(u.searchParams.has('max')).toBe(false);
+      sinceAsked.push(Number(u.searchParams.get('since')));
+      return new Response('');
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const cache = (playerId: string, playedAt: number) =>
+    db.playerGames.put({
+      ...({ source: 'lichess', account: 'x', url: '', white: 'x', black: 'y', userColor: 'white', result: '1-0', timeClass: 'blitz', rated: true, sans: [] } as const),
+      id: `${playerId}|lichess:${playedAt}`,
+      gameId: `lichess:${playedAt}`,
+      playerId,
+      playedAt,
+    });
+
+  it('downloads the period chosen (all of it if asked), then only newer games — older ones when the date moves back', async () => {
+    const day = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
+    let p = await savePlayer({ name: 'X', lichess: 'x', since: '2025-01-01', timeClasses: ['blitz'] });
+    await refreshPlayerGames(p);
+    expect(sinceAsked).toEqual([day('2025-01-01')]);
+    await cache(p.id, day('2026-06-01'));
+    await refreshPlayerGames(p);
+    expect(sinceAsked[1]).toBe(day('2026-06-01') + 1); // just what's newer
+    p = await savePlayer({ ...p, since: '' }); // all their games
+    await refreshPlayerGames(p);
+    expect(sinceAsked[2]).toBe(0);
+    p = await savePlayer({ ...p, since: '2026-01-01' }); // narrower: nothing to fetch but newer games
+    await refreshPlayerGames(p);
+    expect(sinceAsked[3]).toBe(day('2026-06-01') + 1);
+    p = await savePlayer({ ...p, timeClasses: ['blitz', 'bullet'] }); // another time control: its whole period
+    await refreshPlayerGames(p);
+    expect(sinceAsked[4]).toBe(day('2026-01-01'));
+  });
+
+  it('shows only the games in the chosen period and time controls', () => {
+    const w = onlineWindow({ since: '2026-01-01', timeClasses: ['blitz'] }, ['rapid']);
+    expect(inWindow({ playedAt: Date.parse('2026-03-01'), timeClass: 'blitz' }, w)).toBe(true);
+    expect(inWindow({ playedAt: Date.parse('2025-12-01'), timeClass: 'blitz' }, w)).toBe(false);
+    expect(inWindow({ playedAt: Date.parse('2026-03-01'), timeClass: 'bullet' }, w)).toBe(false);
+    expect(onlineWindow({ since: '' }, ['rapid'])).toEqual({ since: 0, timeClasses: ['rapid'] });
+    const now = Date.parse('2026-11-18T12:00:00Z');
+    expect(onlineWindow({}, ['blitz'], now).since).toBe(now - 365 * 86_400_000);
   });
 });
 

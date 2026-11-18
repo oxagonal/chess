@@ -28,7 +28,7 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   long-press it on a phone or iPad — to annotate it like a Lichess study (!!, !, !?, ?!, ?, ??, □, ±, N…, a
   comment). Annotations and the analysis are saved with the game (an interrupted analysis continues).
 - **Players** — a tab next to the explorer in the builder for scouting opponents: save a player with their
-  Lichess / Chess.com usernames (their recent games are downloaded and cached on the device) or just a name
+  Lichess / Chess.com usernames (their games since a date you choose, or all of them, in the time controls you pick, are downloaded and cached on the device) or just a name
   (your over-the-board games against them, plus any PGN you paste), or find them by name in the
   **over-the-board games database** (13 million games from Lumbra's Gigabase, exported and deployed as a
   separate static site — see `gamesdb/SPEC.md`), and see what they play in the position you're on.

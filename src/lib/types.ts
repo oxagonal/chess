@@ -1,6 +1,7 @@
 import type { GameReview } from './review';
 import type { MoveAnnotation, SavedLine } from './annotations';
 import type { Color } from './chess';
+import type { TimeClass } from './importers/common';
 
 /**
  * A chapter: one color's move tree from the starting position, with its notes — e.g. "Italian" or
@@ -227,6 +228,13 @@ export interface Player {
   pgn?: string;
   /** Names in the over-the-board games database that are this player (often several spellings). */
   dbLinks?: DbLink[];
+  /**
+   * Their online games to download: played since this date (YYYY-MM-DD), '' = all of them; unset =
+   * a year back. (Over-the-board database games always come in full.)
+   */
+  since?: string;
+  /** …in these time controls (unset = the ones you import for yourself). */
+  timeClasses?: TimeClass[];
   createdAt: number;
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;
