@@ -51,6 +51,75 @@ export interface SideLine {
 }
 
 /**
+ * A move of a side line written as inline notation (game review): what follows it — the first is the
+ * line's own continuation, the others branch off in ( … ) — and whether the board is on it.
+ */
+export interface SideNode extends ListMove {
+  onSelect: () => void;
+  current?: boolean;
+  next: SideNode[];
+  /** Shown right after the move (e.g. a button removing the line that ends here). */
+  tail?: ReactNode;
+}
+
+/** Spaces between tokens, so the text wraps between moves (each move keeps its number). */
+function spaced(nodes: ReactNode[]): ReactNode[] {
+  return nodes.flatMap((n, i) => (i === 0 ? [n] : [' ', n]));
+}
+
+/**
+ * The variation starting with `first` (an alternative to the move at `ply`) as inline notation: its
+ * moves read straight on; where it branches, the other moves follow in ( … ), nested as deep as the
+ * lines go — like a Lichess study.
+ */
+function inlineVariation(first: SideNode, ply: number, key: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  let kids: SideNode[] = [first];
+  let p = ply;
+  let numbered = true;
+  let n = 0;
+  while (kids.length) {
+    const [main, ...alts] = kids;
+    const prefix = moveNumberPrefix(p, numbered);
+    out.push(
+      <span key={`${key}.${n++}`} className="ml-tok">
+        {prefix && <span className="num">{prefix}</span>}
+        <span
+          className={`mv ${main.current ? 'current' : ''} ${main.note && !main.comment ? 'has-note' : ''} ${main.className ?? ''}`}
+          title={main.title}
+          onClick={main.onSelect}
+          {...main.menu}
+        >
+          {main.san}
+        </span>
+        {main.tail}
+      </span>,
+    );
+    numbered = false;
+    if (main.comment) {
+      out.push(
+        <span key={`${key}.${n++}`} className="ml-side-comment" {...main.menu}>
+          {main.comment}
+        </span>,
+      );
+      numbered = true;
+    }
+    for (const alt of alts) {
+      const k = `${key}.${n++}`;
+      out.push(
+        <span key={k} className="ml-var">
+          ({spaced(inlineVariation(alt, p, k))})
+        </span>,
+      );
+      numbered = true;
+    }
+    kids = main.next;
+    p++;
+  }
+  return out;
+}
+
+/**
  * A scoresheet like a Lichess study or ChessBase: the line you're on, two moves per row; where the
  * line has alternatives, they appear as short one-line side lines tucked under that row. Click a move
  * to go there. Generic — the builder and game review both use it.
@@ -60,6 +129,7 @@ export function MoveList({
   current,
   onSelect,
   sideLines,
+  sideTree,
   startPly = 0,
   empty = 'Starting position',
 }: {
@@ -70,6 +140,8 @@ export function MoveList({
   onSelect: (plies: number) => void;
   /** Side lines branching at move i (alternatives to moves[i]). */
   sideLines?: (i: number) => SideLine[];
+  /** …or, as inline notation in ( … ): the alternatives to moves[i], each with what follows it. */
+  sideTree?: (i: number) => SideNode[];
   startPly?: number;
   empty?: ReactNode;
 }) {
@@ -115,7 +187,8 @@ export function MoveList({
     rowOpen = true;
     if (withAside) rowAsides.push(<div key={i} className="ml-aside-item">{m.aside}</div>);
     const sides = sideLines?.(i) ?? [];
-    const breaks = !!m.comment || sides.length > 0;
+    const tree = sideTree?.(i) ?? [];
+    const breaks = !!m.comment || sides.length > 0 || tree.length > 0;
     if (breaks && white) cells.push(<span key={`g${i}`} className="ml-move ml-empty">…</span>);
     if (breaks || !white) endRow(i);
     // A note on the line you're on reads under the move, like a comment in a Lichess study.
@@ -123,6 +196,20 @@ export function MoveList({
       cells.push(
         <div key={`c${i}`} className="ml-comment" {...m.menu}>
           {m.comment}
+        </div>,
+      );
+      restart = true;
+    }
+    if (tree.length) {
+      cells.push(
+        <div key={`t${i}`} className="ml-sides ml-inline">
+          {spaced(
+            tree.map((alt, k) => (
+              <span key={k} className="ml-var">
+                ({spaced(inlineVariation(alt, ply, `${i}.${k}`))})
+              </span>
+            )),
+          )}
         </div>,
       );
       restart = true;

@@ -167,6 +167,79 @@ export function withLineNote(line: SavedLine, index: number, a: MoveAnnotation |
   return Object.keys(notes).length ? { ...rest, notes } : rest;
 }
 
+/**
+ * One move of the side lines tried at a move of a game, merged by the moves they share: lines
+ * branching from one another (a line branched at its 3rd move repeats the first two) read as one
+ * variation with the later one nested where it splits off.
+ */
+export interface LineTreeNode {
+  san: string;
+  /** Index of the move in each line through it. */
+  index: number;
+  /** The first line through it (in saved order) — its notes are the move's notes. */
+  line: SavedLine;
+  /** Ids of every line through it. */
+  through: string[];
+  /** Lines that end with this move. */
+  ends: SavedLine[];
+  /** What follows: the first is the main continuation, the rest branch off — in saved order. */
+  next: LineTreeNode[];
+}
+
+/** The lines (all tried at the same move of the game) as a tree of moves. */
+export function lineTree(lines: readonly SavedLine[]): LineTreeNode[] {
+  const roots: LineTreeNode[] = [];
+  for (const l of lines) {
+    let level = roots;
+    l.sans.forEach((san, index) => {
+      let n = level.find((x) => x.san === san);
+      if (!n) {
+        n = { san, index, line: l, through: [], ends: [], next: [] };
+        level.push(n);
+      }
+      n.through.push(l.id);
+      if (index === l.sans.length - 1) n.ends.push(l);
+      level = n.next;
+    });
+  }
+  return roots;
+}
+
+/** Lines tried at the same move whose first `n` moves are `line`'s first `n`. */
+const sharing = (line: SavedLine, n: number) => {
+  const prefix = line.sans.slice(0, n).join(' ');
+  return (l: SavedLine) => l.from === line.from && l.sans.length >= n && l.sans.slice(0, n).join(' ') === prefix;
+};
+
+/** Move `index` of `line` annotated — in every line that shares it, so the move reads the same in all. */
+export function withSharedLineNote(lines: readonly SavedLine[], line: SavedLine, index: number, a: MoveAnnotation | undefined): SavedLine[] {
+  const shares = sharing(line, index + 1);
+  return lines.map((l) => (shares(l) ? withLineNote(l, index, a) : l));
+}
+
+/**
+ * Whether move `index` of `line` is a branch that isn't first among the moves played at its spot —
+ * only those can be promoted. (A side line never replaces the game's own move.)
+ */
+export function canPromote(lines: readonly SavedLine[], line: SavedLine, index: number): boolean {
+  const first = lines.find(sharing(line, index));
+  return !!first && first.sans[index] !== line.sans[index];
+}
+
+/**
+ * Promote the variation starting with move `index` of `line`: the lines through that move go ahead of
+ * the other lines branching at the same spot, so it becomes the first variation there (or, inside a
+ * side line, its main continuation). Other lines keep their places.
+ */
+export function promoteLine(lines: readonly SavedLine[], line: SavedLine, index: number): SavedLine[] {
+  const inGroup = sharing(line, index);
+  const through = sharing(line, index + 1);
+  const group = lines.filter(inGroup);
+  const reordered = [...group.filter(through), ...group.filter((l) => !through(l))];
+  let k = 0;
+  return lines.map((l) => (inGroup(l) ? reordered[k++] : l));
+}
+
 /** An annotation with nothing in it is removed rather than stored. */
 export function isEmpty(a: MoveAnnotation | undefined): boolean {
   return !a || (!a.glyphs?.length && !a.comment?.trim());

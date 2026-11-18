@@ -767,16 +767,16 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .review-moves .ml-move.book { color: var(--mine); }
 .review-moves .ml-move.deviation { box-shadow: inset 0 0 0 2px var(--bad); }
 /* A line you're trying: a side line under the row where it leaves the game. */
-.review-moves .ml-side .mv.current { background: var(--accent2); color: #fff; border-radius: 4px; }
+.review-moves .ml-side .mv.current, .ml-inline .mv.current { background: var(--accent2); color: #fff; border-radius: 4px; }
 .review-moves .tried-remove { min-height: 0; padding: 0 6px; margin-left: 4px; font-size: 12px; }
 /* Annotation symbols, colored like Lichess (the move takes the symbol's color). */
-.ml-move.g-brilliant, .ml-side .mv.g-brilliant, .anno-glyph.g-brilliant { color: #2fc2a5; }
-.ml-move.g-good, .ml-side .mv.g-good, .anno-glyph.g-good { color: #7cc35a; }
-.ml-move.g-interesting, .ml-side .mv.g-interesting, .anno-glyph.g-interesting { color: #d97fe2; }
-.ml-move.g-dubious, .ml-side .mv.g-dubious, .anno-glyph.g-dubious { color: #62b5ea; }
-.ml-move.g-mistake, .ml-side .mv.g-mistake, .anno-glyph.g-mistake { color: #eba63b; }
-.ml-move.g-blunder, .ml-side .mv.g-blunder, .anno-glyph.g-blunder { color: #ef6b66; }
-.ml-move.g-only, .ml-side .mv.g-only, .anno-glyph.g-only { color: #a9c4e8; }
+.ml-move.g-brilliant, .ml-side .mv.g-brilliant, .ml-inline .mv.g-brilliant, .anno-glyph.g-brilliant { color: #2fc2a5; }
+.ml-move.g-good, .ml-side .mv.g-good, .ml-inline .mv.g-good, .anno-glyph.g-good { color: #7cc35a; }
+.ml-move.g-interesting, .ml-side .mv.g-interesting, .ml-inline .mv.g-interesting, .anno-glyph.g-interesting { color: #d97fe2; }
+.ml-move.g-dubious, .ml-side .mv.g-dubious, .ml-inline .mv.g-dubious, .anno-glyph.g-dubious { color: #62b5ea; }
+.ml-move.g-mistake, .ml-side .mv.g-mistake, .ml-inline .mv.g-mistake, .anno-glyph.g-mistake { color: #eba63b; }
+.ml-move.g-blunder, .ml-side .mv.g-blunder, .ml-inline .mv.g-blunder, .anno-glyph.g-blunder { color: #ef6b66; }
+.ml-move.g-only, .ml-side .mv.g-only, .ml-inline .mv.g-only, .anno-glyph.g-only { color: #a9c4e8; }
 .iv-move.g-brilliant { color: #2fc2a5; }
 .iv-move.g-good { color: #7cc35a; }
 .iv-move.g-interesting { color: #d97fe2; }
@@ -784,10 +784,10 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .iv-move.g-mistake { color: #eba63b; }
 .iv-move.g-blunder { color: #ef6b66; }
 .iv-move.g-only { color: #a9c4e8; }
-.ml-move.current[class*='g-'], .ml-side .mv.current[class*='g-'], .iv-move.current[class*='g-'] { color: #fff; }
-.ml-side .mv[class*='g-'] { font-weight: 650; }
+.ml-move.current[class*='g-'], .ml-side .mv.current[class*='g-'], .ml-inline .mv.current[class*='g-'], .iv-move.current[class*='g-'] { color: #fff; }
+.ml-side .mv[class*='g-'], .ml-inline .mv[class*='g-'] { font-weight: 650; }
 .ml-side-comment { color: var(--muted); font-size: 12.5px; font-style: italic; padding: 0 4px; white-space: pre-wrap; }
-.review-moves .ml-side .mv, .review-moves .ml-side-comment { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+.review-moves .ml-side .mv, .review-moves .ml-inline .mv, .review-moves .ml-side-comment { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
 
 /* Annotation menu (right-click / long-press a move) */
 .anno-popover {
@@ -917,3 +917,12 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .explorer th .list-actions { min-height: 0; }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
 .btn.ghost:hover { color: var(--text); background: var(--panel2); }
+
+/* Side lines as inline notation (game review): one block of text, each variation in ( … ). */
+.ml-sides.ml-inline { display: block; line-height: 1.8; font-size: 13.5px; }
+.ml-inline .ml-tok { white-space: nowrap; }
+.ml-inline .num { color: var(--faint); margin: 0 1px 0 2px; font-size: 12px; }
+.ml-inline .mv { padding: 1px 4px; border-radius: 4px; cursor: pointer; font-weight: 500; color: var(--muted); }
+.ml-inline .mv:hover { color: var(--text); background: var(--panel3); }
+.ml-inline .ml-var { color: var(--faint); }
+.ml-inline .ml-var .ml-var { font-size: 13px; }

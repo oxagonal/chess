@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { db } from '../db/db';
 import { saveAnnotation } from '../db/annotations';
-import { glyphsFromNags, moveGlyph, nagsOf, otherGlyphs, sanWithGlyphs, sortGlyphs, toggleGlyph, withLineNote } from '../lib/annotations';
+import { canPromote, glyphsFromNags, lineTree, moveGlyph, nagsOf, otherGlyphs, promoteLine, sanWithGlyphs, sortGlyphs, toggleGlyph, withLineNote, withSharedLineNote, type SavedLine } from '../lib/annotations';
 import { biggestSwingsFor, formatEvalShort, type GameReview } from '../lib/review';
 import { clocksAt, formatClock, formatMoveTime, inferIncrement, moveTimes, timeSpent } from '../lib/clocks';
 import { materialBalance } from '../lib/material';
@@ -146,3 +146,45 @@ describe('material balance', () => {
   });
 });
 
+
+describe('side lines in the game review', () => {
+  // At move 3 (after 1. e4 c5): 2. c3 tried, then 2. d4, and a branch of the c3 line at its 3rd move.
+  const c3: SavedLine = { id: 'a', from: 2, sans: ['c3', 'd5', 'exd5'] };
+  const d4: SavedLine = { id: 'b', from: 2, sans: ['d4', 'cxd4'] };
+  const c3e5: SavedLine = { id: 'c', from: 2, sans: ['c3', 'd5', 'e5'], notes: { '0': { glyphs: ['!'] } } };
+  const lines = [c3, d4, c3e5];
+  // Written like PGN: an alternative follows the move it replaces, in ( … ).
+  type Node = ReturnType<typeof lineTree>[number];
+  const write = (first: Node): string => {
+    const out: string[] = [];
+    for (let kids = [first]; kids.length; kids = kids[0].next) {
+      const [main, ...alts] = kids;
+      out.push(main.san, ...alts.map((x) => `(${write(x)})`));
+    }
+    return out.join(' ');
+  };
+  const show = (ls: SavedLine[]) => lineTree(ls).map((r) => `(${write(r)})`).join(' ');
+
+  it('merges lines by the moves they share, nesting where they split', () => {
+    // exd5 and e5 are alternatives at the same spot: e5 in ( … ) after exd5.
+    expect(show(lines)).toBe('(c3 d5 exd5 (e5)) (d4 cxd4)');
+    const [first] = lineTree(lines);
+    expect(first.through).toEqual(['a', 'c']);
+    expect(first.next[0].next.map((n) => n.ends.map((l) => l.id))).toEqual([['a'], ['c']]);
+  });
+
+  it('promotes a variation ahead of the others at its spot, never past the game', () => {
+    expect(canPromote(lines, c3, 0)).toBe(false); // first already
+    expect(canPromote(lines, d4, 0)).toBe(true);
+    expect(show(promoteLine(lines, d4, 0))).toBe('(d4 cxd4) (c3 d5 exd5 (e5))');
+    // Inside a line: e5 becomes the main continuation.
+    expect(canPromote(lines, c3e5, 2)).toBe(true);
+    expect(canPromote(lines, c3e5, 1)).toBe(false); // d5 is shared, not a branch
+    expect(show(promoteLine(lines, c3e5, 2))).toBe('(c3 d5 e5 (exd5)) (d4 cxd4)');
+  });
+
+  it('annotates a shared move in every line through it', () => {
+    const next = withSharedLineNote(lines, c3, 0, { glyphs: ['!?'] });
+    expect(next.map((l) => l.notes?.['0']?.glyphs)).toEqual([['!?'], undefined, ['!?']]);
+  });
+});

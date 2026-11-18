@@ -12,12 +12,23 @@ import { analyzeGame, PREP_LABEL, type PrepResult } from '../lib/prep';
 import type { RepGraph } from '../lib/graph';
 import { keyOf, opposite, playSan, playUci, startPos } from '../lib/chess';
 import { biggestSwingsFor, formatEvalShort, JUDGEMENT_GLYPH, swings } from '../lib/review';
-import { glyphClass, glyphName, moveGlyph, otherGlyphs, withLineNote, type SavedLine } from '../lib/annotations';
+import {
+  canPromote,
+  glyphClass,
+  glyphName,
+  lineTree,
+  moveGlyph,
+  otherGlyphs,
+  promoteLine,
+  withSharedLineNote,
+  type LineTreeNode,
+  type SavedLine,
+} from '../lib/annotations';
 import { clocksAt, formatClock, formatMoveTime, moveTimes } from '../lib/clocks';
 import { MATERIAL_ROLES, materialBalance, type MaterialRole } from '../lib/material';
 import { Board, type Arrow } from '../components/Board';
 import { MoveNote } from '../components/MoveNote';
-import { MoveList } from '../components/MoveList';
+import { MoveList, type SideNode } from '../components/MoveList';
 import { EnginePanel } from '../components/EnginePanel';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { ChaptersPanel } from '../components/ChaptersPanel';
@@ -315,43 +326,47 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
           })}
           current={inLine ? -1 : cur}
           onSelect={goTo}
-          sideLines={(i) =>
-            lines
-              .filter((l) => l.from === i)
-              .map((l) => ({
-                key: l.id,
-                moves: l.sans.map((san, j) => {
-                  const a = l.notes?.[String(j)];
-                  const mg = moveGlyph(a);
-                  const others = otherGlyphs(a);
-                  return {
-                    san: `${san}${mg ?? ''}${others.length ? ` ${others.join(' ')}` : ''}`,
-                    className: [inLine && sel?.id === l.id && j === at - 1 ? 'current' : '', glyphClass(mg)].join(' '),
-                    title: [mg ? glyphName(mg) : '', ...others.map(glyphName)].filter(Boolean).join(' · ') || undefined,
-                    comment: a?.comment,
-                    menu: annotateProps((x, y) => setMenu({ ply: l.from + j, san, x, y, lineId: l.id, index: j })),
-                  };
-                }),
-                onSelect: (j: number) => {
-                  setCursor(l.from);
-                  setSel({ id: l.id, at: j + 1 });
+          // Lines tried here, as inline notation: each alternative in ( … ), later branches nested
+          // where they split off. The board is on a move when the line you're in goes through it.
+          sideTree={(i) => {
+            const toNode = (n: LineTreeNode): SideNode => {
+              const onIt = inLine && !!sel && n.through.includes(sel.id);
+              const a = n.line.notes?.[String(n.index)];
+              const mg = moveGlyph(a);
+              const others = otherGlyphs(a);
+              return {
+                san: `${n.san}${mg ?? ''}${others.length ? ` ${others.join(' ')}` : ''}`,
+                className: glyphClass(mg),
+                current: onIt && n.index === at - 1,
+                title: [mg ? glyphName(mg) : '', ...others.map(glyphName)].filter(Boolean).join(' · ') || undefined,
+                comment: a?.comment,
+                menu: annotateProps((x, y) => setMenu({ ply: n.line.from + n.index, san: n.san, x, y, lineId: n.line.id, index: n.index })),
+                onSelect: () => {
+                  setCursor(n.line.from);
+                  // Stay in the line you're in where it goes through this move.
+                  setSel({ id: onIt ? sel!.id : n.line.id, at: n.index + 1 });
                 },
-                tail: (
+                tail: n.ends.length ? (
                   <button
                     className="ghost small tried-remove"
                     title="Remove this line"
                     aria-label="Remove this line"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (!confirm('Remove this side line?')) return;
-                      writeLines(lines.filter((x) => x.id !== l.id));
-                      if (sel?.id === l.id) setSel(null);
+                      const gone = new Set(n.ends.map((l) => l.id));
+                      writeLines(lines.filter((x) => !gone.has(x.id)));
+                      if (sel && gone.has(sel.id)) setSel(null);
                     }}
                   >
                     ✕
                   </button>
-                ),
-              }))
-          }
+                ) : undefined,
+                next: n.next.map(toNode),
+              };
+            };
+            return lineTree(lines.filter((l) => l.from === i)).map(toNode);
+          }}
         />
       </div>
     </div>
@@ -450,8 +465,23 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
       annotation={menuLine ? menuLine.notes?.[String(menu.index)] : annotation(menu.ply)}
       onChange={(next) =>
         menuLine
-          ? writeLines(lines.map((l) => (l.id === menuLine.id ? withLineNote(l, menu.index!, next) : l)))
+          ? // A move several lines share reads the same in all of them.
+            writeLines(withSharedLineNote(lines, menuLine, menu.index!, next))
           : void saveAnnotation(game.id, menu.ply, next)
+      }
+      extra={
+        menuLine && canPromote(lines, menuLine, menu.index!) ? (
+          <button
+            className="small"
+            title="List this variation first among the moves tried here (the game's own move stays the main line)"
+            onClick={() => {
+              writeLines(promoteLine(lines, menuLine, menu.index!));
+              closeMenu();
+            }}
+          >
+            ↑ Promote variation
+          </button>
+        ) : undefined
       }
       onClose={closeMenu}
     />
