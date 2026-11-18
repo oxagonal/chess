@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { updateSettings, useSettings, type ExplorerColumn } from '../db/settings';
 import { ConnectLichessButton } from './LichessConnect';
 import { fetchExplorer, onExplorerStatus, paramsLabel, type ExplorerParams } from '../services/explorer';
@@ -35,13 +36,13 @@ const MAX_EVAL_MOVES = 10;
 const TIE_CP = 10;
 
 /** The explorer table's optional columns, in table order. */
-const COLUMNS: { id: ExplorerColumn; label: string; hint: string }[] = [
+const COLUMNS: { id: ExplorerColumn; label: string; hint: string; where?: string }[] = [
   { id: 'games', label: 'Games', hint: 'How many games played the move' },
   { id: 'share', label: '%', hint: 'Share of the games in this position that played the move' },
-  { id: 'reach', label: '1 in N', hint: "How often you reach the position after the opponent's move (builder)" },
+  { id: 'reach', label: '1 in N', hint: "How often you reach the position after the opponent's move", where: "opponent's moves" },
   { id: 'eval', label: 'Stockfish', hint: "Evaluation after the move: Lichess's cloud analysis, and the Stockfish box's lines" },
   { id: 'result', label: 'Result', hint: 'White wins · draws · Black wins' },
-  { id: 'last', label: 'Last played', hint: 'When the move was last played (My games, Players)' },
+  { id: 'last', label: 'Last played', hint: 'When the move was last played', where: 'My games, Players' },
 ];
 
 /**
@@ -80,20 +81,48 @@ function useMoveEvals(key: string, ucis: string[], enabled: boolean): Map<string
   }, [cloud, engine]);
 }
 
-/** ⚙: which columns the table shows. Saved with your settings, so it follows you to other devices. */
+/**
+ * ⚙: which columns the table shows. Saved with your settings, so it follows you to other devices. The
+ * menu floats over the page (the tabs row it sits in scrolls sideways and would clip it), below the
+ * button or above it when there's no room — clear of the phone's tab bar — and follows the button
+ * when the page or a pane scrolls.
+ */
 function ColumnsMenu({ value }: { value: ExplorerColumn[] }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    const outside = (e: Event) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const inside = (t: EventTarget | null) => button.current?.contains(t as Node) || pop.current?.contains(t as Node);
+    const outside = (e: Event) => !inside(e.target) && setOpen(false);
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
     document.addEventListener('pointerdown', outside);
     document.addEventListener('keydown', esc);
+    document.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
     return () => {
       document.removeEventListener('pointerdown', outside);
       document.removeEventListener('keydown', esc);
+      document.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
     };
+  }, [open]);
+  /** Under the button (right edges lined up), or above it if it would run past the bottom. */
+  const place = () => {
+    const b = button.current?.getBoundingClientRect();
+    const p = pop.current;
+    if (!b || !p) return;
+    const nav = document.querySelector('.topbar .nav');
+    const bottom = nav && getComputedStyle(nav).position === 'fixed' ? nav.getBoundingClientRect().top : window.innerHeight;
+    const { offsetWidth: w, offsetHeight: h } = p;
+    const below = b.bottom + 6;
+    const top = below + h <= bottom - 8 ? below : Math.max(8, b.top - 6 - h);
+    setAt({ top, left: Math.max(8, Math.min(b.right - w, window.innerWidth - w - 8)) });
+  };
+  useLayoutEffect(() => {
+    if (open) place();
+    else setAt(null);
   }, [open]);
   // Ticks change at once; the saved setting catches up a moment later.
   const [local, setLocal] = useState(value);
@@ -108,25 +137,32 @@ function ColumnsMenu({ value }: { value: ExplorerColumn[] }) {
     void updateSettings({ explorerColumns: cols });
   };
   return (
-    <div className="menu" ref={ref}>
-      <button className="small ghost explorer-cols" title="Choose columns" aria-label="Choose columns" aria-expanded={open} onClick={() => setOpen(!open)}>
+    <>
+      <button
+        ref={button}
+        className={`small ghost explorer-cols ${open ? 'is-open' : ''}`}
+        title="Choose columns"
+        aria-label="Choose columns"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
         ⚙
       </button>
-      {open && (
-        <div className="menu-pop columns-pop">
-          <div className="menu-note muted small">Columns</div>
-          {COLUMNS.map((c) => (
-            <label key={c.id} className="check" title={c.hint}>
-              <input type="checkbox" checked={on.has(c.id)} onChange={() => toggle(c.id)} />
-              <span>
-                {c.label}
-                <span className="muted small"> · {c.hint}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
+      {open &&
+        createPortal(
+          <div ref={pop} className="menu-pop columns-pop" role="dialog" aria-label="Columns" style={at ? { top: at.top, left: at.left } : { visibility: 'hidden' }}>
+            <div className="menu-note muted small">Columns</div>
+            {COLUMNS.map((c) => (
+              <label key={c.id} className="check" title={c.hint}>
+                <input type="checkbox" checked={on.has(c.id)} onChange={() => toggle(c.id)} />
+                <span>{c.label}</span>
+                {c.where && <span className="muted small">{c.where}</span>}
+              </label>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
