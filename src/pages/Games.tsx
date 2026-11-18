@@ -5,7 +5,7 @@ import { db } from '../db/db';
 import { updateSettings, useSettings } from '../db/settings';
 import { markForgotten } from '../db/repertoire';
 import { chapterForLine, sourcesOf } from '../lib/chapters';
-import { useAllGraphs, useGames } from '../hooks';
+import { useAllGraphs, useGames, usePositionSearch } from '../hooks';
 import { syncSource, lastSync, type SyncResult } from '../services/sync';
 import { analyzeGame, summarize, PREP_LABEL, type PrepKind, type PrepResult, type RepWithGraph } from '../lib/prep';
 import { formatLine } from '../lib/chess';
@@ -15,9 +15,8 @@ import { MoveNote } from '../components/MoveNote';
 import { ColorPill, Empty, Stat, TableWrap, fmtDate, timeAgo } from '../components/ui';
 import { href, navigate } from '../router';
 import { GAME_RANGES, rangeCutoff, type GameRange } from '../lib/gameRange';
-import { pathToPosition } from '../lib/mygames';
 import { PlayerGames } from './PlayerGames';
-import { PositionFilterNote } from '../components/PositionFilterNote';
+import { PositionFilterNote, PositionSearchProgress } from '../components/PositionFilterNote';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { LichessAccount } from '../components/LichessConnect';
 import { OtbGameEditor } from './OtbGame';
@@ -148,7 +147,6 @@ function SyncPanel() {
 function GamesOverview({ query }: { query: URLSearchParams }) {
   const games = useGames();
   const graphs = useAllGraphs();
-  const results = usePrepResults(games, graphs);
   const [source, setSource] = useState<'all' | GameSource>('all');
   const [color, setColor] = useState<'all' | 'white' | 'black'>(() => {
     const c = query.get('color');
@@ -162,15 +160,10 @@ function GamesOverview({ query }: { query: URLSearchParams }) {
   const atMove = query.get('move') ?? undefined;
   const [rangeHere, setRangeHere] = useState<GameRange | undefined>(() => rangeParam(query.get('range')));
   const gameRange = rangeHere ?? rangeSetting;
-  const paths = useMemo(() => {
-    if (!games || at === undefined) return undefined;
-    const out = new Map<string, string[]>();
-    for (const g of games) {
-      const p = pathToPosition(g.sans, at, atMove);
-      if (p) out.set(g.id, p);
-    }
-    return out;
-  }, [games, at, atMove]);
+  // Found a slice at a time, with progress showing meanwhile (thousands of games take a moment).
+  const search = usePositionSearch(games, at, atMove);
+  const paths = search.paths;
+  const searching = at !== undefined && !paths;
   const [kind, setKind] = useState<'all' | PrepKind>('all');
   const [limit, setLimit] = useState(100);
   const [applyMsg, setApplyMsg] = useState<string | null>(null);
@@ -184,14 +177,16 @@ function GamesOverview({ query }: { query: URLSearchParams }) {
         (source === 'all' || g.source === source) &&
         (color === 'all' || g.userColor === color) &&
         (tc === 'all' || g.timeClass === tc) &&
-        (!paths || paths.has(g.id)) &&
+        (at === undefined || !!paths?.has(g.id)) &&
         g.playedAt >= cutoff,
     );
-  }, [games, source, color, tc, gameRange, paths]);
+  }, [games, source, color, tc, gameRange, at, paths]);
+  // Your prep in just the games listed.
+  const results = usePrepResults(filtered, graphs);
   const summary = useMemo(() => summarize(filtered, results), [filtered, results]);
   const shown = filtered.filter((g) => kind === 'all' || results.get(g.id)?.kind === kind);
 
-  if (!games || !graphs) return <SyncPanel />;
+  if (!games || !graphs) return at !== undefined ? <PositionSearchProgress /> : <SyncPanel />;
 
   const graphOf = (repId: string) => graphs.find((x) => x.rep.id === repId);
   const pathOf = (repId: string, key: string) => (graphOf(repId)?.graph.pathTo(key) ?? []).map((m) => m.san);
@@ -271,228 +266,92 @@ function GamesOverview({ query }: { query: URLSearchParams }) {
             </select>
             <GameRangeSelect value={rangeHere} onChange={rangeHere ? setRangeHere : undefined} />
           </div>
-          {paths && (
-            <PositionFilterNote path={filtered.length ? paths.get(filtered[0].id) : undefined} move={atMove} count={filtered.length} clearHref={href('games')} />
+          {searching ? (
+            <PositionSearchProgress done={search.done} total={search.total} />
+          ) : (
+            paths && <PositionFilterNote path={filtered.length ? paths.get(filtered[0].id) : undefined} move={atMove} count={filtered.length} clearHref={href('games')} />
           )}
 
-          <div className="panel">
-            <div className="row">
-              <h2 style={{ margin: 0 }}>Recent games</h2>
-              <span className="spacer" />
-              <select value={kind} onChange={(e) => setKind(e.target.value as never)}>
-                <option value="all">Any prep outcome</option>
-                {(Object.keys(PREP_LABEL) as PrepKind[]).map((k) => (
-                  <option key={k} value={k}>
-                    {PREP_LABEL[k]} ({summary.byKind[k]})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="recent-games">
-            <TableWrap>
-            <table className="data" style={{ marginTop: 8 }}>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th className="hide-sm" />
-                  <th>Opponent</th>
-                  <th>Result</th>
-                  <th title="✓ = review done, with what the game says to work on">Review</th>
-                  <th className="hide-sm">Type</th>
-                  <th className="hide-sm">Opening</th>
-                  <th>Prep</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.slice(0, limit).map((g) => {
-                  const r = results.get(g.id);
-                  const opp = g.userColor === 'white' ? g.black : g.white;
-                  const oppElo = g.userColor === 'white' ? g.blackElo : g.whiteElo;
-                  return (
-                    <tr
-                      key={g.id}
-                      className="clickable"
-                      onClick={() => navigate(`games/${encodeURIComponent(g.id)}`, paths?.has(g.id) ? { ply: String(paths.get(g.id)!.length) } : undefined)}
-                    >
-                      <td className="small nowrap">
-                        <span className="hide-sm">{fmtDate(g.playedAt)}</span>
-                        <span className="show-sm">{shortDate(g.playedAt)}</span>
-                      </td>
-                      <td className="hide-sm">
-                        <ColorPill color={g.userColor} />
-                      </td>
-                      <td>
-                        {opp} {g.source === 'otb' && <span className="badge otb" title="Over the board">OTB</span>}{' '}
-                        {oppElo ? <span className="muted small">({oppElo})</span> : null}
-                      </td>
-                      <td>
-                        <span className={`badge ${g.userScore === 1 ? 'good' : g.userScore === 0 ? 'bad' : ''}`}>
-                          {g.userScore === 1 ? 'Won' : g.userScore === 0 ? 'Lost' : g.userScore === 0.5 ? 'Draw' : '—'}
-                        </span>
-                      </td>
-                      <td className="review-cell">
-                        {g.reviewedAt && (
-                          <span className="reviewed-check" title={`Reviewed ${fmtDate(g.reviewedAt)}${g.takeaways ? ` — ${g.takeaways}` : ''}`}>
-                            ✓
-                          </span>
-                        )}
-                        {g.workOn?.map((t) => (
-                          <span key={t} className="badge work-tag">
-                            {t}
-                          </span>
-                        ))}
-                      </td>
-                      <td className="small muted hide-sm">
-                        {g.source === 'otb' ? 'OTB' : sourceName(g.source)} · {g.timeClass}
-                      </td>
-                      <td className="small hide-sm">{g.opening ?? ''}</td>
-                      <td>
-                        {r && (
-                          <span className={`badge wrap ${KIND_BADGE[r.kind]}`} title={r.ply !== undefined ? `Move ${Math.floor(r.ply / 2) + 1}` : ''}>
-                            {PREP_LABEL[r.kind]}
-                            {r.ply !== undefined && r.kind !== 'other-opening' ? ` · m${Math.floor(r.ply / 2) + 1}` : ''}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            </TableWrap>
-            {!shown.length && <Empty>No games match these filters.</Empty>}
-            </div>
-            {shown.length > limit && (
-              <div style={{ textAlign: 'center', marginTop: 8 }}>
-                <button onClick={() => setLimit(limit + 200)}>Show more ({shown.length - limit} left)</button>
-              </div>
-            )}
-          </div>
-
-          <SyncPanel />
-
-          <div className="grid3">
-            <Stat value={summary.games} label="Games" />
-            <Stat value={summary.byKind['you-deviated']} label="Forgot prep" hint="Games where you left your repertoire while it had a move for you" />
-            <Stat value={summary.byKind['opponent-deviated']} label="Opponent left book" hint="Opponent played a move your repertoire does not cover" />
-            <Stat value={(summary.avgBookPlies / 2).toFixed(1)} label="Avg moves in book" hint="Full moves played inside your repertoire (games with a matching repertoire)" />
-          </div>
-
-          <div className="grid2">
-            <div className="panel">
-              <div className="row">
-                <h2 style={{ margin: 0 }}>Where you forget your prep</h2>
-                <span className="spacer" />
-                {pendingApply > 0 && (
-                  <button className="primary small" onClick={applyAll} title="Grade each forgotten move as 'Again' so it comes back for review">
-                    Schedule forgotten moves ({pendingApply})
-                  </button>
-                )}
-              </div>
-              {applyMsg && <div className="note" style={{ marginTop: 6 }}>{applyMsg}</div>}
-              {summary.forgotten.length === 0 ? (
-                <Empty>No forgotten prep in these games. 💪</Empty>
-              ) : (
-                <TableWrap>
-                <table className="data" style={{ marginTop: 6 }}>
-                  <thead>
-                    <tr>
-                      <th>Position</th>
-                      <th>Prep</th>
-                      <th>You played</th>
-                      <th className="num hide-sm">×</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summary.forgotten.slice(0, 25).map((f) => (
-                      <Fragment key={f.repId + f.key}>
-                      <tr>
-                        <td className="mono small line-cell">{formatLine(pathOf(f.repId, f.key)) || 'Start'}</td>
-                        <td>
-                          <b style={{ color: 'var(--mine)' }}>{f.expected.join(', ')}</b>
-                        </td>
-                        <td>
-                          {Object.entries(f.played)
-                            .map(([san, n]) => (n > 1 ? `${san} ×${n}` : san))
-                            .join(', ')}
-                        </td>
-                        <td className="num hide-sm">{f.count}</td>
-                        <td>
-                          <div className="list-actions">
-                            <button className="small primary" onClick={() => drill(f.repId, f.key)}>
-                              Drill
-                            </button>
-                            <button
-                              className={`small ${openNote === f.repId + f.key ? 'blue' : ''}`}
-                              title="Read or edit the note on your prepared move"
-                              onClick={() => setOpenNote(openNote === f.repId + f.key ? null : f.repId + f.key)}
-                            >
-                              Note
-                            </button>
-                            <a className="btn small" href={href(`games/${encodeURIComponent(f.gameIds[0])}`)}>
-                              Game
-                            </a>
-                          </div>
-                        </td>
-                      </tr>
-                      {openNote === f.repId + f.key && (
-                        <tr>
-                          <td colSpan={5}>
-                            {(graphOf(f.repId)?.graph.childrenOf(f.key) ?? [])
-                              .filter((m) => m.mine)
-                              .map((m) => (
-                                <MoveNote key={m.id} id={sourcesOf(m)[0]} san={m.san} compact autoFocus prompt />
-                              ))}
-                          </td>
-                        </tr>
-                      )}
-                      </Fragment>
+          {!searching && (
+            <>
+              <div className="panel">
+                <div className="row">
+                  <h2 style={{ margin: 0 }}>Recent games</h2>
+                  <span className="spacer" />
+                  <select value={kind} onChange={(e) => setKind(e.target.value as never)}>
+                    <option value="all">Any prep outcome</option>
+                    {(Object.keys(PREP_LABEL) as PrepKind[]).map((k) => (
+                      <option key={k} value={k}>
+                        {PREP_LABEL[k]} ({summary.byKind[k]})
+                      </option>
                     ))}
-                  </tbody>
-                </table>
-                </TableWrap>
-              )}
-            </div>
-
-            <div className="panel">
-              <h2>Opponent moves you weren't ready for</h2>
-              {summary.surprises.length === 0 ? (
-                <Empty>Your opponents stayed inside your repertoire.</Empty>
-              ) : (
+                  </select>
+                </div>
+                <div className="recent-games">
                 <TableWrap>
-                <table className="data" style={{ marginTop: 6 }}>
+                <table className="data" style={{ marginTop: 8 }}>
                   <thead>
                     <tr>
-                      <th>After</th>
-                      <th>They played</th>
-                      <th className="num hide-sm">×</th>
-                      <th className="num">Score</th>
-                      <th />
+                      <th>Date</th>
+                      <th className="hide-sm" />
+                      <th>Opponent</th>
+                      <th>Result</th>
+                      <th title="✓ = review done, with what the game says to work on">Review</th>
+                      <th className="hide-sm">Type</th>
+                      <th className="hide-sm">Opening</th>
+                      <th>Prep</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {summary.surprises.slice(0, 25).map((s) => {
-                      const path = pathOf(s.repId, s.key);
+                    {shown.slice(0, limit).map((g) => {
+                      const r = results.get(g.id);
+                      const opp = g.userColor === 'white' ? g.black : g.white;
+                      const oppElo = g.userColor === 'white' ? g.blackElo : g.whiteElo;
                       return (
-                        <tr key={s.repId + s.key + s.san}>
-                          <td className="mono small line-cell">{formatLine(path) || 'Start'}</td>
-                          <td>
-                            <b>{s.san}</b>
+                        <tr
+                          key={g.id}
+                          className="clickable"
+                          onClick={() => navigate(`games/${encodeURIComponent(g.id)}`, paths?.has(g.id) ? { ply: String(paths.get(g.id)!.length) } : undefined)}
+                        >
+                          <td className="small nowrap">
+                            <span className="hide-sm">{fmtDate(g.playedAt)}</span>
+                            <span className="show-sm">{shortDate(g.playedAt)}</span>
                           </td>
-                          <td className="num hide-sm">{s.count}</td>
-                          <td className="num">{Math.round(s.score * 100)}%</td>
+                          <td className="hide-sm">
+                            <ColorPill color={g.userColor} />
+                          </td>
                           <td>
-                            <button
-                              className="small primary"
-                              onClick={() => {
-                                const g = graphOf(s.repId)?.graph;
-                                const chapter = g && chapterForLine(g, path);
-                                if (chapter) navigate(`repertoire/${chapter}`, { line: [...path, s.san].join(' ') });
-                              }}
-                            >
-                              Prepare
-                            </button>
+                            {opp} {g.source === 'otb' && <span className="badge otb" title="Over the board">OTB</span>}{' '}
+                            {oppElo ? <span className="muted small">({oppElo})</span> : null}
+                          </td>
+                          <td>
+                            <span className={`badge ${g.userScore === 1 ? 'good' : g.userScore === 0 ? 'bad' : ''}`}>
+                              {g.userScore === 1 ? 'Won' : g.userScore === 0 ? 'Lost' : g.userScore === 0.5 ? 'Draw' : '—'}
+                            </span>
+                          </td>
+                          <td className="review-cell">
+                            {g.reviewedAt && (
+                              <span className="reviewed-check" title={`Reviewed ${fmtDate(g.reviewedAt)}${g.takeaways ? ` — ${g.takeaways}` : ''}`}>
+                                ✓
+                              </span>
+                            )}
+                            {g.workOn?.map((t) => (
+                              <span key={t} className="badge work-tag">
+                                {t}
+                              </span>
+                            ))}
+                          </td>
+                          <td className="small muted hide-sm">
+                            {g.source === 'otb' ? 'OTB' : sourceName(g.source)} · {g.timeClass}
+                          </td>
+                          <td className="small hide-sm">{g.opening ?? ''}</td>
+                          <td>
+                            {r && (
+                              <span className={`badge wrap ${KIND_BADGE[r.kind]}`} title={r.ply !== undefined ? `Move ${Math.floor(r.ply / 2) + 1}` : ''}>
+                                {PREP_LABEL[r.kind]}
+                                {r.ply !== undefined && r.kind !== 'other-opening' ? ` · m${Math.floor(r.ply / 2) + 1}` : ''}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -500,10 +359,152 @@ function GamesOverview({ query }: { query: URLSearchParams }) {
                   </tbody>
                 </table>
                 </TableWrap>
-              )}
-            </div>
-          </div>
+                {!shown.length && <Empty>No games match these filters.</Empty>}
+                </div>
+                {shown.length > limit && (
+                  <div style={{ textAlign: 'center', marginTop: 8 }}>
+                    <button onClick={() => setLimit(limit + 200)}>Show more ({shown.length - limit} left)</button>
+                  </div>
+                )}
+              </div>
 
+              <SyncPanel />
+
+              <div className="grid3">
+                <Stat value={summary.games} label="Games" />
+                <Stat value={summary.byKind['you-deviated']} label="Forgot prep" hint="Games where you left your repertoire while it had a move for you" />
+                <Stat value={summary.byKind['opponent-deviated']} label="Opponent left book" hint="Opponent played a move your repertoire does not cover" />
+                <Stat value={(summary.avgBookPlies / 2).toFixed(1)} label="Avg moves in book" hint="Full moves played inside your repertoire (games with a matching repertoire)" />
+              </div>
+
+              <div className="grid2">
+                <div className="panel">
+                  <div className="row">
+                    <h2 style={{ margin: 0 }}>Where you forget your prep</h2>
+                    <span className="spacer" />
+                    {pendingApply > 0 && (
+                      <button className="primary small" onClick={applyAll} title="Grade each forgotten move as 'Again' so it comes back for review">
+                        Schedule forgotten moves ({pendingApply})
+                      </button>
+                    )}
+                  </div>
+                  {applyMsg && <div className="note" style={{ marginTop: 6 }}>{applyMsg}</div>}
+                  {summary.forgotten.length === 0 ? (
+                    <Empty>No forgotten prep in these games. 💪</Empty>
+                  ) : (
+                    <TableWrap>
+                    <table className="data" style={{ marginTop: 6 }}>
+                      <thead>
+                        <tr>
+                          <th>Position</th>
+                          <th>Prep</th>
+                          <th>You played</th>
+                          <th className="num hide-sm">×</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {summary.forgotten.slice(0, 25).map((f) => (
+                          <Fragment key={f.repId + f.key}>
+                          <tr>
+                            <td className="mono small line-cell">{formatLine(pathOf(f.repId, f.key)) || 'Start'}</td>
+                            <td>
+                              <b style={{ color: 'var(--mine)' }}>{f.expected.join(', ')}</b>
+                            </td>
+                            <td>
+                              {Object.entries(f.played)
+                                .map(([san, n]) => (n > 1 ? `${san} ×${n}` : san))
+                                .join(', ')}
+                            </td>
+                            <td className="num hide-sm">{f.count}</td>
+                            <td>
+                              <div className="list-actions">
+                                <button className="small primary" onClick={() => drill(f.repId, f.key)}>
+                                  Drill
+                                </button>
+                                <button
+                                  className={`small ${openNote === f.repId + f.key ? 'blue' : ''}`}
+                                  title="Read or edit the note on your prepared move"
+                                  onClick={() => setOpenNote(openNote === f.repId + f.key ? null : f.repId + f.key)}
+                                >
+                                  Note
+                                </button>
+                                <a className="btn small" href={href(`games/${encodeURIComponent(f.gameIds[0])}`)}>
+                                  Game
+                                </a>
+                              </div>
+                            </td>
+                          </tr>
+                          {openNote === f.repId + f.key && (
+                            <tr>
+                              <td colSpan={5}>
+                                {(graphOf(f.repId)?.graph.childrenOf(f.key) ?? [])
+                                  .filter((m) => m.mine)
+                                  .map((m) => (
+                                    <MoveNote key={m.id} id={sourcesOf(m)[0]} san={m.san} compact autoFocus prompt />
+                                  ))}
+                              </td>
+                            </tr>
+                          )}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                    </TableWrap>
+                  )}
+                </div>
+
+                <div className="panel">
+                  <h2>Opponent moves you weren't ready for</h2>
+                  {summary.surprises.length === 0 ? (
+                    <Empty>Your opponents stayed inside your repertoire.</Empty>
+                  ) : (
+                    <TableWrap>
+                    <table className="data" style={{ marginTop: 6 }}>
+                      <thead>
+                        <tr>
+                          <th>After</th>
+                          <th>They played</th>
+                          <th className="num hide-sm">×</th>
+                          <th className="num">Score</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {summary.surprises.slice(0, 25).map((s) => {
+                          const path = pathOf(s.repId, s.key);
+                          return (
+                            <tr key={s.repId + s.key + s.san}>
+                              <td className="mono small line-cell">{formatLine(path) || 'Start'}</td>
+                              <td>
+                                <b>{s.san}</b>
+                              </td>
+                              <td className="num hide-sm">{s.count}</td>
+                              <td className="num">{Math.round(s.score * 100)}%</td>
+                              <td>
+                                <button
+                                  className="small primary"
+                                  onClick={() => {
+                                    const g = graphOf(s.repId)?.graph;
+                                    const chapter = g && chapterForLine(g, path);
+                                    if (chapter) navigate(`repertoire/${chapter}`, { line: [...path, s.san].join(' ') });
+                                  }}
+                                >
+                                  Prepare
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    </TableWrap>
+                  )}
+                </div>
+              </div>
+
+            </>
+          )}
         </>
       )}
     </div>

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
 import { RepGraph } from './lib/graph';
-import type { Repertoire, RepMove } from './lib/types';
+import type { Repertoire, RepMove, StoredGame } from './lib/types';
+import { positionFinder } from './lib/mygames';
 import { trainable, unionGraph } from './lib/chapters';
 import { COLORS, colorName } from './db/scopes';
 import type { RepWithGraph } from './lib/prep';
@@ -109,3 +110,57 @@ export function useMediaQuery(query: string): boolean {
 
 /** Same breakpoint as the phone rules in styles.css. */
 export const PHONE_QUERY = '(max-width: 700px)';
+
+/** Searches already done this session (by position, move and the games searched). */
+const positionSearches = new Map<string, Map<string, string[]>>();
+
+/**
+ * Which of `games` reach position `at` (and play `move` there), with how each got there — the list
+ * behind an explorer's 🔍. Searched a slice at a time, so the page shows progress instead of
+ * freezing; `paths` is undefined until done. Remembered for the session.
+ */
+export function usePositionSearch(
+  games: readonly Pick<StoredGame, 'id' | 'sans' | 'modifiedAt'>[] | undefined,
+  at: string | undefined,
+  move?: string,
+): { paths?: Map<string, string[]>; done: number; total: number } {
+  const [state, setState] = useState<{ paths?: Map<string, string[]>; done: number; total: number }>({ done: 0, total: 0 });
+  useEffect(() => {
+    if (!games || at === undefined) {
+      setState({ done: 0, total: 0 });
+      return;
+    }
+    const total = games.length;
+    const edited = games.reduce((m, g) => Math.max(m, g.modifiedAt ?? 0), 0);
+    const key = `${at}|${move ?? ''}|${total}|${games[0]?.id ?? ''}|${games[total - 1]?.id ?? ''}|${edited}`;
+    const known = positionSearches.get(key);
+    if (known) {
+      setState({ paths: known, done: total, total });
+      return;
+    }
+    const find = positionFinder(at, move);
+    const out = new Map<string, string[]>();
+    let i = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    setState({ done: 0, total });
+    const step = () => {
+      const until = performance.now() + 12;
+      while (i < total && performance.now() < until) {
+        const g = games[i++];
+        const p = find(g.sans);
+        if (p) out.set(g.id, p);
+      }
+      if (i < total) {
+        setState({ done: i, total });
+        timer = setTimeout(step, 0);
+        return;
+      }
+      positionSearches.set(key, out);
+      if (positionSearches.size > 20) positionSearches.delete(positionSearches.keys().next().value!);
+      setState({ paths: out, done: total, total });
+    };
+    timer = setTimeout(step, 0);
+    return () => clearTimeout(timer);
+  }, [games, at, move]);
+  return state;
+}

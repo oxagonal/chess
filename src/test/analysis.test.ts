@@ -5,10 +5,10 @@ import { computeCoverage, oneIn, likelyPositions } from '../lib/coverage';
 import { analyzeGame, summarize } from '../lib/prep';
 import { parseLichessGame } from '../lib/importers/lichess';
 import { parseChessComGame, archiveMonthIndex } from '../lib/importers/chesscom';
-import { GameStatsIndex, pathToPosition } from '../lib/mygames';
+import { GameStatsIndex, pathToPosition, positionFinder } from '../lib/mygames';
 import { bandsForRating, toLichessRating } from '../lib/ratings';
 import { keysAlong } from '../lib/pgn';
-import { START_KEY } from '../lib/chess';
+import { START_KEY, playSan, playUci, startPos } from '../lib/chess';
 import type { PositionStats, Repertoire, StoredGame } from '../lib/types';
 
 const stat = (moves: [string, string, number][]): PositionStats => {
@@ -224,6 +224,61 @@ describe('my-games explorer + ratings', () => {
     expect(games.map((g) => !!pathToPosition(g.sans, key, 'd6'))).toEqual([true, true, false, false]);
     // A position counts only when a move is played from it, as in the explorer.
     expect(pathToPosition(['e4', 'c5', 'Nf3'], key)).toBeUndefined();
+  });
+
+  it('finds exactly the games in a position, even skipping games that can no longer get there', () => {
+    // Random games (with a few common openings so positions repeat and transpose); every target
+    // position comes from one of them. The fast finder must agree with replaying every game in full.
+    let seed = 7;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const openings = ['e4 c5 Nf3 d6', 'Nf3 c5 e4 d6', 'e4 e5 Nf3 Nc6', 'd4 d5 c4 e6', 'c4 e6 d4 d5', 'e4 c5'];
+    const games: string[][] = [];
+    for (let i = 0; i < 300; i++) {
+      let pos = startPos();
+      const sans: string[] = [];
+      for (const s of openings[i % openings.length].split(' ')) {
+        const r = playSan(pos, s)!;
+        sans.push(r.san);
+        pos = r.pos;
+      }
+      for (let k = 0; k < 50 && !pos.isEnd(); k++) {
+        const moves: string[] = [];
+        for (const [from, ds] of pos.allDests()) for (const to of ds) moves.push(`${'abcdefgh'[from % 8]}${(from >> 3) + 1}${'abcdefgh'[to % 8]}${(to >> 3) + 1}`);
+        const uci = moves[Math.floor(rnd() * moves.length)];
+        const r = playUci(pos, uci) ?? playUci(pos, `${uci}q`);
+        if (!r) break;
+        sans.push(r.san);
+        pos = r.pos;
+      }
+      games.push(sans);
+    }
+    const naive = (sans: string[], key: string, san?: string) => {
+      let pos = startPos();
+      let here = START_KEY;
+      const path: string[] = [];
+      for (let i = 0; i < Math.min(40, sans.length); i++) {
+        const r = playSan(pos, sans[i])!;
+        if (here === key && (!san || r.san === san)) return path;
+        path.push(r.san);
+        pos = r.pos;
+        here = r.key;
+      }
+      return undefined;
+    };
+    let found = 0;
+    for (let t = 0; t < 40; t++) {
+      const g = games[Math.floor(rnd() * games.length)];
+      const ply = Math.floor(rnd() * Math.min(20, g.length - 1));
+      const key = keysAlong(g.slice(0, ply)).keys[ply];
+      const san = t % 2 ? g[ply] : undefined;
+      const find = positionFinder(key, san);
+      for (const sans of games) {
+        const want = naive(sans, key, san);
+        expect(find(sans)).toEqual(want);
+        if (want) found++;
+      }
+    }
+    expect(found).toBeGreaterThan(300); // the targets really are shared between games
   });
 
   it('picks explorer rating bands', () => {

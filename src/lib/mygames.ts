@@ -1,5 +1,6 @@
-import { playSan, START_KEY, startPos, type Color } from './chess';
+import { playSan, posFromFen, START_KEY, startPos, type Color } from './chess';
 import type { Position } from 'chessops/chess';
+import { SquareSet } from 'chessops/squareSet';
 import type { MoveStat, PositionStats, StoredGame } from './types';
 
 /** How deep into each game the explorers built from games look. */
@@ -11,18 +12,57 @@ export const EXPLORER_PLIES = 40;
  * `maxPly` plies). Undefined if it never does. Lists "the games in this position" behind an explorer.
  */
 export function pathToPosition(sans: readonly string[], key: string, san?: string, maxPly = EXPLORER_PLIES): string[] | undefined {
-  let pos: Position = startPos();
-  let here = START_KEY;
-  const path: string[] = [];
-  for (let i = 0; i < Math.min(maxPly, sans.length); i++) {
-    const played = playSan(pos, sans[i]);
-    if (!played) return undefined;
-    if (here === key && (!san || played.san === san)) return path;
-    path.push(played.san);
-    pos = played.pos;
-    here = played.key;
-  }
-  return undefined;
+  return positionFinder(key, san, maxPly)(sans);
+}
+
+/**
+ * pathToPosition for many games: set up once, then call with each game's moves. A game is dropped
+ * as soon as it can no longer reach the position (see stillReaches), so most are read only a few
+ * moves deep.
+ */
+export function positionFinder(key: string, san?: string, maxPly = EXPLORER_PLIES): (sans: readonly string[]) => string[] | undefined {
+  const target = posFromFen(key);
+  if (!target) return () => undefined;
+  const reaches = stillReaches(target);
+  return (sans) => {
+    let pos: Position = startPos();
+    let here = START_KEY;
+    const path: string[] = [];
+    for (let i = 0; i < Math.min(maxPly, sans.length); i++) {
+      if (here !== key && !reaches(pos)) return undefined;
+      const played = playSan(pos, sans[i]);
+      if (!played) return undefined;
+      if (here === key && (!san || played.san === san)) return path;
+      path.push(played.san);
+      pos = played.pos;
+      here = played.key;
+    }
+    return undefined;
+  };
+}
+
+/**
+ * Whether a position can still turn into `target`, by what can't be undone: a pawn that has left its
+ * first square never goes back, a captured piece never returns, and castling rights once lost stay
+ * lost.
+ */
+function stillReaches(target: Position): (pos: Position) => boolean {
+  const t = target.board;
+  const whiteHome = t.pawn.intersect(t.white).intersect(SquareSet.fromRank(1));
+  const blackHome = t.pawn.intersect(t.black).intersect(SquareSet.fromRank(6));
+  const whites = t.white.size();
+  const blacks = t.black.size();
+  const rights = target.castles.castlingRights;
+  return (pos) => {
+    const b = pos.board;
+    return (
+      b.white.size() >= whites &&
+      b.black.size() >= blacks &&
+      whiteHome.diff(b.pawn.intersect(b.white)).isEmpty() &&
+      blackHome.diff(b.pawn.intersect(b.black)).isEmpty() &&
+      rights.diff(pos.castles.castlingRights).isEmpty()
+    );
+  };
 }
 
 /**

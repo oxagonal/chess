@@ -972,3 +972,13 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .reviewed-check { color: var(--good); font-weight: 800; margin-right: 4px; cursor: help; }
 .badge.work-tag { background: rgba(74, 144, 217, 0.16); color: #a9c8ee; margin: 1px 3px 1px 0; }
 @media (max-width: 700px) { .tag-add input { font-size: 16px; } }
+
+/* Searching the games behind an explorer's 🔍. */
+.search-progress { gap: 8px; }
+.spinner {
+  width: 16px; height: 16px; flex: none; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }

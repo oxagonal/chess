@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react';
 import { filterBySource, usePlayerGames, type ScoutSource } from '../components/PlayersScout';
 import { ColorPill, Empty, TableWrap, fmtDate } from '../components/ui';
 import { formatLine, type Color } from '../lib/chess';
-import { pathToPosition } from '../lib/mygames';
 import type { StoredGame } from '../lib/types';
 import { href, navigate } from '../router';
-import { PositionFilterNote } from '../components/PositionFilterNote';
+import { PositionFilterNote, PositionSearchProgress } from '../components/PositionFilterNote';
+import { usePositionSearch } from '../hooks';
 
 /**
  * A scouted player's games (the explorer's Players tab → 🔍): those with the color and source picked
@@ -24,19 +24,28 @@ export function PlayerGames({ query }: { query: URLSearchParams }) {
   const scout = usePlayerGames(id);
   const [limit, setLimit] = useState(100);
 
+  // Their games with the color and source picked, newest first; then (searched a slice at a time,
+  // with progress showing) those that reached the position.
+  const pool = useMemo(
+    () => (scout ? filterBySource(scout.games, src).filter((g) => !as || g.userColor === as).sort((a, b) => b.playedAt - a.playedAt) : undefined),
+    [scout, as, src],
+  );
+  const search = usePositionSearch(pool, at, move);
   const list = useMemo(() => {
-    if (!scout) return undefined;
+    if (!pool || (at !== undefined && !search.paths)) return undefined;
     const out: { g: StoredGame; path: string[] }[] = [];
-    for (const g of filterBySource(scout.games, src)) {
-      if (as && g.userColor !== as) continue;
-      const path = at === undefined ? [] : pathToPosition(g.sans, at, move);
+    for (const g of pool) {
+      const path = at === undefined ? [] : search.paths!.get(g.id);
       if (path) out.push({ g, path });
     }
-    return out.sort((a, b) => b.g.playedAt - a.g.playedAt);
-  }, [scout, as, src, at, move]);
+    return out;
+  }, [pool, at, search.paths]);
 
   if (scout === null) return <Empty>That player isn't saved any more. <a href={href('games')}>Your games</a></Empty>;
-  if (!scout || !list) return <div className="muted">Loading…</div>;
+  if (!scout || !list) {
+    const whose = scout ? `${scout.player.name}’s` : 'their';
+    return <PositionSearchProgress done={search.done} total={at === undefined || !pool ? undefined : search.total} whose={whose} />;
+  }
   const p = scout.player;
   const allHref = href('games', { player: p.id, as, src: src === 'all' ? undefined : src });
 

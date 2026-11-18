@@ -1,4 +1,5 @@
 import { formatLine } from '../lib/chess';
+import { ProgressBar } from './ui';
 
 /**
  * "12 games reached 1. e4 c5 2. Nf3 and went on 2... d6 (any move order)", with a link to every game.
@@ -21,6 +22,26 @@ export function PositionFilterNote({ path, move, count, clearHref, whose }: { pa
       <a className="btn small" href={clearHref}>
         ✕ Show all
       </a>
+    </div>
+  );
+}
+
+/** While the games behind an explorer's 🔍 are loaded and searched: what's happening, and how far along. */
+export function PositionSearchProgress({ done, total, whose = 'your' }: { done?: number; total?: number; whose?: string }) {
+  return (
+    <div className="panel col search-progress" role="status" aria-live="polite">
+      <div className="row">
+        <span className="spinner" aria-hidden="true" />
+        <b>{total ? `Finding ${whose} games that reached this position…` : `Loading ${whose} games…`}</b>
+      </div>
+      {!!total && (
+        <>
+          <ProgressBar value={(done ?? 0) / total} />
+          <span className="muted small">
+            {(done ?? 0).toLocaleString()} of {total.toLocaleString()} games
+          </span>
+        </>
+      )}
     </div>
   );
 }
