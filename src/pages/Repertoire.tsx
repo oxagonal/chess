@@ -90,7 +90,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // How often this position comes up if the chapter's opening came up every game: the figure above
   // divided by how often the opening's position (e.g. 1.e4 d6 for a Pirc chapter) comes up.
   const openingNames = useOpeningIndex();
-  const chapterOpening = useMemo(() => (graph ? chapterPosition(graph, openingNames) : undefined), [graph, openingNames]);
+  const chapterOpening = useMemo(() => (graph && rep ? chapterPosition(graph, openingNames, rep.name) : undefined), [graph, openingNames, rep]);
   const openingPath = (chapterOpening?.moves ?? []).map((m) => ({ fromKey: m.fromKey, san: m.san, key: m.toKey }));
   const openingReach = useLineReach(openingPath, rep?.color, colorGraph, settings, freshCoverage);
   const here = line.slice(0, cursor);
@@ -271,10 +271,10 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // (Rarer than the target too: the real biggest hole, not "none".)
   const biggestGap = useMemo(() => {
     if (!freshCoverage || !graph) return undefined;
-    const pick = chapterGap(graph, freshCoverage);
+    const pick = chapterGap(graph, freshCoverage, openingNames, rep?.name);
     if (!pick) return undefined;
     return { ...pick, label: formatLine(pick.sans) || 'the starting position' };
-  }, [freshCoverage, graph]);
+  }, [freshCoverage, graph, openingNames, rep?.name]);
 
   const jumpToBiggestGap = () => {
     if (!biggestGap) return;

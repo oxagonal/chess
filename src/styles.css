@@ -438,8 +438,8 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .map-pop-stats dd { margin: 0; text-align: right; font-weight: 650; }
 .map-pop-stats dd.warn { color: var(--warn); }
 .map-pop-actions { margin-top: 6px; }
-.miniboard { display: grid; grid-template-columns: repeat(8, 1fr); border-radius: 4px; overflow: hidden; flex: none; line-height: 1; }
-.miniboard > span { display: grid; place-items: center; }
+.miniboard { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); border-radius: 4px; overflow: hidden; flex: none; line-height: 1; }
+.miniboard > span { display: grid; place-items: center; min-height: 0; overflow: hidden; }
 .miniboard .mb-l { background: #e9dcc2; }
 .miniboard .mb-d { background: #a98a66; }
 .miniboard .mb-w, .miniboard .mb-b { font-family: 'Segoe UI Symbol', 'Apple Symbols', 'Noto Sans Symbols 2', 'DejaVu Sans', sans-serif; font-variant-emoji: text; }

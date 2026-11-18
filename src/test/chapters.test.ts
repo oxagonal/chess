@@ -148,6 +148,9 @@ describe('a chapter at a glance', () => {
     expect(pos.moves.map((m) => m.san)).toEqual(['e4', 'd6']);
     // Without names: everything up to where it branches.
     expect(chapterPosition(pirc, undefined).moves.map((m) => m.san)).toEqual(['e4', 'd6', 'd4', 'Nf6']);
+    // A Dutch chapter that also gets there by 1...e6: the Dutch is 1.d4 f5, not the shared 1.d4.
+    const dutch = new RepGraph('black', movesFromLines('d', 'black', ['d4 f5 c4 Nf6 g3 e6', 'd4 e6 c4 f5 g3 Nf6', 'd4 f5 Nf3 Nf6 g3 g6']));
+    expect(chapterPosition(dutch, names).moves.map((m) => m.san)).toEqual(['d4', 'f5']);
   });
 
   it('gives its biggest gap from the start and among games reaching it', () => {

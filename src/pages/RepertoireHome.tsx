@@ -244,8 +244,8 @@ function ChapterRow({
   onMerge: () => void;
 }) {
   const lines = graph ? linePaths(graph).filter((l) => l.some((m) => m.mine)).length : 0;
-  const opening = graph ? chapterPosition(graph, names).moves.map((m) => m.san) : [];
-  const gap = graph && coverage ? chapterGap(graph, coverage, names) : undefined;
+  const opening = graph ? chapterPosition(graph, names, r.name).moves.map((m) => m.san) : [];
+  const gap = graph && coverage ? chapterGap(graph, coverage, names, r.name) : undefined;
   const target = coverage ? Math.round(1 / coverage.threshold) : 0;
   const gapTitle = gap
     ? `Biggest gap: ${compactLine(gap.sans)} — ${oneIn(gap.prob)} games${gap.inChapter !== undefined ? `, ${oneIn(gap.inChapter)} of games in this opening` : ''}. ` +
