@@ -10,7 +10,8 @@ import { statsProvider, type StatsProvider } from '../services/coverage';
 import { reachProbabilities } from '../lib/coverage';
 import { alternativesIn, importGraph, keptEdges, reachable, studyChapters, trimByReach, type StudyChapter } from '../lib/importPlan';
 import { formatLine, posFromFen, type Color } from '../lib/chess';
-import type { RepGraph } from '../lib/graph';
+import { RepGraph } from '../lib/graph';
+import { matchChapter } from '../lib/chapters';
 import { moveGames, type Chapter, type PositionStats, type RepMove } from '../lib/types';
 import type { ImportedEdge } from '../lib/pgn';
 import { Board, type Arrow } from './Board';
@@ -33,7 +34,22 @@ interface Row {
   color: Color;
   /** 'new' or an existing chapter's id to add to. */
   target: string;
+  /** The existing chapter covering the same part of the tree, per color (see matchChapter). */
+  matched?: Partial<Record<Color, string>>;
 }
+
+/** Each color's existing chapters with their graphs, to match incoming chapters against. */
+async function existingByColor(): Promise<Record<Color, { id: string; graph: RepGraph }[]>> {
+  const [reps, moves] = await Promise.all([db.repertoires.toArray(), db.moves.toArray()]);
+  const out: Record<Color, { id: string; graph: RepGraph }[]> = { white: [], black: [] };
+  for (const r of reps) out[r.color].push({ id: r.id, graph: new RepGraph(r.color, moves.filter((m) => m.repId === r.id)) });
+  return out;
+}
+
+const matchesOf = (edges: ImportedEdge[], existing: Record<Color, { id: string; graph: RepGraph }[]>): Partial<Record<Color, string>> => ({
+  white: matchChapter(importGraph('white', edges), existing.white)?.id,
+  black: matchChapter(importGraph('black', edges), existing.black)?.id,
+});
 
 /** One chapter-to-be: what it imports, the graph to review (with the target chapter's moves, locked), and what's kept. */
 interface Plan {
@@ -82,13 +98,24 @@ export function ImportWizard({ chapters, onClose }: { chapters: Chapter[]; onClo
     box.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [step]);
 
-  const loaded = (pgn: string, defaultColor: Color) => {
+  // Each study chapter goes, by default, into the existing chapter covering the same part of the
+  // tree (matched by position, so names and move orders don't matter); otherwise a new chapter.
+  const loaded = async (pgn: string, defaultColor: Color) => {
     const r = studyChapters(pgn);
     if (!r.chapters.length) throw new Error('No moves found in that PGN or study.');
+    const existing = await existingByColor();
     setStudy(r.study);
     setParsed(r.chapters);
-    setRows(r.chapters.map((c) => ({ include: true, name: c.name, color: c.orientation ?? defaultColor, target: 'new' })));
-    setCombined({ include: true, name: r.study ?? r.chapters[0].name, color: r.chapters[0].orientation ?? defaultColor, target: 'new' });
+    setRows(
+      r.chapters.map((c) => {
+        const color = c.orientation ?? defaultColor;
+        const matched = matchesOf(c.edges, existing);
+        return { include: true, name: c.name, color, target: matched[color] ?? 'new', matched };
+      }),
+    );
+    const color = r.chapters[0].orientation ?? defaultColor;
+    const matched = matchesOf(r.chapters.flatMap((c) => c.edges), existing);
+    setCombined({ include: true, name: r.study ?? r.chapters[0].name, color, target: matched[color] ?? 'new', matched });
     setCombine(false);
     setStep('chapters');
   };
@@ -149,7 +176,7 @@ export function ImportWizard({ chapters, onClose }: { chapters: Chapter[]; onClo
 
 /* ---------------------------------------------------------------- 1 source */
 
-function SourceStep({ onLoaded, onError }: { onLoaded: (pgn: string, color: Color) => void; onError: (e: string | null) => void }) {
+function SourceStep({ onLoaded, onError }: { onLoaded: (pgn: string, color: Color) => Promise<void>; onError: (e: string | null) => void }) {
   const [text, setText] = useState('');
   const [url, setUrl] = useState('');
   const [color, setColor] = useState<Color>('white');
@@ -158,7 +185,7 @@ function SourceStep({ onLoaded, onError }: { onLoaded: (pgn: string, color: Colo
     setBusy(true);
     onError(null);
     try {
-      onLoaded(await get(), color);
+      await onLoaded(await get(), color);
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -305,7 +332,9 @@ function ChaptersStep(props: {
   onNext: () => void;
 }) {
   const { parsed, rows, setRows, combine, setCombine, combined, setCombined, chapters } = props;
-  const set = (i: number, patch: Partial<Row>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch, ...(patch.color ? { target: 'new' } : {}) } : r)));
+  // A new color re-picks the matched chapter of that color.
+  const set = (i: number, patch: Partial<Row>) =>
+    setRows(rows.map((r, j) => (j === i ? { ...r, ...patch, ...(patch.color ? { target: r.matched?.[patch.color] ?? 'new' } : {}) } : r)));
   const any = rows.some((r) => r.include);
   return (
     <div className="col" style={{ gap: 10 }}>
@@ -320,11 +349,12 @@ function ChaptersStep(props: {
       {combine && (
         <div className="row wizard-row">
           <input value={combined.name} onChange={(e) => setCombined({ ...combined, name: e.target.value })} placeholder="Chapter name" style={{ flex: '1 1 220px' }} />
-          <select value={combined.color} onChange={(e) => setCombined({ ...combined, color: e.target.value as Color, target: 'new' })}>
+          <select value={combined.color} onChange={(e) => setCombined({ ...combined, color: e.target.value as Color, target: combined.matched?.[e.target.value as Color] ?? 'new' })}>
             <option value="white">I play White</option>
             <option value="black">I play Black</option>
           </select>
           <TargetSelect value={combined.target} color={combined.color} chapters={chapters} onChange={(v) => setCombined({ ...combined, target: v })} />
+          {combined.target !== 'new' && combined.target === combined.matched?.[combined.color] && <span className="muted small">matched by position</span>}
         </div>
       )}
       <div className="col" style={{ gap: 6 }}>
@@ -344,6 +374,11 @@ function ChaptersStep(props: {
                   <option value="black">Black</option>
                 </select>
                 <TargetSelect value={rows[i].target} color={rows[i].color} chapters={chapters} onChange={(v) => set(i, { target: v })} />
+                {rows[i].target !== 'new' && rows[i].target === rows[i].matched?.[rows[i].color] && (
+                  <span className="muted small" title="This study chapter covers the same part of the tree as that chapter">
+                    matched by position
+                  </span>
+                )}
               </>
             )}
             {c.errors.length > 0 && (

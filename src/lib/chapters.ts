@@ -93,6 +93,31 @@ export function chapterTrunk(graph: RepGraph): { trunk: RepMove[]; key: string }
   return { trunk, key };
 }
 
+/**
+ * Which existing chapter an incoming one (e.g. a study chapter) belongs in, by position: it does
+ * when the incoming one passes through the chapter's branch position — and, for a chapter that
+ * branches right at the start (a catch-all), when they also share real positions (a 1.c4 study
+ * doesn't belong in a 1.e4 / 1.d4 catch-all). The chapter branching deepest (the most specific)
+ * wins, then the one sharing the most positions. Undefined when none matches.
+ */
+export function matchChapter(incoming: RepGraph, candidates: readonly { id: string; graph: RepGraph }[]): { id: string; share: number } | undefined {
+  const mine = incoming.reachableKeys();
+  mine.delete(incoming.root);
+  let best: { id: string; share: number; depth: number } | undefined;
+  for (const c of candidates) {
+    if (!c.graph.size) continue;
+    const { trunk, key } = chapterTrunk(c.graph);
+    if (!incoming.has(key)) continue;
+    const theirs = c.graph.reachableKeys();
+    let shared = 0;
+    for (const k of mine) if (theirs.has(k)) shared++;
+    if (!trunk.length && shared < 2) continue;
+    const share = mine.size ? shared / mine.size : 0;
+    if (!best || trunk.length > best.depth || (trunk.length === best.depth && share > best.share)) best = { id: c.id, share, depth: trunk.length };
+  }
+  return best && { id: best.id, share: best.share };
+}
+
 /** Whether a line (SANs from the start) stays inside a graph's moves. */
 export function lineInGraph(graph: RepGraph, sans: readonly string[]): boolean {
   let key = graph.root;

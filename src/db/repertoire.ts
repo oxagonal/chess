@@ -124,6 +124,39 @@ export async function splitOff(chapterId: string, startId: string, target: { nam
   return targetId;
 }
 
+/**
+ * Merge a chapter into another of the same color: its moves (with notes and symbols) join the
+ * target, it's deleted, and repertoires that had it get the target instead. Progress is untouched.
+ */
+export async function mergeChapter(fromId: string, intoId: string) {
+  if (fromId === intoId) return;
+  await db.transaction('rw', [db.repertoires, db.moves, db.cards, db.coverage, db.collections], async () => {
+    const [from, into] = await Promise.all([db.repertoires.get(fromId), db.repertoires.get(intoId)]);
+    if (!from || !into) throw new Error('Chapter not found');
+    if (from.color !== into.color) throw new Error("Chapters of different colors can't be merged");
+    const moves = await db.moves.where('repId').equals(fromId).toArray();
+    const copies = moves.map(({ modifiedAt: _m, ...m }) => ({ ...m, id: moveId(intoId, m.fromKey, m.san), repId: intoId }));
+    const have = await db.moves.bulkGet(copies.map((c) => c.id));
+    const add: RepMove[] = [];
+    for (const [i, c] of copies.entries()) {
+      const ex = have[i];
+      if (!ex) add.push(c);
+      else if ((c.comment && !ex.comment) || (c.glyphs?.length && !ex.glyphs?.length))
+        await db.moves.update(ex.id, { comment: ex.comment || c.comment, glyphs: ex.glyphs?.length ? ex.glyphs : c.glyphs });
+    }
+    await db.moves.bulkAdd(add);
+    await db.moves.where('repId').equals(fromId).delete();
+    await db.coverage.delete(fromId);
+    await db.repertoires.delete(fromId);
+    await db.repertoires.update(intoId, { updatedAt: Date.now() });
+    await db.collections
+      .filter((c) => c.chapterIds.includes(fromId))
+      .modify((c) => {
+        c.chapterIds = [...new Set(c.chapterIds.map((x) => (x === fromId ? intoId : x)))];
+      });
+  });
+}
+
 export async function renameRepertoire(id: string, name: string) {
   await db.repertoires.update(id, { name, updatedAt: Date.now() });
 }

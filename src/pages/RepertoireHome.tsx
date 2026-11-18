@@ -6,6 +6,7 @@ import {
   createRepertoire,
   deleteCollection,
   deleteRepertoire,
+  mergeChapter,
   exportPgn,
   fetchLichessStudy,
   importPgn,
@@ -42,6 +43,7 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
   const cards = useCards();
   const [importing, setImporting] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState<string | null>(null);
+  const [merging, setMerging] = useState<string | null>(null);
   const [wizard, setWizard] = useState(false);
   const settings = useSettings();
   const covWhite = useCoverage('white');
@@ -129,12 +131,16 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
                 counts={countsOf([ch.id])}
                 onImport={() => setImporting(importing === ch.id ? null : ch.id)}
                 onSuggest={() => setSuggesting(suggesting === ch.id ? null : ch.id)}
+                onMerge={() => setMerging(merging === ch.id ? null : ch.id)}
               />
             )}
           />
         </div>
       ))}
       {importing && <ImportPanel repId={importing} onClose={() => setImporting(null)} />}
+      {merging && chapters.some((c) => c.id === merging) && (
+        <MergePanel chapter={chapters.find((c) => c.id === merging)!} chapters={chapters} onClose={() => setMerging(null)} />
+      )}
       {suggesting && graphs.get(suggesting) && chapters.some((c) => c.id === suggesting) && (
         <SuggestChapters chapter={chapters.find((c) => c.id === suggesting)!} graph={graphs.get(suggesting)!} onClose={() => setSuggesting(null)} />
       )}
@@ -207,6 +213,7 @@ function ChapterRow({
   counts,
   onImport,
   onSuggest,
+  onMerge,
 }: {
   chapter: Chapter;
   label: string;
@@ -216,6 +223,7 @@ function ChapterRow({
   counts: { total: number; due: number; fresh: number };
   onImport: () => void;
   onSuggest: () => void;
+  onMerge: () => void;
 }) {
   const lines = graph ? linePaths(graph).filter((l) => l.some((m) => m.mine)).length : 0;
   const { trunk, key } = graph ? chapterTrunk(graph) : { trunk: [], key: '' };
@@ -273,6 +281,7 @@ function ChapterRow({
         </a>
         <MoreMenu>
           <button onClick={onSuggest}>Split into chapters…</button>
+          <button onClick={onMerge}>Merge into…</button>
           <button onClick={onImport}>Import PGN or study…</button>
           <button onClick={async () => download(`${r.name.replace(/[^\w-]+/g, '_')}.pgn`, await exportPgn(r.id), 'application/x-chess-pgn')}>Export PGN</button>
           <button
@@ -293,6 +302,69 @@ function ChapterRow({
           </button>
         </MoreMenu>
       </div>
+    </div>
+  );
+}
+
+/** Merge a chapter into another of its color. */
+function MergePanel({ chapter, chapters, onClose }: { chapter: Chapter; chapters: Chapter[]; onClose: () => void }) {
+  const options = chapters.filter((c) => c.color === chapter.color && c.id !== chapter.id).sort((a, b) => a.name.localeCompare(b.name));
+  const [into, setInto] = useState(options[0]?.id ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    box.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
+  return (
+    <div className="panel col merge-panel" ref={box} style={{ gap: 10 }}>
+      <div className="row">
+        <h2 style={{ margin: 0 }}>Merge “{chapter.name}”</h2>
+        <span className="spacer" />
+        <button className="ghost" onClick={onClose} aria-label="Close">
+          ✕
+        </button>
+      </div>
+      {options.length === 0 ? (
+        <div className="note">No other {colorName(chapter.color)} chapter to merge it into.</div>
+      ) : (
+        <>
+          <div className="row">
+            <span>into</span>
+            <select value={into} onChange={(e) => setInto(e.target.value)} style={{ flex: '1 1 240px' }}>
+              {options.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="muted small" style={{ margin: 0 }}>
+            Its moves and notes join that chapter and “{chapter.name}” goes away; repertoires that had it get the other chapter instead.
+            Your progress is kept.
+          </p>
+          {error && <div className="error">{error}</div>}
+          <div className="row">
+            <span className="spacer" />
+            <button className="ghost" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              className="primary"
+              disabled={!into}
+              onClick={async () => {
+                try {
+                  await mergeChapter(chapter.id, into);
+                  onClose();
+                } catch (e) {
+                  setError((e as Error).message);
+                }
+              }}
+            >
+              Merge
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

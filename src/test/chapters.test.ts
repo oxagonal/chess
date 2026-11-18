@@ -2,9 +2,9 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, openDb } from '../db/db';
-import { addLine, createRepertoire, deleteMove, deleteRepertoire, loadGraph, setMoveComment, splitChapter, splitOff } from '../db/repertoire';
+import { addLine, createRepertoire, deleteMove, deleteRepertoire, loadGraph, mergeChapter, setMoveComment, splitChapter, splitOff } from '../db/repertoire';
 import { loadScopeGraph, repertoireScopeId } from '../db/scopes';
-import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, chapterGap, chapterTrunk, migrateCardRows, unionGraph } from '../lib/chapters';
+import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, chapterGap, chapterTrunk, matchChapter, migrateCardRows, unionGraph } from '../lib/chapters';
 import { RepGraph } from '../lib/graph';
 import { movesFromLines } from '../lib/lines';
 import { playSan, START_KEY, startPos } from '../lib/chess';
@@ -149,6 +149,40 @@ describe('a chapter at a glance', () => {
     };
     expect(chapterGap(g, cov)).toEqual({ sans: ['e4', 'c5', 'c3', 'd5', 'e5'], prob: 0.004, inChapter: 0.1 });
     expect(chapterGap(g, { gaps: [], unfinished: [], probs: {} })).toBeUndefined();
+  });
+});
+
+describe('merging chapters', () => {
+  it('matches an incoming chapter to the existing one covering the same part of the tree', () => {
+    const g = (lines: string[]) => new RepGraph('black', movesFromLines('x', 'black', lines));
+    const existing = [
+      { id: 'all', graph: g(['e4 c5 Nf3 e6', 'd4 Nf6 c4 e6']) }, // a catch-all, branching at the start
+      { id: 'alapin', graph: g(['e4 c5 c3 d5 exd5 Qxd5', 'e4 c5 c3 Nf6 e5 Nd5']) },
+      { id: 'nimzo', graph: g(['d4 Nf6 c4 e6 Nc3 Bb4']) },
+    ];
+    // A study chapter on the Alapin with a new sideline: the Alapin chapter, not the catch-all.
+    expect(matchChapter(g(['e4 c5 c3 d5 exd5 Qxd5 d4 Nf6', 'e4 c5 c3 e6']), existing)?.id).toBe('alapin');
+    expect(matchChapter(g(['d4 Nf6 c4 e6 Nc3 Bb4 Qc2 O-O']), existing)?.id).toBe('nimzo');
+    // Nothing on 1.c4 yet.
+    expect(matchChapter(g(['c4 e5 Nc3 Nf6']), existing)).toBeUndefined();
+  });
+
+  it('merges one chapter into another, keeping notes and fixing repertoires', async () => {
+    const a = await createRepertoire('Alapin 1', 'black');
+    const b = await createRepertoire('Alapin 2', 'black');
+    await addLine(a.id, ['e4', 'c5', 'c3', 'd5']);
+    await addLine(b.id, ['e4', 'c5', 'c3', 'Nf6']);
+    const { graph } = (await loadGraph(b.id))!;
+    await setMoveComment(graph.edge(keyAfter(['e4', 'c5']), 'c3')!.id, 'Alapin');
+    await db.collections.add({ id: 's', name: 'S', color: 'black', chapterIds: [a.id, b.id], createdAt: 1, updatedAt: 1 });
+    const before = await db.cards.count();
+    await mergeChapter(b.id, a.id);
+    const merged = (await loadGraph(a.id))!.graph;
+    expect([...merged.byId.values()].map((m) => m.san).sort()).toEqual(['Nf6', 'c3', 'c5', 'd5', 'e4']);
+    expect(merged.edge(keyAfter(['e4', 'c5']), 'c3')!.comment).toBe('Alapin');
+    expect(await db.repertoires.get(b.id)).toBeUndefined();
+    expect((await db.collections.get('s'))!.chapterIds).toEqual([a.id]);
+    expect(await db.cards.count()).toBe(before);
   });
 });
 

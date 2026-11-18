@@ -501,7 +501,7 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .choose-note { flex-basis: 100%; color: var(--muted); font-size: 12.5px; font-style: italic; }
 
 /* Suggesting chapters (splitting one by opening names). */
-.suggest { border-color: var(--accent2); }
+.suggest, .merge-panel { border-color: var(--accent2); }
 .suggest-list { gap: 6px; }
 .suggest-item { padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg2); }
 .suggest-item.faded .suggest-name { opacity: .55; }
