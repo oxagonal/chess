@@ -665,16 +665,13 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           uci: c.uci,
           mine: c.mine,
           comment: c.comment,
-          extras: (
-            <>
-              {prepared !== undefined && childProb !== undefined && childProb >= 1 / goalN && (
-                <span className="small" style={{ color: coverColor(prepared) }} title="Prepared from the position after this move">
-                  {Math.round(prepared * 100)}%
-                </span>
-              )}
-              {card && <CardBadge state={card.state} due={card.due} />}
-            </>
-          ),
+          prepared:
+            prepared !== undefined && childProb !== undefined && childProb >= 1 / goalN ? (
+              <span className="small" style={{ color: coverColor(prepared) }} title="Prepared from the position after this move">
+                {Math.round(prepared * 100)}%
+              </span>
+            ) : undefined,
+          extras: card && <CardBadge state={card.state} due={card.due} />,
         };
       })}
       notes={

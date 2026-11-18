@@ -7,7 +7,7 @@ import type { GameRange } from '../lib/gameRange';
 import type { Repertoire } from '../lib/types';
 
 /** Columns the explorer table can show (chosen with its ⚙ button). */
-export type ExplorerColumn = 'games' | 'share' | 'reach' | 'result' | 'eval' | 'last';
+export type ExplorerColumn = 'games' | 'share' | 'reach' | 'result' | 'eval' | 'last' | 'prepared';
 
 export interface AppSettings {
   lichessUsername: string;

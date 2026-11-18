@@ -25,8 +25,10 @@ export interface SavedMove {
   comment?: string;
   /** Standard UCI, used for engine evals of saved moves the database doesn't list. */
   uci?: string;
-  /** Extra badges shown in the row (review status, prep score…). */
+  /** Extra badges shown in the row (review status…). */
   extras?: ReactNode;
+  /** How much of what follows the move is prepared (builder) — its own column, shown if chosen in ⚙. */
+  prepared?: ReactNode;
 }
 
 const TOP_ROWS = 12;
@@ -43,6 +45,12 @@ const COLUMNS: { id: ExplorerColumn; label: string; hint: string; where?: string
   { id: 'eval', label: 'Stockfish', hint: "Evaluation after the move: Lichess's cloud analysis, and the Stockfish box's lines" },
   { id: 'result', label: 'Result', hint: 'White wins · draws · Black wins' },
   { id: 'last', label: 'Last played', hint: 'When the move was last played', where: 'My games, Players' },
+  {
+    id: 'prepared',
+    label: 'Prepared',
+    hint: 'Prepared from the position after your saved move: the share of games reaching it that stay in your prep',
+    where: 'builder',
+  },
 ];
 
 /**
@@ -203,6 +211,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   const fromGames = tab === 'mine' || tab === 'players';
   const showLast = cols.has('last') && fromGames;
   const showEval = cols.has('eval');
+  const showPrepared = cols.has('prepared') && saved.some((s) => s.prepared !== undefined);
   const [showAll, setShowAll] = useState(false);
   useEffect(() => setShowAll(false), [fenKey]);
   const [data, setData] = useState<PositionStats | undefined>();
@@ -367,6 +376,11 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
               )}
               {cols.has('result') && <th className="result">Result</th>}
               {showLast && <th className="nowrap">Last played</th>}
+              {showPrepared && (
+                <th className="num" title="Prepared from the position after the move: the share of games reaching it that stay in your prep">
+                  Prepared
+                </th>
+              )}
               <th>
                 <div className="list-actions" style={{ justifyContent: 'flex-end' }}>
                   {total > 0 && search()}
@@ -429,6 +443,7 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                       {stat?.lastPlayed ? agoLabel(stat.lastPlayed) : <span className="muted">—</span>}
                     </td>
                   )}
+                  {showPrepared && <td className="num">{rep?.prepared}</td>}
                   <td>
                     <div className="list-actions" style={{ justifyContent: 'flex-end', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                       {rep?.extras}
