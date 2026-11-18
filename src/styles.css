@@ -669,3 +669,72 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 }
 .mat-plus { color: var(--muted); font-size: 12.5px; font-weight: 700; }
 
+
+/* ---------- builder on a phone ---------- */
+/* The header, board, its buttons and the moves fit on the first screen, so playing a move never has
+   to move the page; coverage, Stockfish and the explorer follow below. As in training, the board's
+   size depends only on the screen — its width, or the height left after a fixed allowance
+   (--bp-chrome: top bar, header, buttons, the moves panel's own header and padding, gaps, tab bar)
+   and the smallest moves box (--bp-moves) — and the moves box gets what's left. Text and buttons are
+   a size smaller than elsewhere so more of it fits. */
+.memory-status { margin-top: 8px; }
+.menu-note { padding: 6px 11px 4px; border-top: 1px solid var(--border-soft); margin-top: 3px; }
+/* The current move stays readable when it isn't saved yet (grey italic elsewhere). */
+.line .mv.current.out, .ml-move.current.out, .iv-move.current.out { color: #fff; }
+@media (max-width: 700px) {
+  .main:has(> .builder-phone) { padding-top: 10px; }
+  .builder-phone {
+    --bp-chrome: calc(264px + env(safe-area-inset-top) + env(safe-area-inset-bottom));
+    --bp-moves: 104px;
+    --bp-width: calc(100vw - max(12px, env(safe-area-inset-left)) - max(12px, env(safe-area-inset-right)));
+    --bp-board: min(var(--bp-width), max(200px, 100dvh - var(--bp-chrome) - var(--bp-moves)));
+    gap: 10px; font-size: 13px;
+  }
+  /* Play from memory: no header or moves header, but the status box; the line needs less room. */
+  .builder-phone.zen { --bp-chrome: calc(268px + env(safe-area-inset-top) + env(safe-area-inset-bottom)); --bp-moves: 48px; }
+  .builder-phone > .panel { margin: 0; }
+  .builder-phone button.small, .builder-phone .btn.small { min-height: 30px; padding: 4px 9px; font-size: 12px; }
+  .builder-phone .builder-head { flex-wrap: nowrap; gap: 6px; min-height: 30px; }
+  .builder-phone .builder-head h1 { font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .builder-phone .builder-head > :not(h1, .spacer) { flex: none; }
+  .builder-phone .builder-head .pill { font-size: 11px; }
+  .builder-phone .board-col { gap: 8px; }
+  .builder-phone .board-fit { width: var(--bp-board); align-self: center; }
+  /* The board's buttons: one row of wide tap targets, no box around them. */
+  .builder-phone .board-col > .row { flex-wrap: nowrap; gap: 5px; padding: 0; background: none; border: none; box-shadow: none; }
+  .builder-phone .board-col > .row > button { flex: 1 1 0; justify-content: center; min-height: 34px; padding: 0 4px; font-size: 13px; }
+  .builder-phone .board-col > .row > .spacer { display: none; }
+  .builder-phone .board-col > .row > label.check { flex: none; padding: 0 2px 0 6px; font-size: 12.5px; }
+  /* Moves: the actions in one row (it scrolls sideways if they don't fit), the moves in a box. */
+  .builder-phone .moves-panel { padding: 8px 10px; }
+  .builder-phone .moves-head { flex-wrap: nowrap; gap: 5px; overflow-x: auto; scrollbar-width: none; margin: 0 -10px 6px; padding: 0 10px; }
+  .builder-phone .moves-head::-webkit-scrollbar { display: none; }
+  .builder-phone .moves-head > * { flex: none; }
+  .builder-phone .moves-head > h3, .builder-phone .moves-head > .moves-opening, .builder-phone .moves-head > .spacer { display: none; }
+  .builder-phone .moves-body { max-height: calc(100dvh - var(--bp-chrome) - var(--bp-board)); overflow-y: auto; overscroll-behavior: contain; }
+  .builder-phone .movelist2 { grid-template-columns: 30px 1fr 1fr; font-size: 13.5px; }
+  .builder-phone .ml-num { font-size: 11px; padding: 3px 7px 3px 0; }
+  .builder-phone .ml-move { padding: 3px 8px; }
+  .builder-phone .ml-sides { padding: 3px 6px 4px 14px; }
+  .builder-phone .ml-side, .builder-phone .ml-comment { font-size: 12.5px; }
+  .builder-phone .ml-comment { padding: 3px 10px 4px 38px; }
+  .builder-phone .inline-moves { font-size: 13px; line-height: 1.75; }
+  .builder-phone .line { font-size: 13.5px; gap: 2px 1px; }
+  .builder-phone .line .num { font-size: 11px; margin-left: 5px; }
+  .builder-phone .line .mv { padding: 1px 4px; }
+  .builder-phone.zen .moves-panel { padding: 6px 8px; }
+  .builder-phone.zen .moves-head { display: none; }
+  .builder-phone .memory-panel { padding: 8px 10px; }
+  .builder-phone .memory-panel h3 { font-size: 10.5px; }
+  .builder-phone .memory-status { margin-top: 4px; font-size: 12.5px; line-height: 1.45; }
+  /* Below the first screen: Stockfish, coverage and the explorer, a size smaller too. */
+  .builder-phone .coverage-box { gap: 20px; padding: 8px 12px; }
+  .builder-phone .cov-stat b { font-size: 19px; }
+  .builder-phone .cov-stat span { font-size: 11.5px; }
+  .builder-phone .panel.engine { padding: 6px 10px; }
+  .builder-phone .engine-line { font-size: 12px; }
+  .builder-phone .explorer { padding: 10px 12px; }
+  .builder-phone .explorer table { font-size: 12.5px; }
+  .builder-phone .explorer table td { padding: 5px 6px; }
+  .builder-phone .explorer .tabs button { font-size: 12px; padding: 4px 8px; min-height: 30px; }
+}

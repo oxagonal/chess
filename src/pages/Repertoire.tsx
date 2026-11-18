@@ -13,7 +13,7 @@ import {
   renameRepertoire,
 } from '../db/repertoire';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
-import { useCards, useCoverage, useMediaQuery, useRepertoires, useRepGraph } from '../hooks';
+import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepertoires, useRepGraph } from '../hooks';
 import type { StudioPanelDef } from '../components/Studio';
 // The studio (dockview) loads only when the desktop builder opens it — phones never download it.
 const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
@@ -22,9 +22,9 @@ import { Board } from '../components/Board';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { InlineMoves } from '../components/InlineMoves';
 import { annotateProps, NotePopover, type NoteTarget } from '../components/NotePopover';
-import { MoveList, type SideLine } from '../components/MoveList';
+import { MoveList, revealInBox, type SideLine } from '../components/MoveList';
 import { EnginePanel } from '../components/EnginePanel';
-import { ColorPill, Empty, MoreMenu } from '../components/ui';
+import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
 import { href, navigate } from '../router';
 import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
 import { formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
@@ -282,8 +282,10 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // The move whose note is open in the right-click popover.
   const [noteTarget, setNoteTarget] = useState<NoteTarget | null>(null);
   // Desktop: a dockable "studio" (tabs, rows and columns you arrange; remembered per device).
-  // Phones and narrow windows: everything stacked, the page scrolls.
+  // Narrow windows (tablets): everything stacked, the page scrolls.
   const stacked = useMediaQuery('(max-width: 900px)');
+  // Phones: the board, its buttons and the moves fit on the first screen (see .builder-phone).
+  const phone = useMediaQuery(PHONE_QUERY);
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [opening, setOpening] = useState<string | undefined>();
   const [message, setMessage] = useState<string | null>(null);
@@ -478,6 +480,12 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     await deleteMove(repId, moveId);
   };
 
+  // Play from memory on a phone shows the line as text in a small box: keep the current move in it.
+  const lineBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    revealInBox(lineBox.current?.querySelector('.mv.current'));
+  }, [cursor, line.length, memory, phone]);
+
   // keyboard navigation
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -541,32 +549,56 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
       });
   };
 
+  const counts = `${plural(graph.myMoves().length, 'move')} · ${plural(graph.leaves().length, 'line')}`;
+  const lichessUrl = `https://lichess.org/analysis/standard/${`${key} 0 1`.replace(/ /g, '_')}?color=${orientation}`;
   const header = (
     <div className="builder-head">
-      <h1>{rep.name}</h1>
+      <h1 title={rep.name}>{rep.name}</h1>
       <ColorPill color={rep.color} />
-      <span className="muted small">
-        {plural(graph.myMoves().length, 'move')} · {plural(graph.leaves().length, 'line')}
-      </span>
+      {!phone && <span className="muted small">{counts}</span>}
+      {phone && <span className="spacer" />}
       <button
         className="primary small"
         onClick={startMemory}
         disabled={reach.loading && cursor > 0}
         title="It plays your opponents' most popular moves and you answer. Your moves are saved as already known (no need to learn them), until everything from here is filled in down to your 1-in-N goal."
       >
-        ▶ Play from memory{cursor > 0 ? ' from here' : ''}
+        ▶ {phone ? 'From memory' : `Play from memory${cursor > 0 ? ' from here' : ''}`}
       </button>
-      <span className="spacer" />
+      {!phone && <span className="spacer" />}
       {!stacked && (
         <button className="small ghost" onClick={resetLayout} title="Put the panes back to their original sizes">
           Reset layout
         </button>
       )}
-      {onDone ? (
+      {onDone && (
         <button className="primary small" onClick={onDone}>
-          Continue training →
+          {phone ? 'Continue →' : 'Continue training →'}
         </button>
-      ) : (
+      )}
+      {phone ? (
+        // One row on a phone: the links and the notation choice wait in a menu.
+        <MoreMenu label="More">
+          {!onDone && (
+            <>
+              <button onClick={() => navigate('train', { rep: rep.id, mode: 'learn' })}>
+                Learn <span className="badge new">{newCount}</span>
+              </button>
+              <button onClick={() => navigate('train', { rep: rep.id, mode: 'review' })}>
+                Review <span className="badge due">{dueCount}</span>
+              </button>
+              <button onClick={() => navigate(`coverage/${rep.id}`)}>Coverage</button>
+              <button onClick={() => navigate(`insights/${rep.id}`)}>Insights</button>
+            </>
+          )}
+          <button onClick={() => updateSettings({ builderNav: nav === 'inline' ? 'scoresheet' : 'inline' })}>
+            {nav === 'inline' ? 'Show moves as a scoresheet' : 'Show moves inline'}
+          </button>
+          <button onClick={() => window.open(lichessUrl, '_blank', 'noreferrer')}>Analyze on Lichess ↗</button>
+          {!onDone && <button onClick={() => navigate('repertoire')}>All repertoires</button>}
+          <div className="menu-note muted small">{counts}</div>
+        </MoreMenu>
+      ) : onDone ? null : (
         <>
           <a className="btn small" href={href('train', { rep: rep.id, mode: 'learn' })}>
             Learn <span className="badge new">{newCount}</span>
@@ -591,9 +623,9 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const memoryPanel = memory && (
     <div className="panel memory-panel">
       <div className="row">
-        <h3 style={{ margin: 0 }}>Play from memory · {rep.name}</h3>
+        <h3 style={{ margin: 0 }}>{phone ? 'Play from memory' : `Play from memory · ${rep.name}`}</h3>
         <span className="spacer" />
-        {memAdded > 0 && <span className="badge good">{plural(memAdded, 'move')} added</span>}
+        {memAdded > 0 && !phone && <span className="badge good">{plural(memAdded, 'move')} added</span>}
         {memState.status === 'waiting' && (
           <button className="small" onClick={skipMemory} title="Skip this position for now">
             I don't know this
@@ -603,7 +635,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           Stop
         </button>
       </div>
-      <div style={{ marginTop: 8 }}>
+      <div className="memory-status">
+        {memAdded > 0 && phone && <span className="badge good">{plural(memAdded, 'move')} added</span>}{' '}
         {memState.status === 'searching' && <span className="muted">Finding the next position…</span>}
         {memState.status === 'waiting' && (
           <>
@@ -669,19 +702,28 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
             >
               Biggest gap{biggestGap ? ` · ${oneIn(biggestGap.prob)}` : ''}
             </button>
-            <span className="seg" title="How to show the moves · right-click a move to write a note">
-              <button className={`small ${nav === 'scoresheet' ? 'active' : ''}`} onClick={() => updateSettings({ builderNav: 'scoresheet' })}>
-                Scoresheet
-              </button>
-              <button className={`small ${nav === 'inline' ? 'active' : ''}`} onClick={() => updateSettings({ builderNav: 'inline' })}>
-                Inline
-              </button>
-            </span>
+            {!phone && (
+              <span className="seg" title="How to show the moves · right-click a move to write a note">
+                <button className={`small ${nav === 'scoresheet' ? 'active' : ''}`} onClick={() => updateSettings({ builderNav: 'scoresheet' })}>
+                  Scoresheet
+                </button>
+                <button className={`small ${nav === 'inline' ? 'active' : ''}`} onClick={() => updateSettings({ builderNav: 'inline' })}>
+                  Inline
+                </button>
+              </span>
+            )}
           </>
         )}
       </div>
-      <div className="moves-body">
-        {nav === 'scoresheet' || zen ? (
+      <div className="moves-body" ref={lineBox}>
+        {zen && phone ? (
+          // Play from memory on a phone: the line as a few lines of text, not a tall scoresheet.
+          <LineView
+            items={display.map((m) => ({ san: m.san, className: graph.edge(m.fromKey, m.san) ? undefined : 'out' }))}
+            current={cursor}
+            onSelect={goTo}
+          />
+        ) : nav === 'scoresheet' || zen ? (
           <MoveList
             moves={display.map((m) => {
               const e = graph.edge(m.fromKey, m.san);
@@ -718,6 +760,18 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   );
 
   const engine = <EnginePanel fenKey={key} ply={cursor} onPlay={(san) => play(san)} />;
+  const coverageBox = (
+    <CoverageBox
+      reach={reach}
+      inRep={inRep}
+      score={coverage?.coverage?.[key]}
+      prob={prob}
+      oneInN={goalN}
+      source={sourceLabel(settings)}
+      running={live.running || live.stale}
+      error={live.error}
+    />
+  );
   const boardPane = (
     <>
       <div className="board-fit">
@@ -751,10 +805,10 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
             Fit
           </button>
         )}
-        {!zen && (
+        {!zen && !phone && (
           <a
             className="btn small"
-            href={`https://lichess.org/analysis/standard/${`${key} 0 1`.replace(/ /g, '_')}?color=${orientation}`}
+            href={lichessUrl}
             target="_blank"
             rel="noreferrer"
             title="Open this position on the Lichess analysis board (new tab)"
@@ -766,22 +820,11 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
         {!zen && (
           <label className="check small" title="Every move you play on the board is saved into the repertoire immediately">
             <input type="checkbox" checked={autoAdd} onChange={(e) => updateSettings({ builderAutoAdd: e.target.checked })} />
-            Auto-add moves
+            {phone ? 'Auto-add' : 'Auto-add moves'}
           </label>
         )}
       </div>
-      {!zen && stacked && (
-        <CoverageBox
-          reach={reach}
-          inRep={inRep}
-          score={coverage?.coverage?.[key]}
-          prob={prob}
-          oneInN={goalN}
-          source={sourceLabel(settings)}
-          running={live.running || live.stale}
-          error={live.error}
-        />
-      )}
+      {!zen && stacked && !phone && coverageBox}
     </>
   );
   const explorer = !zen && (
@@ -838,6 +881,21 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     />
   );
 
+  // Phones: the moves come straight under the board's buttons, in a box sized to what's left of the
+  // screen, so playing a move never moves the page; coverage, Stockfish and the explorer follow.
+  if (phone)
+    return (
+      <div className={`builder builder-phone ${zen ? 'zen' : ''}`}>
+        {!zen && header}
+        <div className="board-col col">{boardPane}</div>
+        {memoryPanel}
+        {movesPanel}
+        {!zen && coverageBox}
+        {!zen && engine}
+        {explorer}
+      </div>
+    );
+
   if (stacked)
     return (
       <div className="builder">
@@ -873,21 +931,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
       type: 'coverage',
       title: 'Coverage',
       fitHeight: true,
-      render: () =>
-        zen ? (
-          hidden
-        ) : (
-          <CoverageBox
-            reach={reach}
-            inRep={inRep}
-            score={coverage?.coverage?.[key]}
-            prob={prob}
-            oneInN={goalN}
-            source={sourceLabel(settings)}
-            running={live.running || live.stale}
-            error={live.error}
-          />
-        ),
+      render: () => (zen ? hidden : coverageBox),
     },
   ];
 

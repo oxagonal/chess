@@ -1,6 +1,23 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { moveNumberPrefix } from '../lib/chess';
 
+/**
+ * Bring `el` into view by scrolling the box it scrolls in (e.g. a move list with a height limit) —
+ * never the page. scrollIntoView would also scroll the page, and on a phone, where the move list sits
+ * under the board, every move played would carry the board off screen.
+ */
+export function revealInBox(el: Element | null | undefined) {
+  for (let box = el?.parentElement; el && box && box !== document.body && box !== document.documentElement; box = box.parentElement) {
+    const oy = getComputedStyle(box).overflowY;
+    if ((oy !== 'auto' && oy !== 'scroll') || box.scrollHeight <= box.clientHeight) continue;
+    const r = el.getBoundingClientRect();
+    const top = box.getBoundingClientRect().top + box.clientTop;
+    if (r.top < top) box.scrollTop -= top - r.top;
+    else if (r.bottom > top + box.clientHeight) box.scrollTop += Math.min(r.bottom - top - box.clientHeight, r.top - top);
+    return;
+  }
+}
+
 /** One move in the list. */
 export interface ListMove {
   san: string;
@@ -58,7 +75,7 @@ export function MoveList({
 }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    box.current?.querySelector('.ml-move.current')?.scrollIntoView({ block: 'nearest' });
+    revealInBox(box.current?.querySelector('.ml-move.current'));
   }, [current, moves.length]);
 
   if (!moves.length) return <div className="movelist2 empty muted">{empty}</div>;
