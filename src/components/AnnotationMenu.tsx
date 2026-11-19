@@ -50,15 +50,25 @@ export function AnnotationMenu({
     t.setSelectionRange(t.value.length, t.value.length);
   }, []);
 
-  // Keep it on screen.
+  // Keep it on screen — also when it grows (a form opening inside it) or the window changes size.
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const { width, height } = el.getBoundingClientRect();
-    setPos({
-      left: Math.max(8, Math.min(target.x + 6, window.innerWidth - width - 8)),
-      top: Math.max(8, Math.min(target.y + 6, window.innerHeight - height - 8)),
-    });
+    const place = () => {
+      const { width, height } = el.getBoundingClientRect();
+      setPos({
+        left: Math.max(8, Math.min(target.x + 6, window.innerWidth - width - 8)),
+        top: Math.max(8, Math.min(target.y + 6, window.innerHeight - height - 8)),
+      });
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    window.addEventListener('resize', place);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', place);
+    };
   }, [target.x, target.y]);
 
   // Close on a tap outside or Escape (the comment is saved on the way out).

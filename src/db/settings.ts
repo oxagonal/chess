@@ -55,6 +55,11 @@ export interface AppSettings {
    * move order with the most new positions is chosen, and lines carry on into what you haven't played.
    */
   trainSkipRepeats: boolean;
+  /**
+   * Trainer: at the end of a review or drill the positions you missed come back (random order); with
+   * this on, again and again until you get every one of them right in a row.
+   */
+  trainRepeatUntilRight: boolean;
   /** Builder: save every move played on the board straight into the repertoire. */
   builderAutoAdd: boolean;
   /** Show Stockfish evaluations next to each move in the builder. */
@@ -107,6 +112,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoPlayDelayMs: 350,
   trainAutoNext: false,
   trainSkipRepeats: false,
+  trainRepeatUntilRight: false,
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,

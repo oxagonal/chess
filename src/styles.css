@@ -821,7 +821,7 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 
 /* Annotation menu (right-click / long-press a move) */
 .anno-popover {
-  position: fixed; z-index: 100; width: min(330px, calc(100vw - 16px)); display: flex; flex-direction: column; gap: 8px;
+  position: fixed; z-index: 100; width: min(330px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
   padding: 8px 10px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 .anno-head { gap: 6px; }

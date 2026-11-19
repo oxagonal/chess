@@ -314,6 +314,18 @@ interface LineState {
   phase: 'show' | 'quiz';
   /** The trained position can be reached by several move orders: which one this is (0-based) of how many. */
   order?: { index: number; count: number };
+  /** A missed position again, at the end of the session (practice only: it was graded already). */
+  repeat?: boolean;
+}
+
+/** A random order (Fisher–Yates). */
+function shuffled<T>(xs: readonly T[]): T[] {
+  const a = [...xs];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }
 
 type Feedback = { kind: 'good' | 'bad' | 'hint' | 'show' | 'info'; text: ReactNode } | null;
@@ -350,6 +362,13 @@ function Session({ setup }: { setup: SessionSetup }) {
   const [showOptions, setShowOptions] = useState(false);
   const skipRepeatsRef = useRef(false);
   skipRepeatsRef.current = live.trainSkipRepeats;
+  const untilRightRef = useRef(false);
+  untilRightRef.current = live.trainRepeatUntilRight;
+  // Positions you missed (by card), with the moves to them — they come back at the end of a review
+  // or drill, in random order; with "until right", until a whole round goes without a miss.
+  const missedPosRef = useRef(new Map<string, { scopeId: string; path: RepMove[] }>());
+  const repeatRef = useRef({ started: false, queue: [] as string[], round: 0, roundMissed: false });
+  const [repeatInfo, setRepeatInfo] = useState<{ left: number; total: number; round: number } | null>(null);
   // Your moves played so far in this session (Skip repeats). A new session starts empty.
   const seenRef = useRef(new Set<string>());
   // Moves graded this session: a drill grades each move you play once, wherever it comes up.
@@ -412,6 +431,40 @@ function Session({ setup }: { setup: SessionSetup }) {
       setFeedback(null);
       return;
     }
+    // Then the positions you missed, again.
+    const rr = repeatRef.current;
+    const missed = [...missedPosRef.current.keys()];
+    if (mode !== 'learn' && missed.length) {
+      if (!rr.started) {
+        rr.started = true;
+        rr.queue = shuffled(missed);
+        rr.round = 1;
+        rr.roundMissed = false;
+      } else if (!rr.queue.length && untilRightRef.current && rr.roundMissed) {
+        rr.queue = shuffled(missed);
+        rr.round++;
+        rr.roundMissed = false;
+      }
+      const id = rr.queue.shift();
+      const item = id ? missedPosRef.current.get(id) : undefined;
+      if (item) {
+        // Straight to the position: the moves before it are already on the board.
+        let p: Chess = startPos();
+        for (const m of item.path.slice(0, -1)) {
+          const r = playUci(p, m.uci);
+          if (r) p = r.pos;
+        }
+        setLine({ repId: item.scopeId, steps: item.path.map((m, i) => ({ move: m, kind: i === item.path.length - 1 ? 'practice' : 'auto' })), phase: 'quiz', repeat: true });
+        setIdx(item.path.length - 1);
+        setPos(p);
+        setLastMove(item.path.length > 1 ? item.path[item.path.length - 2].uci : undefined);
+        setWrong(0);
+        setHint(false);
+        setFeedback(null);
+        setRepeatInfo({ left: rr.queue.length + 1, total: missed.length, round: rr.round });
+        return;
+      }
+    }
     setLine(null);
     setFinished(true);
   }, [mode, queue, setup.probs, scopeIdOf]);
@@ -425,7 +478,8 @@ function Session({ setup }: { setup: SessionSetup }) {
   useEffect(() => setNoteMove(undefined), [line]);
   // A finished line waits for Continue (so you can edit it or its note) — unless Auto-advance is on,
   // which still stops after a missed move so you can write down why.
-  const holdAtEnd = !!line && line.phase === 'quiz' && idx >= line.steps.length && (!live.trainAutoNext || !!noteMove);
+  // (Missed positions again go straight on when you get them right.)
+  const holdAtEnd = !!line && line.phase === 'quiz' && idx >= line.steps.length && ((!live.trainAutoNext && !line.repeat) || !!noteMove);
   // The lines you played (with the moves you missed), for the cards at the end of the session.
   const playedRef = useRef(new Map<string, { scopeId: string; path: RepMove[]; missed: Set<string> }>());
   const missedRef = useRef(new Set<string>());
@@ -433,7 +487,7 @@ function Session({ setup }: { setup: SessionSetup }) {
     missedRef.current = new Set();
   }, [line]);
   const recordLine = () => {
-    if (!line || line.phase !== 'quiz' || !line.steps.length) return;
+    if (!line || line.phase !== 'quiz' || !line.steps.length || line.repeat) return;
     const path = line.steps.map((s) => s.move);
     const key = path.map((m) => m.id).join(' ');
     const had = playedRef.current.get(key);
@@ -524,6 +578,8 @@ function Session({ setup }: { setup: SessionSetup }) {
         if (missed) {
           setNoteMove(noteFor(expected));
           missedRef.current.add(expected.san);
+          if (line.repeat) repeatRef.current.roundMissed = true;
+          else missedPosRef.current.set(expected.id, { scopeId: line.repId, path: line.steps.slice(0, idx + 1).map((s) => s.move) });
         }
         feedbackToken.current++;
         setFeedback({ kind: missed ? 'hint' : 'good', text: <b>{missed ? `${expected.san} — keep it in mind.` : `✓ ${expected.san}`}</b> });
@@ -542,6 +598,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       if (failed) {
         setNoteMove(noteFor(expected));
         missedRef.current.add(expected.san);
+        missedPosRef.current.set(expected.id, { scopeId: line.repId, path: line.steps.slice(0, idx + 1).map((s) => s.move) });
       }
       pendingRef.current.delete(expected.id);
       setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (failed ? 0 : 1), failed: s.failed + (failed ? 1 : 0) }));
@@ -691,8 +748,11 @@ function Session({ setup }: { setup: SessionSetup }) {
 
   if (editing) return <Builder key={editing.line} repId={editing.chapterId} initialLine={editing.line} onDone={() => void finishEditing()} />;
 
-  const modeName = mode === 'learn' ? 'Learn' : mode === 'drill' ? 'Drill' : 'Review';
-  const counter = `${total - pendingRef.current.size} / ${total}`;
+  const modeName = line?.repeat ? 'Missed positions' : mode === 'learn' ? 'Learn' : mode === 'drill' ? 'Drill' : 'Review';
+  const counter =
+    line?.repeat && repeatInfo
+      ? `${repeatInfo.left} of ${repeatInfo.total} left${repeatInfo.round > 1 ? ` · round ${repeatInfo.round}` : ''}`
+      : `${total - pendingRef.current.size} / ${total}`;
   const endButton = (
     <a className="btn small" href={href('train')}>
       End
@@ -716,6 +776,13 @@ function Session({ setup }: { setup: SessionSetup }) {
         <span>
           <b>Skip repeats</b> — moves you've already played this session are played for you, and lines head for positions you haven't
           seen yet. Due moves are always asked; a new session starts fresh. (Review and drills.)
+        </span>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={live.trainRepeatUntilRight} onChange={(e) => updateSettings({ trainRepeatUntilRight: e.target.checked })} />
+        <span>
+          <b>Missed positions until right</b> — at the end of a review or drill, the positions you missed come back in random order (always
+          once); with this on, again until you get all of them right in a row.
         </span>
       </label>
       <div className="muted small">Changes apply from the next line.</div>
@@ -816,7 +883,13 @@ function Session({ setup }: { setup: SessionSetup }) {
               Show move
             </button>
           )}
-          <button onClick={skipLine}>Skip line</button>
+          {line?.repeat ? (
+            <button onClick={() => (setLine(null), setFinished(true))} title="End the session here">
+              Skip the rest
+            </button>
+          ) : (
+            <button onClick={skipLine}>Skip line</button>
+          )}
         </>
       )}
       <span className="spacer" />
