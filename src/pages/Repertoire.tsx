@@ -16,6 +16,7 @@ import type { StudioPanelDef } from '../components/Studio';
 const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
 import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import { Board } from '../components/Board';
+import { PhoneStudio } from '../components/PhoneStudio';
 import { PositionTools } from '../components/PositionTools';
 import { RepertoireHome } from './RepertoireHome';
 import { ExplorerPanel } from '../components/ExplorerPanel';
@@ -635,34 +636,40 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   );
   // Lichess analysis and the FEN to copy (e.g. into Chessable) — not while playing from memory.
   const positionTools = <PositionTools pos={pos} ply={cursor} orientation={orientation} />;
+  const board = (
+    <Board
+      pos={pos}
+      orientation={orientation}
+      interactive
+      lastMove={lastMove}
+      onMove={onBoardMove}
+      arrows={zen ? [] : children.map((c) => ({ uci: c.uci, brush: c.mine ? 'green' : 'paleBlue' }))}
+    />
+  );
+  const navButtons = (
+    <>
+      <button onClick={() => setCursor(0)} title="Start (Home)" aria-label="Start">
+        ⏮
+      </button>
+      <button className="ps-step" onClick={() => setCursor(Math.max(0, cursor - 1))} title="Back (←)" aria-label="Back">
+        ◀
+      </button>
+      <button className="ps-step" onClick={forward} title="Forward (→)" aria-label="Forward">
+        ▶
+      </button>
+      <button onClick={() => goTo(display.length)} title="End of the line (End)" aria-label="End of the line">
+        ⏭
+      </button>
+      <button onClick={() => setFlipped(!flipped)} title="Flip board (f)" aria-label="Flip board">
+        ⇅
+      </button>
+    </>
+  );
   const boardPane = (
     <>
-      <div className="board-fit">
-        <Board
-          pos={pos}
-          orientation={orientation}
-          interactive
-          lastMove={lastMove}
-          onMove={onBoardMove}
-          arrows={zen ? [] : children.map((c) => ({ uci: c.uci, brush: c.mine ? 'green' : 'paleBlue' }))}
-        />
-      </div>
+      <div className="board-fit">{board}</div>
       <div className="row">
-        <button onClick={() => setCursor(0)} title="Start (Home)">
-          ⏮
-        </button>
-        <button onClick={() => setCursor(Math.max(0, cursor - 1))} title="Back (←)">
-          ◀
-        </button>
-        <button onClick={forward} title="Forward (→)">
-          ▶
-        </button>
-        <button onClick={() => goTo(display.length)} title="End of the line (End)">
-          ⏭
-        </button>
-        <button onClick={() => setFlipped(!flipped)} title="Flip board (f)">
-          ⇅
-        </button>
+        {navButtons}
         {!stacked && (
           <button onClick={(e) => fitBoard(e.currentTarget)} title="Snap this pane to the board: no spare space around it">
             Fit
@@ -731,20 +738,46 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     />
   );
 
-  // Phones: the moves come straight under the board's buttons, in a box sized to what's left of the
-  // screen, so playing a move never moves the page; coverage, Stockfish and the explorer follow.
+  // Phones: the board stays on screen; the moves, explorer, Stockfish and coverage are tabs under it
+  // (Play from memory: just the status and the line), and the move buttons sit at the bottom.
   if (phone)
     return (
-      <div className={`builder builder-phone ${zen ? 'zen' : ''}`}>
-        {!zen && header}
-        <div className="board-col col">{boardPane}</div>
-        {memoryPanel}
-        {movesPanel}
-        {!zen && <div className="panel position-tools-panel">{positionTools}</div>}
-        {!zen && coverageBox}
-        {!zen && engine}
-        {explorer}
-      </div>
+      <PhoneStudio
+        page="builder"
+        className={`builder-phone ${zen ? 'zen' : ''}`}
+        head={!zen && header}
+        board={board}
+        tabs={
+          zen
+            ? [{ id: 'memory', label: 'Play from memory', content: <>{memoryPanel}{movesPanel}</> }]
+            : [
+                { id: 'moves', label: 'Moves', content: movesPanel },
+                { id: 'explorer', label: 'Explorer', content: explorer },
+                { id: 'engine', label: 'Engine', content: <>{positionTools}{engine}</> },
+                {
+                  id: 'coverage',
+                  label: 'Coverage',
+                  content: (
+                    <>
+                      {coverageBox}
+                      <ChaptersPanel color={rep.color} line={line.slice(0, cursor).map((m) => m.san)} current={colorMode ? undefined : rep.id} />
+                    </>
+                  ),
+                },
+              ]
+        }
+        controls={
+          <>
+            {navButtons}
+            {!zen && (
+              <label className="check small" title="Every move you play on the board is saved into the repertoire immediately">
+                <input type="checkbox" checked={autoAdd} onChange={(e) => updateSettings({ builderAutoAdd: e.target.checked })} />
+                Auto-add
+              </label>
+            )}
+          </>
+        }
+      />
     );
 
   if (stacked)

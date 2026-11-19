@@ -27,6 +27,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   computer review (eval graph, your three biggest mistakes and your opponent's). Right-click a move — or
   long-press it on a phone or iPad — to annotate it like a Lichess study (!!, !, !?, ?!, ?, ??, □, ±, N…, a
   comment). Annotations and the analysis are saved with the game (an interrupted analysis continues).
+- **On a phone** the builder and the game review work like the Lichess and Chess.com apps: the board stays
+  on screen, the moves, explorer, Stockfish, computer review and the rest are tabs under it (each
+  scrolling in its own box), and the move buttons sit at the bottom.
 - **Players** — a tab next to the explorer in the builder for scouting opponents: save a player with their
   Lichess / Chess.com usernames (their games since a date you choose, or all of them, in the time controls you pick, are downloaded and cached on the device) or just a name
   (your over-the-board games against them, plus any PGN you paste), or find them by name in the

@@ -7,7 +7,7 @@ import { lineTarget, markForgotten } from '../db/repertoire';
 import { sourcesOf } from '../lib/chapters';
 import { saveAnnotation, saveLines } from '../db/annotations';
 import { uid } from '../db/db';
-import { useAllGraphs, useMediaQuery } from '../hooks';
+import { PHONE_QUERY, useAllGraphs, useMediaQuery } from '../hooks';
 import { analyzeGame, PREP_LABEL, type PrepResult } from '../lib/prep';
 import type { RepGraph } from '../lib/graph';
 import { keyOf, opposite, playSan, playUci, startPos } from '../lib/chess';
@@ -27,6 +27,7 @@ import {
 import { clocksAt, formatClock, formatMoveTime, moveTimes } from '../lib/clocks';
 import { MATERIAL_ROLES, materialBalance, type MaterialRole } from '../lib/material';
 import { Board, type Arrow } from '../components/Board';
+import { PhoneStudio } from '../components/PhoneStudio';
 import { PositionTools } from '../components/PositionTools';
 import { MoveNote } from '../components/MoveNote';
 import { MoveList, type SideNode } from '../components/MoveList';
@@ -63,6 +64,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
   const game = useLiveQuery(() => db.games.get(id), [id]);
   const graphs = useAllGraphs();
   const stacked = useMediaQuery('(max-width: 900px)');
+  const phone = useMediaQuery(PHONE_QUERY);
   // Coming back to a game (e.g. from the builder) finds it where you left it.
   const place = `${id}|${initialPly ?? ''}`;
   const left = reviewPlaces.get(place);
@@ -255,29 +257,33 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
 
   /* ------------------------------------------------------------ panels */
 
+  const board = <Board pos={pos} orientation={orientation} interactive lastMove={lastMove} onMove={(uci) => play({ uci })} arrows={arrows} />;
+  const navButtons = (
+    <>
+      <button onClick={() => goTo(0)} title="Start (Home)" aria-label="Start">
+        ⏮
+      </button>
+      <button className="ps-step" onClick={() => nav.current.back()} title="Back (←)" aria-label="Back">
+        ◀
+      </button>
+      <button className="ps-step" onClick={() => nav.current.forward()} title="Forward (→)" aria-label="Forward">
+        ▶
+      </button>
+      <button onClick={() => goTo(last)} title="End (End)" aria-label="End">
+        ⏭
+      </button>
+      <button onClick={() => setFlipped(!flipped)} title="Flip board (f)" aria-label="Flip board">
+        ⇅
+      </button>
+    </>
+  );
   const boardPane = (
     <>
       {strip(opposite(orientation))}
-      <div className="board-fit">
-        <Board pos={pos} orientation={orientation} interactive lastMove={lastMove} onMove={(uci) => play({ uci })} arrows={arrows} />
-      </div>
+      <div className="board-fit">{board}</div>
       {strip(orientation)}
       <div className="row">
-        <button onClick={() => goTo(0)} title="Start (Home)" aria-label="Start">
-          ⏮
-        </button>
-        <button onClick={() => nav.current.back()} title="Back (←)" aria-label="Back">
-          ◀
-        </button>
-        <button onClick={() => nav.current.forward()} title="Forward (→)" aria-label="Forward">
-          ▶
-        </button>
-        <button onClick={() => goTo(last)} title="End (End)" aria-label="End">
-          ⏭
-        </button>
-        <button onClick={() => setFlipped(!flipped)} title="Flip board (f)" aria-label="Flip board">
-          ⇅
-        </button>
+        {navButtons}
         {!stacked && (
           <button onClick={(e) => fitBoard(e.currentTarget)} title="Snap this pane to the board: no spare space around it">
             Fit
@@ -538,6 +544,43 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
 
   // Your takeaways, what to work on, and "Done reviewing" (the ✓ on the Games tab).
   const takeaways = <TakeawaysPanel key={game.id} game={game} />;
+  // Your chapters of this color — those with the game's position first — to open in the builder.
+  const chapters = <ChaptersPanel color={game.userColor} line={replay.sans.slice(0, cur)} />;
+
+  // Phones: the players and the board stay on screen; the moves, computer review, Stockfish,
+  // explorer, your takeaways and the game's prep are tabs under it, the move buttons at the bottom.
+  if (phone) {
+    return (
+      <>
+        <PhoneStudio
+          page="review"
+          className="review-phone"
+          top={strip(opposite(orientation))}
+          board={board}
+          bottom={strip(orientation)}
+          tabs={[
+            { id: 'moves', label: 'Moves', content: movesPanel },
+            { id: 'review', label: 'Review', content: reviewPanel },
+            { id: 'engine', label: 'Engine', content: <><PositionTools pos={pos} ply={plyHere} orientation={orientation} />{engine}</> },
+            { id: 'explorer', label: 'Explorer', content: explorer },
+            { id: 'notes', label: 'Notes', mark: game.reviewedAt ? <span className="ps-mark" title="Reviewed">✓</span> : undefined, content: takeaways },
+            { id: 'game', label: 'Game', content: <>{gamePanel}{chapters}</> },
+          ]}
+          controls={
+            <>
+              {navButtons}
+              {devPly !== undefined && (
+                <button className="small" onClick={() => goTo(devPly)} title="Go to where you left your prep">
+                  ↩ Prep
+                </button>
+              )}
+            </>
+          }
+        />
+        {annotationMenu}
+      </>
+    );
+  }
 
   if (stacked) {
     return (
@@ -563,7 +606,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
     { type: 'review', title: 'Computer review', render: () => reviewPanel },
     { type: 'explorer', title: 'Explorer', multiple: true, render: () => explorer },
     // Your chapters of this color — those with the game's position first — to open in the builder.
-    { type: 'chapters', title: 'Chapters', render: () => <ChaptersPanel color={game.userColor} line={replay.sans.slice(0, cur)} /> },
+    { type: 'chapters', title: 'Chapters', render: () => chapters },
   ];
   return (
     <div className="builder studio review-studio">
