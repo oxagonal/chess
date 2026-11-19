@@ -56,7 +56,7 @@ export interface AppSettings {
    */
   trainSkipRepeats: boolean;
   /**
-   * Trainer: at the end of a review or drill the positions you missed come back (random order); with
+   * Trainer: at the end of a session (learn, review or drill) the positions you missed come back (random order); with
    * this on, again and again until you get every one of them right in a row.
    */
   trainRepeatUntilRight: boolean;

@@ -293,10 +293,11 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // (Rarer than the target too: the real biggest hole, not "none".)
   const biggestGap = useMemo(() => {
     if (!freshCoverage || !graph) return undefined;
-    const pick = chapterGap(graph, freshCoverage, openingNames, rep?.name);
+    // (All of a color's chapters: the whole repertoire's biggest hole, not one opening's.)
+    const pick = chapterGap(graph, freshCoverage, openingNames, rep?.name, colorMode);
     if (!pick) return undefined;
     return { ...pick, label: formatLine(pick.sans) || 'the starting position' };
-  }, [freshCoverage, graph, openingNames, rep?.name]);
+  }, [freshCoverage, graph, openingNames, rep?.name, colorMode]);
 
   const jumpToBiggestGap = () => {
     if (!biggestGap) return;

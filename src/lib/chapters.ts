@@ -280,12 +280,14 @@ export function chapterGap(
   },
   names?: OpeningIndex,
   chapterName?: string,
+  /** The graph is all of a color's chapters (not one chapter): every hole in it counts. */
+  whole = false,
 ): ChapterGap | undefined {
   const gaps = [...cov.gaps, ...(cov.minorGaps ?? [])];
   const unfinished = [...cov.unfinished, ...(cov.minorUnfinished ?? [])];
   // A hole belongs to the chapter when it's under the chapter's opening position — a hole right after
   // 1.e4 c5 is the business of the chapter whose opening that is, not of every Sicilian chapter.
-  const { key } = chapterPosition(graph, names, chapterName);
+  const key = whole ? graph.root : chapterPosition(graph, names, chapterName).key;
   const under = (sans: readonly string[]) => {
     if (key === graph.root) return lineInGraph(graph, sans);
     let k = graph.root;

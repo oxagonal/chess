@@ -364,8 +364,8 @@ function Session({ setup }: { setup: SessionSetup }) {
   skipRepeatsRef.current = live.trainSkipRepeats;
   const untilRightRef = useRef(false);
   untilRightRef.current = live.trainRepeatUntilRight;
-  // Positions you missed (by card), with the moves to them — they come back at the end of a review
-  // or drill, in random order; with "until right", until a whole round goes without a miss.
+  // Positions you missed (by card), with the moves to them — they come back at the end of the session
+  // (learn, review or drill), in random order; with "until right", until a whole round goes without a miss.
   const missedPosRef = useRef(new Map<string, { scopeId: string; path: RepMove[] }>());
   const repeatRef = useRef({ started: false, queue: [] as string[], round: 0, roundMissed: false });
   const [repeatInfo, setRepeatInfo] = useState<{ left: number; total: number; round: number } | null>(null);
@@ -434,7 +434,7 @@ function Session({ setup }: { setup: SessionSetup }) {
     // Then the positions you missed, again.
     const rr = repeatRef.current;
     const missed = [...missedPosRef.current.keys()];
-    if (mode !== 'learn' && missed.length) {
+    if (missed.length) {
       if (!rr.started) {
         rr.started = true;
         rr.queue = shuffled(missed);
@@ -781,7 +781,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       <label className="check">
         <input type="checkbox" checked={live.trainRepeatUntilRight} onChange={(e) => updateSettings({ trainRepeatUntilRight: e.target.checked })} />
         <span>
-          <b>Missed positions until right</b> — at the end of a review or drill, the positions you missed come back in random order (always
+          <b>Missed positions until right</b> — at the end of a session, the positions you missed come back in random order (always
           once); with this on, again until you get all of them right in a row.
         </span>
       </label>

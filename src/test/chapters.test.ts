@@ -171,6 +171,8 @@ describe('a chapter at a glance', () => {
     const open = new RepGraph('black', movesFromLines('o', 'black', ['e4 c5 Nf3 e6', 'e4 c5 d4 cxd4']));
     expect(chapterGap(g, early)).toBeUndefined();
     expect(chapterGap(open, early)?.sans).toEqual(['e4', 'c5', 'b3']);
+    // All of a color's chapters: any hole in the graph, whatever its "opening".
+    expect(chapterGap(g, early, undefined, undefined, true)?.sans).toEqual(['e4', 'c5', 'b3']);
   });
 });
 
