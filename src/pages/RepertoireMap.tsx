@@ -25,8 +25,24 @@ interface ChapterMap {
   lines: MapLine[];
   /** Each line's weight: how often it comes up (its end position's reach), or 1 each without coverage. */
   weights: number[];
-  /** Share (by weight) of the chapter's lines known well. */
+  /**
+   * The games reaching the chapter's opening that leave its lines while still common (1 − the coverage
+   * run's coverage of that position; 0 without a run), and that share as a weight beside the lines'.
+   */
+  uncovered: number;
+  uncoveredWeight: number;
+  /** Share of the chapter's games (by weight) that go down lines you know well. */
   ready: number;
+}
+
+/** Shares by strength and not covered, of some chapters together. */
+function chapterShares(ms: readonly ChapterMap[]): { s: Record<Strength, number>; uncovered: number } {
+  const lines = ms.flatMap((m) => m.lines);
+  const weights = ms.flatMap((m) => m.weights);
+  const off = ms.reduce((a, m) => a + m.uncoveredWeight, 0);
+  const inLines = weights.reduce((a, w) => a + w, 0);
+  const uncovered = inLines + off > 0 ? off / (inLines + off) : 0;
+  return { s: scaled(shares(lines, weights), 1 - uncovered), uncovered };
 }
 
 /** Shares by strength, weighted. */
@@ -63,6 +79,7 @@ export function useMapData(color: Color, chapters: Chapter[], collections: Colle
       ? { share: Math.min(1, Math.max(0, 1 - rootCoverage)), oneInN: Math.round(1 / gapRun.threshold), scopeId: gapRun.repId }
       : undefined;
   const today = startOfToday();
+  const names = useOpeningIndex();
   const maps = useMemo<ChapterMap[] | undefined>(() => {
     if (!graphs || !cards) return undefined;
     const byId = new Map(cards.map((c) => [c.id, c]));
@@ -72,10 +89,15 @@ export function useMapData(color: Color, chapters: Chapter[], collections: Colle
       const lines = g ? chapterLines(g, byId, now, today) : [];
       // A line too rare for the run to price still shows, thinly.
       const weights = lines.map((l) => (cov ? Math.max(cov.probs[l.path[l.path.length - 1].toKey] ?? 0, 1e-5) : 1));
-      return { chapter, lines, weights, ready: lines.length ? readyOf(shares(lines, weights)) : 0 };
+      // Not covered: from the chapter's opening (e.g. 1.e4 c5 for a Sicilian) — what the run says about
+      // the games reaching it, with every chapter's moves counted (another chapter may answer a move).
+      const at = g && lines.length && gapRun?.coverage ? gapRun.coverage[chapterPosition(g, names, chapter.name).key] : undefined;
+      const uncovered = at === undefined ? 0 : Math.min(0.99, Math.max(0, 1 - at));
+      const uncoveredWeight = (weights.reduce((a, w) => a + w, 0) * uncovered) / (1 - uncovered);
+      return { chapter, lines, weights, uncovered, uncoveredWeight, ready: lines.length ? readyOf(shares(lines, weights)) * (1 - uncovered) : 0 };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphs, cards, shown.map((c) => c.id).join(), today, cov]);
+  }, [graphs, cards, shown.map((c) => c.id).join(), today, cov, gapRun, names]);
   const allLines = useMemo(() => maps?.flatMap((m) => m.lines) ?? [], [maps]);
   const allWeights = useMemo(() => maps?.flatMap((m) => m.weights) ?? [], [maps]);
   // With a run, shares of all your games (the lines' shares scaled to the games they cover).
@@ -97,7 +119,7 @@ function scaled(s: Record<Strength, number>, by: number): Record<Strength, numbe
   return Object.fromEntries(STRENGTHS.map((k) => [k, s[k] * by])) as Record<Strength, number>;
 }
 
-const uncoveredHint = (u: Uncovered) =>
+const uncoveredHint = (u: Pick<Uncovered, 'oneInN'>) =>
   `games that leave your lines while still common — at an opponent move you have no answer to, or a position with no move of yours, met at least 1 in ${u.oneInN} games`;
 
 /** Share known well (growing or solid), weighted. */
@@ -227,14 +249,14 @@ export function RepertoireMap({
               </button>
             </div>
           </div>
-          <ChapterStrips maps={sorted} color={color} graphs={order === 'opening' ? graphs : undefined} allGraphs={graphs} />
+          <ChapterStrips maps={sorted} color={color} graphs={order === 'opening' ? graphs : undefined} allGraphs={graphs} gaps={uncovered} />
         </>
       )}
     </div>
   );
 }
 
-function WeightedBar({ s, uncovered, slim = false }: { s: Record<Strength, number>; uncovered?: Uncovered; slim?: boolean }) {
+function WeightedBar({ s, uncovered, slim = false }: { s: Record<Strength, number>; uncovered?: Pick<Uncovered, 'share' | 'oneInN'>; slim?: boolean }) {
   return (
     <div className={`str-bar ${slim ? 'slim' : ''}`} aria-hidden="true">
       {ORDER.filter((k) => s[k] > 0).map((k) => (
@@ -257,11 +279,14 @@ function ChapterStrips({
   color,
   graphs,
   allGraphs,
+  gaps,
 }: {
   maps: ChapterMap[];
   color: Color;
   graphs?: ReadonlyMap<string, RepGraph>;
   allGraphs?: ReadonlyMap<string, RepGraph>;
+  /** The coverage run behind the not-covered shares (its target, and whose gaps to link to). */
+  gaps?: Uncovered;
 }) {
   const names = useOpeningIndex();
   const [open, setOpen] = useState<Open | null>(null);
@@ -278,7 +303,7 @@ function ChapterStrips({
     return () => window.removeEventListener('keydown', esc);
   }, [open]);
 
-  const strip = ({ chapter, lines, weights, ready }: ChapterMap, label: string) => {
+  const strip = ({ chapter, lines, weights, ready, uncovered, uncoveredWeight }: ChapterMap, label: string) => {
     const dueCount = lines.filter((l) => l.due).length;
     const fresh = lines.some((l) => l.strength === 'new');
     const g = allGraphs?.get(chapter.id);
@@ -294,7 +319,10 @@ function ChapterStrips({
           {opening && <span className="map-row-line">{opening}</span>}
           <span className="spacer" />
           {lines.length > 0 && (
-            <span className="map-row-ready" title="Share of this chapter's lines (weighted by how often they come up) that you know well">
+            <span
+              className="map-row-ready"
+              title={`Share of this chapter's games that go down lines you know well (weighted by how often they come up)${uncovered ? ` — ${pct(uncovered)} of them leave its lines while still common` : ''}`}
+            >
               {pct(ready)}
             </span>
           )}
@@ -329,6 +357,16 @@ function ChapterStrips({
                 }}
               />
             ))}
+            {uncovered > 0 && gaps && (
+              <a
+                role="listitem"
+                className="strip-seg str-uncovered"
+                style={{ flexGrow: uncoveredWeight }}
+                href={href(`coverage/${gaps.scopeId}`)}
+                title={`Not covered: ${pct(uncovered)} of this chapter's games — ${uncoveredHint(gaps)}. Open Coverage for the gaps.`}
+                aria-label={`Not covered: ${pct(uncovered)} of this chapter's games`}
+              />
+            )}
           </div>
         )}
       </div>
@@ -346,10 +384,10 @@ function ChapterStrips({
           storageKey="map"
           summary={(ids) => {
             const ms = ids.map((id) => byId.get(id)).filter((m): m is ChapterMap => !!m);
-            const s = shares(ms.flatMap((m) => m.lines), ms.flatMap((m) => m.weights));
+            const { s, uncovered } = chapterShares(ms);
             return (
               <>
-                <WeightedBar s={s} slim />
+                <WeightedBar s={s} slim uncovered={gaps && uncovered ? { ...gaps, share: uncovered } : undefined} />
                 <span className="map-row-ready">{pct(readyOf(s))}</span>
               </>
             );

@@ -404,7 +404,7 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .str-seg { min-width: 3px; background: var(--str, transparent); }
 .str-seg.str-new { background: var(--panel3); }
 /* Games that leave your lines while still common (from a coverage run): amber, like the gaps. */
-.str-swatch.str-uncovered, .str-seg.str-uncovered { background: color-mix(in srgb, var(--warn) 75%, var(--panel)); }
+.str-swatch.str-uncovered, .str-seg.str-uncovered, .strip-seg.str-uncovered { background: color-mix(in srgb, var(--warn) 75%, var(--panel)); }
 /* The map: readiness weighted by how often lines come up, and each chapter as a strip of its lines. */
 .readiness { display: flex; flex-direction: column; gap: 10px; }
 .readiness-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
