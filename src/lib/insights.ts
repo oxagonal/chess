@@ -11,6 +11,7 @@
 import type { RepGraph } from './graph';
 import type { RepMove, ReviewCard, ReviewLogEntry } from './types';
 import { retrievability } from './srs';
+import { STRENGTHS, strengthOf } from './map';
 
 export interface Tally {
   /** Your moves in scope. */
@@ -200,6 +201,20 @@ function byWeakness(a: LineInsight, b: LineInsight): number {
   const ma = a.mastery ?? 1000;
   const mb = b.mastery ?? 1000;
   return ma - mb || b.moves - a.moves;
+}
+
+/**
+ * Your weakest moves — the Map's list and "Drill my weakest moves": learned moves by how well you
+ * know them (the map's strength bands: missed, learning, growing, solid), and within a band by
+ * mastery. Solid moves you've never missed, in training or a game, aren't weak: they're left out.
+ */
+export function weakestMoves(moves: readonly MoveInsight[]): MoveInsight[] {
+  const band = (m: MoveInsight) => STRENGTHS.indexOf(strengthOf(m.card));
+  return moves
+    .filter((m) => m.mastery !== undefined && (strengthOf(m.card) !== 'solid' || m.misses > 0 || m.gameSlips > 0))
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => band(a.m) - band(b.m) || a.i - b.i)
+    .map(({ m }) => m);
 }
 
 /**

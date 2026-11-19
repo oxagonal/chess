@@ -29,16 +29,10 @@ export const NAV_ICONS: Record<string, ReactNode> = {
       <circle cx="12" cy="12" r="1.2" fill="currentColor" />
     </Icon>
   ),
-  insights: (
+  map: (
     <Icon>
-      <path d="M3 21h18" />
-      <path d="M6 17v-6M11 17V5M16 17v-9M20.5 17v-4" />
-    </Icon>
-  ),
-  coverage: (
-    <Icon>
-      <path d="M12 3a9 9 0 1 0 9 9h-9z" />
-      <path d="M15 3.5A9 9 0 0 1 20.5 9H15z" />
+      <path d="M9 4.5 3.5 6.5v13l5.5-2 6 2 5.5-2v-13l-5.5 2z" />
+      <path d="M9 4.5v13M15 6.5v13" />
     </Icon>
   ),
   games: (

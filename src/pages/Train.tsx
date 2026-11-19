@@ -22,7 +22,7 @@ import { compactLine, formatLine, playUci, startPos } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
 import { asQuiz, moveOrders, orderCards, planLine, type PlannedStep } from '../lib/trainer';
 import { Builder } from './Repertoire';
-import { computeInsights, movesForLine, movesUnder } from '../lib/insights';
+import { computeInsights, movesForLine, movesUnder, weakestMoves } from '../lib/insights';
 import { formatInterval, gradeForAnswer, isDue, isNew, Rating, type Grade } from '../lib/srs';
 import type { RepMove, ReviewCard } from '../lib/types';
 
@@ -240,7 +240,7 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
           } else {
             const inScope = new Set(cards.map((c) => c.id));
             const logs = (await db.reviewLog.where('color').equals(rep.color).toArray()).filter((l) => inScope.has(l.cardId));
-            const weak = computeInsights({ graph, cards, logs }).moves.filter((m) => m.mastery !== undefined).slice(0, WEAK_DRILL_SIZE);
+            const weak = weakestMoves(computeInsights({ graph, cards, logs }).moves).slice(0, WEAK_DRILL_SIZE);
             const ids = new Set(weak.map((m) => m.card.id));
             pool = pool.filter((c) => ids.has(c.id));
           }

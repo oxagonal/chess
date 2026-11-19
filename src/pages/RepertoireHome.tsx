@@ -27,7 +27,6 @@ import type { RepGraph } from '../lib/graph';
 import { ColorPill, Empty, MoreMenu } from '../components/ui';
 import { download } from '../services/backup';
 import { href, navigate } from '../router';
-import { RepertoireMap } from './RepertoireMap';
 import { SuggestChapters } from '../components/SuggestChapters';
 import { ImportWizard } from '../components/ImportWizard';
 import { ChapterTree, useOpeningIndex } from '../components/ChapterTree';
@@ -57,7 +56,6 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
     const scope = settings.loaded ? scopeOf(color, chapters, collections, settings) : undefined;
     return scope && run && isCoverageFresh(run, scope, settings) ? run : undefined;
   };
-  const view = query.get('view') === 'map' ? 'map' : 'chapters';
   const color: Color = query.get('color') === 'black' || (query.get('color') !== 'white' && !chapters.some((c) => c.color === 'white')) ? 'black' : 'white';
   const tabs = (
     <div className="row rep-head">
@@ -71,17 +69,12 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
       <button onClick={() => setWizard(true)} title="Import a Lichess study (yours too, private or unlisted) or a PGN">
         Import
       </button>
-      <div className="segmented" role="tablist" aria-label="View">
-        <button role="tab" aria-selected={view === 'chapters'} className={view === 'chapters' ? 'active' : ''} onClick={() => navigate('repertoire', { color })}>
-          Chapters
-        </button>
-        <button role="tab" aria-selected={view === 'map'} className={view === 'map' ? 'active' : ''} onClick={() => navigate('repertoire', { view: 'map', color: color })}>
-          Map
-        </button>
-      </div>
+      <a className="btn" href={href(`map/${color}`)} title={`How well you know your ${colorName(color)} chapters, the gaps in them and your weakest moves`}>
+        Map
+      </a>
     </div>
   );
-  // Chapters are shown one color at a time, like the map.
+  // Chapters are shown one color at a time.
   const colorSwitch = (
     <div className="segmented" role="group" aria-label="Color">
       {COLORS.map((c) => (
@@ -92,14 +85,6 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
     </div>
   );
   const shown = chapters.filter((c) => c.color === color);
-  if (view === 'map')
-    return (
-      <div className="col" style={{ gap: 16 }}>
-        {tabs}
-        {wizard && <ImportWizard chapters={chapters} onClose={() => setWizard(false)} />}
-        <RepertoireMap color={color} setId={query.get('set') ?? undefined} chapters={chapters} collections={collections} />
-      </div>
-    );
 
   /** Card ids of your moves in these chapters (shared moves once). */
   const cardIdsOf = (chapterIds: readonly string[]) => {
@@ -126,8 +111,8 @@ export function RepertoireHome({ query }: { query: URLSearchParams }) {
             <h2 style={{ margin: 0 }}>{colorName(color)} chapters</h2>
             <span className="spacer" />
             {!freshCov(color) && (
-              <a className="small muted" href={href(`coverage/${color}`)}>
-                Run Coverage for {colorName(color)} to see each chapter's biggest gap →
+              <a className="small muted" href={href(`map/${color}`)}>
+                Run Coverage for {colorName(color)} (on the Map) to see each chapter's biggest gap →
               </a>
             )}
           </div>
@@ -503,8 +488,7 @@ function Repertoires({
                     Edit
                   </button>
                   <MoreMenu>
-                    <button onClick={() => navigate(`coverage/${repertoireScopeId(set.id)}`)}>Coverage</button>
-                    <button onClick={() => navigate(`insights/${repertoireScopeId(set.id)}`)}>Insights</button>
+                    <button onClick={() => navigate(`map/${repertoireScopeId(set.id)}`)}>Map</button>
                     <button
                       className="danger"
                       onClick={() => {

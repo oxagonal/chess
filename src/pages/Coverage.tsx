@@ -1,9 +1,11 @@
+/**
+ * Coverage on the Map tab: the bar that runs the analysis (target, Run / Re-run, progress), the gaps it
+ * finds for a scope, and the details (how the numbers come about, the positions to know).
+ * The analysis itself is lib/coverage; running it, services/coverage.
+ */
 import { useMemo, useRef, useState } from 'react';
-import type { PageProps } from '../App';
 import { repTarget, updateSettings, useSettings } from '../db/settings';
-import { setScopeTarget, useChaptersAndSets, useScopeGraph } from '../db/scopes';
-import { lineTarget } from '../db/repertoire';
-import { defaultScope, ScopeSelect } from '../components/ScopeSelect';
+import { setScopeTarget, useScopeGraph, type Scope } from '../db/scopes';
 import { OneInNSlider } from '../components/OneInNSlider';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { repertoireDepth } from '../lib/depth';
@@ -11,42 +13,27 @@ import { useCoverage } from '../hooks';
 import { runCoverage, sourceLabel, effectiveBands } from '../services/coverage';
 import { likelyPositions, oneIn, pct } from '../lib/coverage';
 import { formatLine } from '../lib/chess';
-import { ColorPill, Empty, Stat, TableWrap, fmtDate } from '../components/ui';
-import { href, navigate } from '../router';
-import type { ProbabilitySource } from '../lib/types';
+import type { RepGraph } from '../lib/graph';
+import { Stat, TableWrap, fmtDate } from '../components/ui';
+import { href } from '../router';
+import type { CoverageResult, ProbabilitySource } from '../lib/types';
 import { bandLabel } from '../lib/ratings';
 
-export function CoveragePage({ route }: PageProps) {
-  const { chapters, collections } = useChaptersAndSets();
-  if (!chapters || !collections) return null;
-  const repId = route.path[1] ?? defaultScope(chapters);
-  if (!chapters.length) return <Empty>Create a chapter first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
-  return (
-    <div className="col" style={{ gap: 16 }}>
-      <div className="row">
-        <h1 style={{ margin: 0 }}>Coverage</h1>
-        <span className="spacer" />
-        {repId && <ScopeSelect value={repId} onChange={(id) => navigate(`coverage/${id}`)} chapters={chapters} collections={collections} />}
-      </div>
-      {repId && <CoverageView key={repId} repId={repId} />}
-    </div>
-  );
-}
-
-type Tab = 'gaps' | 'unfinished' | 'positions';
-
-function CoverageView({ repId }: { repId: string }) {
-  const { scope: rep, graph } = useScopeGraph(repId);
-  const result = useCoverage(repId);
+/**
+ * Running the coverage analysis of a scope (a color or a repertoire): its 1-in-N target, when it last
+ * ran and with what, and Run / Re-run — with progress, and a note when the run is out of date.
+ * `within`: said when the page shows a chapter, which is measured within its color's run.
+ */
+export function CoverageRunBar({ scopeId, within }: { scopeId: string; within?: string }) {
+  const { scope, graph } = useScopeGraph(scopeId);
+  const result = useCoverage(scopeId);
   const settings = useSettings();
   const [running, setRunning] = useState(false);
   const [queried, setQueried] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>('gaps');
+  const [changing, setChanging] = useState(false);
   const ctrl = useRef<AbortController | null>(null);
-
-  const positions = useMemo(() => (graph && result ? likelyPositions(graph, result) : []), [graph, result]);
-  if (!rep || !graph) return null;
+  if (!scope || !graph) return null;
 
   const run = async () => {
     setRunning(true);
@@ -54,245 +41,209 @@ function CoverageView({ repId }: { repId: string }) {
     setQueried(0);
     ctrl.current = new AbortController();
     try {
-      await runCoverage(repId, { signal: ctrl.current.signal, onProgress: setQueried });
+      await runCoverage(scopeId, { signal: ctrl.current.signal, onProgress: setQueried });
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setError((e as Error).message);
     } finally {
       setRunning(false);
     }
   };
-
-  const n = repTarget(rep, settings);
-  const stale = result && rep.updatedAt > result.computedAt;
-  const paramsChanged = result && (result.paramsLabel !== sourceLabel(settings) || Math.abs(result.threshold - 1 / n) > 1e-12);
-  // Open a line in the chapter it belongs to (the deepest of its moves that a chapter has).
-  const openLine = async (sans: string[]) => navigate(`repertoire/${await lineTarget(rep.color, sans)}`, { line: sans.join(' ') });
-  const myPositions = positions.filter((p) => p.myTurn);
-  const mine = result ? repertoireDepth(graph, result) : undefined;
-  const linesDone = mine?.lines ?? 0;
-  const rootCoverage = result
-    ? (result.coverage?.[graph.root] ?? 1 - result.gaps.reduce((a, g) => a + g.prob, 0) - result.unfinished.reduce((a, u) => a + u.prob, 0))
-    : 0;
+  const n = repTarget(scope, settings);
+  const stale = !!result && scope.updatedAt > result.computedAt;
+  const paramsChanged = !!result && (result.paramsLabel !== sourceLabel(settings) || Math.abs(result.threshold - 1 / n) > 1e-12);
+  const outdated = stale || paramsChanged;
 
   return (
-    <>
-      <div className="panel">
-        <div className="row">
-          <h2 style={{ margin: 0 }}>{rep.name}</h2>
-          <ColorPill color={rep.color} />
-        </div>
-        <p className="muted" style={{ marginTop: 8 }}>
-          Assuming you always play your prepared moves and opponents answer like players at your level, how often does each position show up?
-          Anything you'll meet in at least <b>1 in {n}</b> games is worth knowing — and opponent moves that common which your
-          repertoire doesn't answer are <b>gaps</b>.
-        </p>
-        <div className="row" style={{ marginTop: 8 }}>
-          <OneInNSlider value={n} onChange={(v) => void setScopeTarget(rep, v)} label={`Coverage target for ${rep.name}`} color={rep.color} />
-          <label className="field">
-            <span>Opponent moves from</span>
-            <select value={settings.probabilitySource} onChange={(e) => updateSettings({ probabilitySource: e.target.value as ProbabilitySource })}>
-              <option value="lichess">Lichess games at my rating</option>
-              <option value="mygames">My own opponents (imported games)</option>
-              <option value="masters">Masters</option>
-            </select>
-          </label>
-          {settings.probabilitySource === 'lichess' && (
-            <div className="field small">
-              <span>Rating bands · speeds</span>
-              <div style={{ padding: '7px 0' }}>
-                {effectiveBands(settings).map(bandLabel).join(', ')} · {settings.speeds.join(', ')}{' '}
-                <a href={href('settings')} className="small">
-                  change
-                </a>
-              </div>
-            </div>
-          )}
-          {settings.probabilitySource === 'mygames' && (
-            <div className="field">
-              <span>Opponent games from</span>
-              <GameRangeSelect setting="opponentRange" />
-            </div>
-          )}
-          <span className="spacer" />
-          {!running ? (
-            <button className="primary" onClick={run} disabled={graph.size === 0}>
-              {result ? 'Re-run analysis' : 'Run analysis'}
-            </button>
-          ) : (
+    <div className="map-runbar col">
+      <div className="row">
+        <span className="small nowrap">
+          Target <b>1 in {n}</b> games{' '}
+          <button className="linklike small" onClick={() => setChanging(!changing)} aria-expanded={changing}>
+            {changing ? 'done' : 'change'}
+          </button>
+        </span>
+        <span className="muted small map-runbar-info">
+          {result ? (
             <>
-              <span className="muted">Looked up {queried} positions…</span>
-              <button onClick={() => ctrl.current?.abort()}>Cancel</button>
+              Coverage run {fmtDate(result.computedAt)} · {result.paramsLabel}
             </>
+          ) : (
+            'No Coverage run yet'
           )}
-        </div>
-        {settings.probabilitySource === 'lichess' && !result && (
-          <p className="muted small" style={{ marginTop: 8 }}>
-            The first run looks up every opponent position in the Lichess explorer (one request at a time, cached for 30 days), so a big
-            repertoire can take a few minutes. Re-runs are instant for positions already looked up.
-          </p>
+          {within ? ` · ${within}` : ''}
+        </span>
+        <span className="spacer" />
+        {!running ? (
+          <button className={`small ${!result || outdated ? 'primary' : ''}`} onClick={run} disabled={graph.size === 0}>
+            {result ? 'Re-run Coverage' : 'Run Coverage'}
+          </button>
+        ) : (
+          <>
+            <span className="muted small">Looked up {queried} positions…</span>
+            <button className="small" onClick={() => ctrl.current?.abort()}>
+              Cancel
+            </button>
+          </>
         )}
-        {error && <div className="error">{error}</div>}
-        {(stale || paramsChanged) && !running && (
-          <div className="note" style={{ marginTop: 8 }}>
-            {stale ? 'The repertoire changed since this analysis was run. ' : ''}
-            {paramsChanged ? 'Settings differ from the last run. ' : ''}Re-run to refresh.
+      </div>
+      {changing && <OneInNSlider value={n} onChange={(v) => void setScopeTarget(scope, v)} label={`Coverage target for ${scope.name}`} color={scope.color} />}
+      {error && <div className="error">{error}</div>}
+      {outdated && !running && (
+        <div className="note">
+          {stale ? 'Your chapters changed since this run. ' : ''}
+          {paramsChanged ? 'Settings differ from the last run. ' : ''}Re-run to bring the map up to date.
+        </div>
+      )}
+      {settings.probabilitySource === 'lichess' && !result && !running && (
+        <div className="muted small">
+          Coverage works out how often each position comes up in your games, from Lichess games at your rating (Settings). The first run
+          looks up every opponent position (one request at a time, cached for 30 days), so a big repertoire can take a few minutes.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A gap (an opponent move you have no answer to) or a position where you have no move, from a run. */
+export interface ScopeGap {
+  key: string;
+  /** The moves to it from the start; for a gap, the opponent's move last. */
+  path: string[];
+  /** The opponent's move (a gap); none: your move, nothing prepared. */
+  san?: string;
+  prob: number;
+}
+
+/** A run's gaps and unprepared positions, likeliest first — those under `under` (a chapter's opening). */
+export function scopeGaps(run: CoverageResult | undefined, under?: readonly string[]): ScopeGap[] {
+  if (!run) return [];
+  const inside = (path: readonly string[]) => !under || (path.length >= under.length && under.every((s, i) => path[i] === s));
+  const out: ScopeGap[] = [
+    ...run.gaps.filter((g) => inside([...g.path, g.san])).map((g) => ({ key: `${g.fromKey}|${g.san}`, path: [...g.path, g.san], san: g.san, prob: g.prob })),
+    ...run.unfinished.filter((u) => inside(u.path)).map((u) => ({ key: u.key, path: u.path, prob: u.prob })),
+  ];
+  return out.sort((a, b) => b.prob - a.prob);
+}
+
+/**
+ * How the coverage numbers come about, for the Map's details: what's assumed, where opponents' moves
+ * come from, a few totals and the positions worth knowing cold.
+ */
+export function CoverageDetails({
+  scope,
+  graph,
+  run,
+  gaps,
+  covered,
+  onOpen,
+}: {
+  scope: Scope;
+  graph: RepGraph;
+  run?: CoverageResult;
+  gaps: ScopeGap[];
+  /** Share of the scope's games your lines cover (1 − not covered). */
+  covered?: number;
+  onOpen: (sans: string[]) => void;
+}) {
+  const settings = useSettings();
+  const positions = useMemo(() => (run ? likelyPositions(graph, run).filter((p) => graph.has(p.key)) : []), [graph, run]);
+  const myPositions = positions.filter((p) => p.myTurn);
+  const mine = run ? repertoireDepth(graph, run) : undefined;
+  const n = run ? Math.round(1 / run.threshold) : repTarget(scope, settings);
+  const open = gaps.length;
+
+  return (
+    <div className="col" style={{ gap: 12 }}>
+      <p className="muted small" style={{ margin: 0 }}>
+        Assuming you always play your prepared moves and opponents answer like the players below, how often does each position show up?
+        Anything you'll meet in at least <b>1 in {n}</b> games is worth knowing — and opponent moves that common which your lines don't
+        answer are the <b>gaps</b>.
+      </p>
+      <div className="row">
+        <label className="field">
+          <span>Opponent moves from</span>
+          <select value={settings.probabilitySource} onChange={(e) => updateSettings({ probabilitySource: e.target.value as ProbabilitySource })}>
+            <option value="lichess">Lichess games at my rating</option>
+            <option value="mygames">My own opponents (imported games)</option>
+            <option value="masters">Masters</option>
+          </select>
+        </label>
+        {settings.probabilitySource === 'lichess' && (
+          <div className="field small">
+            <span>Rating bands · speeds</span>
+            <div style={{ padding: '7px 0' }}>
+              {effectiveBands(settings).map(bandLabel).join(', ')} · {settings.speeds.join(', ')}{' '}
+              <a href={href('settings')} className="small">
+                change
+              </a>
+            </div>
+          </div>
+        )}
+        {settings.probabilitySource === 'mygames' && (
+          <div className="field">
+            <span>Opponent games from</span>
+            <GameRangeSelect setting="opponentRange" />
           </div>
         )}
       </div>
-
-      {graph.size === 0 && <Empty>This repertoire is empty — add some moves first.</Empty>}
-
-      {result && (
+      {run && (
         <>
           <div className="grid3">
-            <Stat value={result.gaps.length} label={`Gaps ≥ 1 in ${Math.round(1 / result.threshold)}`} hint="Common opponent moves you have no answer for" />
-            <Stat value={result.unfinished.length} label="Unprepared positions" hint="Your turn, common position, no move prepared" />
-            <Stat value={myPositions.length} label="Your moves to know" hint="Your-turn positions reached at least 1 in N games" />
+            <Stat value={myPositions.length} label="Your moves to know" hint={`Your-turn positions reached at least 1 in ${n} games`} />
             <Stat
-              value={`${linesDone} + ${result.gaps.length + result.unfinished.length}`}
+              value={`${mine?.lines ?? 0} + ${open}`}
               label="Lines done + open"
-              hint="Done: your lines that end at a position reached at least 1 in N games. Open: gaps and unprepared positions — each becomes at least one more line once you prepare it."
+              hint={`Done: your lines that end at a position reached at least 1 in ${n} games. Open: gaps and unprepared positions — each becomes at least one more line once you prepare it.`}
             />
             <Stat
               value={mine && mine.lines ? `${mine.avgMoves.toFixed(1)} moves` : '—'}
               label="Your average line length"
-              hint={`Your finished lines (reached at least 1 in ${Math.round(1 / result.threshold)} games), weighted by how often you reach them. Longest: ${mine ? Math.ceil(mine.maxMoves) : 0} moves.`}
+              hint={`Your finished lines (reached at least 1 in ${n} games), weighted by how often you reach them. Longest: ${mine ? Math.ceil(mine.maxMoves) : 0} moves.`}
             />
             <Stat
-              value={rootCoverage > 0 ? `${(myPositions.length / (rootCoverage * 100)).toFixed(2)}` : '—'}
+              value={covered ? `${(myPositions.length / (covered * 100)).toFixed(2)}` : '—'}
               label="Moves per 1% covered"
-              hint={`Efficiency: your ${myPositions.length} moves at positions reached at least 1 in ${Math.round(1 / result.threshold)} games, divided by the ${pct(rootCoverage, 0)} of games they keep in your prep. Lower is better — choosing lines where opponents' replies are concentrated buys more coverage per move.`}
-            />
-            <Stat
-              value={pct(result.coverage?.[graph.root] ?? 1 - result.gaps.reduce((a, g) => a + g.prob, 0) - result.unfinished.reduce((a, u) => a + u.prob, 0), 0)}
-              label="Coverage"
-              hint={`Share of your games that stay inside your repertoire until positions get rarer than 1 in ${Math.round(1 / result.threshold)} games`}
+              hint={`Efficiency: your ${myPositions.length} moves at positions reached at least 1 in ${n} games, divided by the ${pct(covered ?? 0, 0)} of games they keep in your prep. Lower is better — lines where opponents' replies are concentrated buy more coverage per move.`}
             />
           </div>
           <div className="muted small">
-            {fmtDate(result.computedAt)} · {result.paramsLabel} · {result.queried} positions looked up
-            {result.noData.length ? ` · ${result.noData.length} with no database games` : ''}
+            {fmtDate(run.computedAt)} · {run.paramsLabel} · {run.queried} positions looked up
+            {run.noData.length ? ` · ${run.noData.length} with no database games` : ''}
           </div>
-
-          <div className="panel">
-            <div className="tabs">
-              <button className={tab === 'gaps' ? 'active' : ''} onClick={() => setTab('gaps')}>
-                Gaps ({result.gaps.length})
-              </button>
-              <button className={tab === 'unfinished' ? 'active' : ''} onClick={() => setTab('unfinished')}>
-                Unprepared ({result.unfinished.length})
-              </button>
-              <button className={tab === 'positions' ? 'active' : ''} onClick={() => setTab('positions')}>
-                Positions to know ({myPositions.length})
-              </button>
-            </div>
-
-            {tab === 'gaps' &&
-              (result.gaps.length ? (
-                <TableWrap>
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th>After</th>
-                      <th>Opponent plays</th>
-                      <th className="num">How often</th>
-                      <th className="num hide-sm">Of games there</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.gaps.map((g) => (
-                      <tr key={g.fromKey + g.san}>
-                        <td className="mono small line-cell">{g.path.length ? formatLine(g.path) : 'Start'}</td>
-                        <td>
-                          <b>{g.san}</b>
-                        </td>
-                        <td className="num">
-                          <b>{oneIn(g.prob)}</b>
-                        </td>
-                        <td className="num hide-sm">{pct(g.freq)}</td>
-                        <td>
-                          <button className="small primary" onClick={() => openLine([...g.path, g.san])}>
-                            Prepare<span className="hide-sm">&nbsp;answer</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </TableWrap>
-              ) : (
-                <Empty>No gaps at this threshold. Try a larger N to dig deeper.</Empty>
-              ))}
-
-            {tab === 'unfinished' &&
-              (result.unfinished.length ? (
-                <TableWrap>
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th>Position after</th>
-                      <th className="num">How often</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.unfinished.map((u) => (
-                      <tr key={u.key}>
-                        <td className="mono small line-cell">{formatLine(u.path)}</td>
-                        <td className="num">
-                          <b>{oneIn(u.prob)}</b>
-                        </td>
-                        <td>
-                          <button className="small primary" onClick={() => openLine(u.path)}>
-                            Choose a move
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </TableWrap>
-              ) : (
-                <Empty>Every common position where it's your move has a prepared answer.</Empty>
-              ))}
-
-            {tab === 'positions' && (
-              <>
-                <p className="muted small">
-                  Train only these by enabling “Only train likely positions” in Settings — Review and Learn will then skip rarer lines.
-                </p>
-                <TableWrap>
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th>Your move after</th>
-                      <th className="num">How often</th>
-                      <th className="num" title="Coverage from this position">Covered</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {myPositions.map((p) => (
-                      <tr key={p.key}>
-                        <td className="mono small line-cell">{p.path.length ? formatLine(p.path) : 'Start'}</td>
-                        <td className="num">{oneIn(p.prob)}</td>
-                        <td className="num">{result.coverage?.[p.key] !== undefined ? pct(result.coverage[p.key], 0) : '—'}</td>
-                        <td>
-                          <button className="small" onClick={() => openLine(p.path)}>
-                            Open
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </TableWrap>
-              </>
-            )}
-          </div>
+          <h3 style={{ margin: 0 }}>Positions to know ({myPositions.length})</h3>
+          <p className="muted small" style={{ margin: 0 }}>
+            Your move in each, at least 1 in {n} games. To train only these, turn on “Only train positions you'll meet…” on the Train tab.
+          </p>
+          <TableWrap>
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Your move after</th>
+                  <th className="num">How often</th>
+                  <th className="num" title="Of the games reaching it, the share your lines cover from there">
+                    Covered
+                  </th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {myPositions.map((p) => (
+                  <tr key={p.key}>
+                    <td className="mono small line-cell">{p.path.length ? formatLine(p.path) : 'Start'}</td>
+                    <td className="num">{oneIn(p.prob)}</td>
+                    <td className="num">{run.coverage?.[p.key] !== undefined ? pct(run.coverage[p.key], 0) : '—'}</td>
+                    <td>
+                      <button className="small" onClick={() => onOpen(p.path)}>
+                        Open
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
         </>
       )}
-    </>
+    </div>
   );
 }

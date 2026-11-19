@@ -9,11 +9,15 @@ import { analyzeGame, summarize } from '../lib/prep';
 import { isMature, isNew } from '../lib/srs';
 import { loadTrainCounts, type TrainCounts } from '../db/training';
 import { Stat } from '../components/ui';
-import { href } from '../router';
+import { href, navigate } from '../router';
 import { COLORS, colorName, useChaptersAndSets } from '../db/scopes';
 import { readyOf, useMapData, WeightedBar } from './RepertoireMap';
 import type { Color } from '../lib/chess';
 import type { Chapter, Collection } from '../lib/types';
+import { scopeGaps } from './Coverage';
+import { lineTarget } from '../db/repertoire';
+import { oneIn } from '../lib/coverage';
+import { formatLine } from '../lib/chess';
 
 export function HomePage() {
   const reps = useRepertoires();
@@ -45,7 +49,7 @@ export function HomePage() {
     { done: !!(settings.lichessUsername || settings.chesscomUsername), text: <>Add your Lichess / Chess.com usernames and rating in <a href={href('settings')}>Settings</a></> },
     { done: reps.length > 0, text: <>Create a chapter and add lines — or import a Lichess study (<a href={href('repertoire')}>Repertoire</a>)</> },
     { done: learned > 0, text: <>Learn your first moves (<a href={href('train')}>Train</a>)</> },
-    { done: (coverageCount ?? 0) > 0, text: <>Run <a href={href('coverage')}>Coverage</a> to find the positions you'll meet often enough to prepare</> },
+    { done: (coverageCount ?? 0) > 0, text: <>Run Coverage on the <a href={href('map')}>Map</a> to find the positions you'll meet often enough to prepare</> },
     { done: (allGameCount ?? 0) > 0, text: <>Import your games to see where you forget your prep (<a href={href('games')}>Games</a>)</> },
   ];
   const allDone = steps.every((s) => s.done);
@@ -153,8 +157,10 @@ function RepertoireAtAGlance({ toTrain }: { toTrain: Record<Color, TrainCounts> 
 }
 
 function ColorGlance({ color, chapters, collections, due }: { color: Color; chapters: Chapter[]; collections: Collection[]; due: number }) {
-  const { maps, allLines, overall, cov, uncovered } = useMapData(color, chapters, collections);
+  const { maps, allLines, overall, cov, uncovered, gapRun } = useMapData(color, chapters, collections);
   if (!maps) return <div className="panel" />;
+  // The Map's to-dos in brief: the likeliest gap (what's due is the Review button).
+  const gap = scopeGaps(gapRun)[0];
   const count = chapters.filter((ch) => ch.color === color).length;
   const weakest = maps
     .filter((m) => m.lines.length)
@@ -168,7 +174,7 @@ function ColorGlance({ color, chapters, collections, due }: { color: Color; chap
           {count} chapter{count === 1 ? '' : 's'} · {allLines.length} line{allLines.length === 1 ? '' : 's'}
         </span>
         <span className="spacer" />
-        <a className="btn small" href={href('repertoire', { view: 'map', color })}>
+        <a className="btn small" href={href(`map/${color}`)}>
           Map
         </a>
         <a className={`btn small ${due ? 'primary' : ''}`} href={href('train', { rep: color, mode: 'review' })}>
@@ -190,6 +196,21 @@ function ColorGlance({ color, chapters, collections, due }: { color: Color; chap
                   {m.chapter.name} · {Math.round(m.ready * 100)}%
                 </a>
               ))}
+            </div>
+          )}
+          {gap && (
+            <div className="glance-weak">
+              <span className="muted small">Biggest gap</span>
+              <button
+                className="chip"
+                title={`${gap.san ? 'No answer' : 'Your move, nothing prepared'} — met ${oneIn(gap.prob)} games. Open it in the builder.`}
+                onClick={async () => navigate(`repertoire/${await lineTarget(color, gap.path)}`, { line: gap.path.join(' ') })}
+              >
+                {formatLine(gap.path)} · {oneIn(gap.prob)}
+              </button>
+              <a className="small" href={href(`map/${color}`)}>
+                all gaps →
+              </a>
             </div>
           )}
         </>

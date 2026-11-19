@@ -423,6 +423,22 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .glance-ready { display: flex; align-items: baseline; gap: 10px; }
 .glance-ready b { font-size: 30px; font-weight: 750; line-height: 1; font-variant-numeric: tabular-nums; }
 .glance-weak { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+button.chip { border: none; min-height: 0; padding: 1px 8px; font-weight: 400; font-size: 12px; line-height: 1.5; white-space: normal; text-align: left; }
+button.chip:hover:not(:disabled) { background: var(--border); }
+/* ---------- the Map tab: how ready, what next (to-dos), where (strips), details ---------- */
+.map-runbar { gap: 6px; padding-top: 10px; border-top: 1px solid var(--border-soft); }
+.map-runbar > .row { gap: 8px 14px; }
+.map-runbar-info { min-width: 0; }
+.map-todo { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; align-items: start; }
+.todo-card { gap: 8px; }
+.todo-card h3, .todo-card p { margin: 0; }
+.todo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.todo-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border-soft); }
+.todo-list li:first-child { border-top: none; padding-top: 0; }
+.todo-list li > button { flex: none; }
+.todo-what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.todo-what .str-swatch { width: 9px; height: 9px; }
+.map-details-toggle { align-self: flex-start; color: var(--muted); white-space: normal; text-align: left; }
 .glance .str-bar { height: 8px; }
 .warn-text { color: var(--warn); }
 .map-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border-soft); }

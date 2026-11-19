@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { useSettings } from '../db/settings';
-import { colorName, repertoireScopeId, scopeOf } from '../db/scopes';
+import { scopeOf, type Scope } from '../db/scopes';
 import { startOfToday, useCards, useChapterGraphs, useCoverage } from '../hooks';
 import { chapterLines, STRENGTH_HINT, STRENGTH_LABEL, STRENGTHS, strengthHistory, type MapLine, type Strength } from '../lib/map';
 import { chapterPosition } from '../lib/chapters';
@@ -10,7 +10,6 @@ import { compactLine, formatLine, START_KEY, type Color } from '../lib/chess';
 import type { Chapter, Collection, CoverageResult } from '../lib/types';
 import { isCoverageFresh } from '../services/coverage';
 import { LineCard } from '../components/LineCard';
-import { Empty } from '../components/ui';
 import { ChapterTree, useOpeningIndex } from '../components/ChapterTree';
 import type { RepGraph } from '../lib/graph';
 import { href, navigate } from '../router';
@@ -61,23 +60,31 @@ const readyOf = (s: Record<Strength, number>) => WELL.reduce((a, k) => a + s[k],
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 /**
- * Each chapter's lines with their weights (how often they come up, from the color's coverage run
- * when it's up to date; otherwise every line counts the same) and readiness — for the map and Home.
+ * The coverage run a scope is measured with: a repertoire's own (it's a set of chapters on its own),
+ * else its color's — a chapter is measured within all of its color's chapters, so another chapter's
+ * answer to a move counts, and one run serves every chapter.
  */
-export function useMapData(color: Color, chapters: Chapter[], collections: Collection[], setId?: string) {
+export const runScopeOf = (scope: Pick<Scope, 'id' | 'kind' | 'color'>): string => (scope.kind === 'repertoire' ? scope.id : scope.color);
+
+/**
+ * A scope's chapters, each with its lines and their weights (how often they come up, from the color's
+ * coverage run when it's up to date; otherwise every line counts the same) and readiness, and the
+ * whole scope's shares — for the Map tab and Home. `scopeId`: a color, `set:<id>` or a chapter.
+ */
+export function useMapData(scopeId: string, chapters: Chapter[], collections: Collection[]) {
   const graphs = useChapterGraphs();
   const cards = useCards();
   const settings = useSettings();
+  const scope = settings.loaded ? scopeOf(scopeId, chapters, collections, settings) : undefined;
+  const color: Color = scope?.color ?? (scopeId === 'black' ? 'black' : 'white');
   const run = useCoverage(color);
-  const set = collections.find((c) => c.id === setId && c.color === color);
-  const setRun = useCoverage(set && repertoireScopeId(set.id));
-  const shown = chapters.filter((c) => c.color === color && (!set || set.chapterIds.includes(c.id)));
-  const scope = settings.loaded ? scopeOf(color, chapters, collections, settings) : undefined;
-  const cov: CoverageResult | undefined = scope && run && isCoverageFresh(run, scope, settings) ? run : undefined;
-  // The games your lines don't cover — from the run of what's shown (the color, or the repertoire):
-  // one minus its coverage of the start position, as on the Coverage page.
-  const setScope = set && settings.loaded ? scopeOf(repertoireScopeId(set.id), chapters, collections, settings) : undefined;
-  const gapRun = set ? (setScope && setRun && isCoverageFresh(setRun, setScope, settings) ? setRun : undefined) : cov;
+  const ownRun = useCoverage(scope?.kind === 'repertoire' ? scope.id : undefined);
+  const shown = chapters.filter((c) => scope?.chapterIds.includes(c.id));
+  const colorScope = settings.loaded ? scopeOf(color, chapters, collections, settings) : undefined;
+  const cov: CoverageResult | undefined = colorScope && run && isCoverageFresh(run, colorScope, settings) ? run : undefined;
+  // The games your lines don't cover — from the run the scope is measured with (see runScopeOf):
+  // one minus its coverage of the start position, as the run counts it.
+  const gapRun = scope?.kind === 'repertoire' ? (ownRun && isCoverageFresh(ownRun, scope, settings) ? ownRun : undefined) : cov;
   // And the rare sidelines: games leaving your lines by moves rarer than the target (runs since they're
   // measured; older ones just don't split them out).
   const rootCoverage = gapRun?.coverage?.[START_KEY];
@@ -127,8 +134,15 @@ export function useMapData(color: Color, chapters: Chapter[], collections: Colle
   const allWeights = useMemo(() => maps?.flatMap((m) => m.weights) ?? [], [maps]);
   // With a run, shares of all your games (the lines' shares scaled to the games they cover).
   const inLines = shares(allLines, allWeights);
-  const overall = uncovered ? scaled(inLines, Math.max(0, 1 - uncovered.share - (uncovered.rare ?? 0))) : inLines;
-  return { graphs, maps, allLines, allWeights, cov, set, today, overall, uncovered };
+  let overall = uncovered ? scaled(inLines, Math.max(0, 1 - uncovered.share - (uncovered.rare ?? 0))) : inLines;
+  let shownUncovered = uncovered;
+  // One chapter: from where its opening starts (the start position's gaps aren't its business).
+  if (scope?.kind === 'chapter' && maps?.length) {
+    const c = chapterShares(maps);
+    overall = c.s;
+    shownUncovered = uncovered && { ...uncovered, share: c.uncovered, rare: uncovered.rare === undefined ? undefined : c.rare };
+  }
+  return { scope, graphs, maps, allLines, allWeights, cov, gapRun, today, names, overall, uncovered: shownUncovered };
 }
 
 /** The share of your games that leave your lines while still common (a coverage run's gaps). */
@@ -138,7 +152,7 @@ export interface Uncovered {
   rare?: number;
   /** The run's target: positions rarer than 1 in this many games don't count. */
   oneInN: number;
-  /** The scope the run is for (its Coverage page lists the gaps). */
+  /** The scope the run is for (whose Map lists the gaps). */
   scopeId: string;
 }
 
@@ -156,26 +170,19 @@ const rareHint = (u: Pick<Uncovered, 'oneInN'>) =>
 /** Share known well (growing or solid), weighted. */
 export { readyOf, shares, WeightedBar };
 
+export type MapData = ReturnType<typeof useMapData>;
+
 /**
- * The repertoire as a map, weighted by how often things come up: how much of your games go down
- * lines you know well, and each chapter as a strip of its lines — each as wide as it is common in
- * your games, colored by how well you know its weakest move. Hover or tap a line for the details.
+ * A scope at a glance, weighted by how often things come up: how much of your games go down lines you
+ * know well, as one bar — your lines by strength, then the games they don't cover and the rare
+ * sidelines — with its legend. `subject` names the scope in the headline ("Black", "“Najdorf”");
+ * `onGaps` jumps to the list of gaps; `children` go at the bottom (the coverage run's bar).
  */
-export function RepertoireMap({
-  color,
-  setId,
-  chapters,
-  collections,
-}: {
-  color: Color;
-  setId?: string;
-  chapters: Chapter[];
-  collections: Collection[];
-}) {
+export function Readiness({ data, subject, onGaps, children }: { data: MapData; subject: string; onGaps?: () => void; children?: ReactNode }) {
   const settings = useSettings();
+  const color = data.scope?.color ?? 'white';
   const logs = useLiveQuery(() => db.reviewLog.where('color').equals(color).toArray(), [color]);
-  const [order, setOrder] = useState<'opening' | 'weakest' | 'strongest'>('opening');
-  const { graphs, maps, allLines, cov, set, today, overall, uncovered } = useMapData(color, chapters, collections, setId);
+  const { allLines, cov, today, overall, uncovered } = data;
   // A week ago vs now, in lines known well.
   const week = useMemo(() => {
     if (!logs || !allLines.length) return undefined;
@@ -184,123 +191,107 @@ export function RepertoireMap({
     return well(h[h.length - 1]) - well(h[0]);
   }, [allLines, logs, settings.requestRetention, settings.maxIntervalDays, today]);
 
-  if (!maps) return null;
-  const go = (q: Record<string, string | undefined>) => navigate('repertoire', { view: 'map', color, set: setId, ...q });
-  const total = allLines.length;
-  const due = allLines.filter((l) => l.due).length;
-  const sorted = [...maps].sort((a, b) => (a.lines.length ? 0 : 1) - (b.lines.length ? 0 : 1) || (order === 'weakest' ? a.ready - b.ready : b.ready - a.ready));
-  const scopeId = set ? `set:${set.id}` : color;
-
   return (
-    <div className="col" style={{ gap: 14 }}>
-      <div className="row">
-        <div className="segmented" role="group" aria-label="Color">
-          {(['white', 'black'] as Color[]).map((c) => (
-            <button key={c} className={`small ${c === color ? 'active' : ''}`} onClick={() => go({ color: c, set: undefined })}>
-              {colorName(c)}
-            </button>
-          ))}
-        </div>
-        {collections.some((c) => c.color === color) && (
-          <select value={set?.id ?? ''} onChange={(e) => go({ set: e.target.value || undefined })} aria-label="Repertoire">
-            <option value="">All {colorName(color)} chapters</option>
-            {collections
-              .filter((c) => c.color === color)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-          </select>
+    <div className="panel readiness">
+      <div className="readiness-head">
+        <span className="readiness-num">{allLines.length ? pct(readyOf(overall)) : '—'}</span>
+        <span className="readiness-text">
+          {cov ? `of your ${subject} games go down lines you know well` : `of your ${subject} lines you know well`}
+        </span>
+      </div>
+      <WeightedBar s={overall} uncovered={uncovered} />
+      <div className="readiness-legend">
+        {ORDER.map((s) => (
+          <span key={s} title={STRENGTH_HINT[s]}>
+            <span className={`str-swatch str-${s}`} /> {STRENGTH_LABEL[s]} <b>{pct(overall[s])}</b>
+          </span>
+        ))}
+        {uncovered && (
+          <span title={uncoveredHint(uncovered)}>
+            <span className="str-swatch str-uncovered" /> Not covered <b>{pct(uncovered.share)}</b>
+          </span>
+        )}
+        {uncovered?.rare !== undefined && (
+          <span title={rareHint(uncovered)}>
+            <span className="str-swatch str-rare" /> Rare sidelines <b>{pct(uncovered.rare)}</b>
+          </span>
         )}
       </div>
-
-      {total === 0 ? (
-        <Empty>No {colorName(color)} lines yet.</Empty>
-      ) : (
-        <>
-          <div className="panel readiness">
-            <div className="readiness-head">
-              <span className="readiness-num">{pct(readyOf(overall))}</span>
-              <span className="readiness-text">
-                {cov ? `of your ${colorName(color)} games go down lines you know well` : `of your ${colorName(color)} lines you know well`}
-                {set ? ` · ${set.name}` : ''}
-              </span>
-              <span className="spacer" />
-              {due > 0 && (
-                <button className="primary small" onClick={() => navigate('train', { rep: scopeId, mode: 'review', t: String(Date.now()) })}>
-                  Review {due} due line{due === 1 ? '' : 's'}
+      <div className="muted small">
+        {cov ? 'Weighted by how often each line comes up in your games.' : 'Every line counts the same — run Coverage to weight them by how often they come up.'}
+        {uncovered && uncovered.share > 0 && (
+          <>
+            {' '}
+            <b>Not covered</b>: games that leave your lines while still common (1 in {uncovered.oneInN} or more)
+            {onGaps && (
+              <>
+                {' '}
+                —{' '}
+                <button className="linklike" onClick={onGaps}>
+                  the gaps
                 </button>
-              )}
-            </div>
-            <WeightedBar s={overall} uncovered={uncovered} />
-            <div className="readiness-legend">
-              {ORDER.map((s) => (
-                <span key={s} title={STRENGTH_HINT[s]}>
-                  <span className={`str-swatch str-${s}`} /> {STRENGTH_LABEL[s]} <b>{pct(overall[s])}</b>
-                </span>
-              ))}
-              {uncovered && (
-                <span title={uncoveredHint(uncovered)}>
-                  <span className="str-swatch str-uncovered" /> Not covered <b>{pct(uncovered.share)}</b>
-                </span>
-              )}
-              {uncovered?.rare !== undefined && (
-                <span title={rareHint(uncovered)}>
-                  <span className="str-swatch str-rare" /> Rare sidelines <b>{pct(uncovered.rare)}</b>
-                </span>
-              )}
-            </div>
-            <div className="muted small">
-              {cov ? 'Weighted by how often each line comes up in your games.' : 'Every line counts the same — run Coverage to weight them by how often they come up.'}
-              {uncovered && uncovered.share > 0 && (
-                <>
-                  {' '}
-                  <b>Not covered</b>: games that leave your lines while still common (1 in {uncovered.oneInN} or more) —{' '}
-                  <a href={href(`coverage/${uncovered.scopeId}`)}>see the gaps</a>.
-                </>
-              )}
-              {uncovered && (
-                <>
-                  {' '}
-                  {uncovered.rare !== undefined ? (
-                    <>
-                      <b>Rare sidelines</b>: opponent moves rarer than that — beyond your target, they stay out even with every gap filled.
-                    </>
-                  ) : (
-                    <>Run Coverage again to also see the rare sidelines (opponent moves rarer than your target).</>
-                  )}
-                </>
-              )}
-              {week !== undefined && week !== 0 && (
-                <>
-                  {' '}
-                  This week: <b className={week > 0 ? 'good-text' : 'warn-text'}>{week > 0 ? `+${week}` : week}</b> line{Math.abs(week) === 1 ? '' : 's'} known well.
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="row">
-            <h2 style={{ margin: 0 }}>Chapters</h2>
-            <span className="muted small">{cov ? 'width = how often a line comes up · hollow = due' : 'hollow = due'}</span>
-            <span className="spacer" />
-            <div className="seg" role="group" aria-label="Order">
-              <button className={`small ${order === 'opening' ? 'active' : ''}`} onClick={() => setOrder('opening')}>
-                By opening
-              </button>
-              <button className={`small ${order === 'weakest' ? 'active' : ''}`} onClick={() => setOrder('weakest')}>
-                Weakest first
-              </button>
-              <button className={`small ${order === 'strongest' ? 'active' : ''}`} onClick={() => setOrder('strongest')}>
-                Strongest first
-              </button>
-            </div>
-          </div>
-          <ChapterStrips maps={sorted} color={color} graphs={order === 'opening' ? graphs : undefined} allGraphs={graphs} gaps={uncovered} />
-        </>
-      )}
+              </>
+            )}
+            .
+          </>
+        )}
+        {uncovered && (
+          <>
+            {' '}
+            {uncovered.rare !== undefined ? (
+              <>
+                <b>Rare sidelines</b>: opponent moves rarer than that — beyond your target, they stay out even with every gap filled.
+              </>
+            ) : (
+              <>Run Coverage again to also see the rare sidelines (opponent moves rarer than your target).</>
+            )}
+          </>
+        )}
+        {week !== undefined && week !== 0 && (
+          <>
+            {' '}
+            This week: <b className={week > 0 ? 'good-text' : 'warn-text'}>{week > 0 ? `+${week}` : week}</b> line{Math.abs(week) === 1 ? '' : 's'} known well.
+          </>
+        )}
+      </div>
+      {children}
     </div>
+  );
+}
+
+/**
+ * The scope's chapters, each as a strip of its lines — as wide as they come up in your games, colored
+ * by how well you know each line's weakest move (hover or tap one for the details); by opening, or
+ * weakest / strongest first. One chapter: just its strip, as "Lines".
+ */
+export function ChapterSection({ data }: { data: MapData }) {
+  const [order, setOrder] = useState<'opening' | 'weakest' | 'strongest'>('opening');
+  const { maps, graphs, cov, uncovered, scope } = data;
+  if (!maps || !scope) return null;
+  const one = scope.kind === 'chapter';
+  const sorted = [...maps].sort((a, b) => (a.lines.length ? 0 : 1) - (b.lines.length ? 0 : 1) || (order === 'weakest' ? a.ready - b.ready : b.ready - a.ready));
+  return (
+    <>
+      <div className="row">
+        <h2 style={{ margin: 0 }}>{one ? 'Lines' : 'Chapters'}</h2>
+        <span className="muted small">{cov ? 'width = how often a line comes up · hollow = due' : 'hollow = due'}</span>
+        <span className="spacer" />
+        {!one && (
+          <div className="seg" role="group" aria-label="Order">
+            <button className={`small ${order === 'opening' ? 'active' : ''}`} onClick={() => setOrder('opening')}>
+              By opening
+            </button>
+            <button className={`small ${order === 'weakest' ? 'active' : ''}`} onClick={() => setOrder('weakest')}>
+              Weakest first
+            </button>
+            <button className={`small ${order === 'strongest' ? 'active' : ''}`} onClick={() => setOrder('strongest')}>
+              Strongest first
+            </button>
+          </div>
+        )}
+      </div>
+      <ChapterStrips maps={sorted} color={scope.color} graphs={order === 'opening' && !one ? graphs : undefined} allGraphs={graphs} gaps={uncovered} />
+    </>
   );
 }
 
@@ -413,8 +404,8 @@ function ChapterStrips({
                 role="listitem"
                 className="strip-seg str-uncovered"
                 style={{ flexGrow: uncoveredWeight }}
-                href={href(`coverage/${gaps.scopeId}`)}
-                title={`Not covered: ${pct(uncovered)} of this chapter's games — ${uncoveredHint(gaps)}. Open Coverage for the gaps.`}
+                href={href(`map/${chapter.id}`)}
+                title={`Not covered: ${pct(uncovered)} of this chapter's games — ${uncoveredHint(gaps)}. Open the chapter's map for its gaps.`}
                 aria-label={`Not covered: ${pct(uncovered)} of this chapter's games`}
               />
             )}

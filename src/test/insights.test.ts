@@ -53,3 +53,22 @@ describe('insights', () => {
     expect([...under].map((id) => graph.byId.get(id)!.san).sort()).toEqual(['Nc6', 'Nf3', 'Nxd4', 'c5', 'cxd4', 'd4', 'd4', 'd6'].sort());
   });
 });
+
+describe('weakest moves', () => {
+  it('ranks by strength band, then mastery, and leaves out solid moves never missed', async () => {
+    const { weakestMoves } = await import('../lib/insights');
+    type M = Parameters<typeof weakestMoves>[0][number];
+    const mk = (san: string, card: { state: number; scheduledDays: number }, mastery: number | undefined, misses = 0, gameSlips = 0) =>
+      ({ move: { id: san, san }, card, path: [], mastery, misses, gameSlips, attempts: 4 }) as unknown as M;
+    // As computeInsights sorts them: by mastery.
+    const moves = [
+      mk('solidMissed', { state: 2, scheduledDays: 60 }, 40, 2),
+      mk('growing', { state: 2, scheduledDays: 12 }, 55),
+      mk('solidClean', { state: 2, scheduledDays: 90 }, 60),
+      mk('learning', { state: 1, scheduledDays: 0 }, 70),
+      mk('lapsed', { state: 3, scheduledDays: 0 }, 80, 1),
+      mk('new', { state: 0, scheduledDays: 0 }, undefined),
+    ];
+    expect(weakestMoves(moves).map((m) => m.move.san)).toEqual(['lapsed', 'learning', 'growing', 'solidMissed']);
+  });
+});

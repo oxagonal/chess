@@ -1,78 +1,52 @@
+/**
+ * Training insights on the Map tab: your weakest moves (ranked by lib/insights' mastery — the score
+ * itself isn't shown: how well you know something is always the map's strength bands) and, in the
+ * details, the totals and your lines as a tree.
+ */
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { useAllGraphs, useCards, useRecentGames } from '../hooks';
-import { useChaptersAndSets, useScopeGraph } from '../db/scopes';
-import { cardsOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
-import { defaultScope, ScopeSelect } from '../components/ScopeSelect';
+import { useScopeGraph } from '../db/scopes';
+import { cardIdOf, cardsOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
 import { useSettings } from '../db/settings';
 import { rangeLabel } from '../lib/gameRange';
 import { GameRangeSelect } from '../components/GameRangeSelect';
-import { computeInsights, type LineInsight } from '../lib/insights';
+import { computeInsights, movesUnder, type Insights, type LineInsight } from '../lib/insights';
 import { analyzeGame } from '../lib/prep';
-import { difficultyLabel, formatInterval } from '../lib/srs';
+import { STRENGTHS, strengthOf, type Strength } from '../lib/map';
 import { formatLine } from '../lib/chess';
-import { ColorPill, Empty, Stat, TableWrap } from '../components/ui';
-import { href, navigate } from '../router';
-
-export function InsightsPage({ route }: PageProps) {
-  const { chapters, collections } = useChaptersAndSets();
-  if (!chapters || !collections) return null;
-  const repId = route.path[1] ?? defaultScope(chapters);
-  if (!chapters.length) return <Empty>Create a chapter first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
-  return (
-    <div className="col" style={{ gap: 16 }}>
-      <div className="row">
-        <h1 style={{ margin: 0 }}>Insights</h1>
-        <span className="spacer" />
-        {repId && <ScopeSelect value={repId} onChange={(id) => navigate(`insights/${id}`)} chapters={chapters} collections={collections} />}
-      </div>
-      {repId && <InsightsView key={repId} repId={repId} />}
-    </div>
-  );
-}
-
-function masteryColor(m: number | undefined): string {
-  if (m === undefined) return 'var(--muted)';
-  if (m < 50) return 'var(--bad)';
-  if (m < 75) return 'var(--warn)';
-  return 'var(--good)';
-}
-
-function MasteryBar({ value }: { value: number | undefined }) {
-  if (value === undefined) return <span className="muted small">not learned</span>;
-  return (
-    <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
-      <span className="hide-sm" style={{ width: 60, height: 8, background: 'var(--bg2)', borderRadius: 4, overflow: 'hidden', display: 'inline-block' }}>
-        <span style={{ display: 'block', height: '100%', width: `${value}%`, background: masteryColor(value) }} />
-      </span>
-      <b style={{ color: masteryColor(value), minWidth: 24 }}>{value}</b>
-    </span>
-  );
-}
+import type { RepGraph } from '../lib/graph';
+import type { ReviewCard } from '../lib/types';
+import { Stat, TableWrap } from '../components/ui';
+import { navigate } from '../router';
+import { WeightedBar } from './RepertoireMap';
 
 const pct = (x: number | undefined) => (x === undefined ? '—' : `${Math.round(x * 100)}%`);
 
-function InsightsView({ repId }: { repId: string }) {
-  const { scope: rep, graph } = useScopeGraph(repId);
+export interface ScopeInsights {
+  graph: RepGraph;
+  insights: Insights;
+  cardById: Map<string, ReviewCard>;
+  /** The chapter to open a move in (the builder opens a line in the chapter its move comes from). */
+  chapterFor: (moveId: string) => string;
+  recentGames: number;
+}
+
+/** Training insights for a scope: accuracy, recall and slips in real games, per move and per line. */
+export function useScopeInsights(scopeId: string): ScopeInsights | undefined {
+  const { scope, graph } = useScopeGraph(scopeId);
   const allCards = useCards();
   const cards = useMemo(() => (graph && allCards ? cardsOf(graph, allCards) : undefined), [graph, allCards]);
-  const color = rep?.color;
+  const color = scope?.color;
   const colorLogs = useLiveQuery(async () => (color ? await db.reviewLog.where('color').equals(color).toArray() : undefined), [color]);
   const logs = useMemo(() => {
     if (!cards || !colorLogs) return undefined;
     const ids = new Set(cards.map((c) => c.id));
     return colorLogs.filter((l) => ids.has(l.cardId));
   }, [cards, colorLogs]);
-  // The builder opens a line in the chapter its move comes from.
-  const chapterFor = (moveId: string) => {
-    const m = graph?.byId.get(moveId);
-    return m ? chapterOfMoveId(sourcesOf(m)[0]) : (rep?.chapterIds[0] ?? '');
-  };
   const recentGames = useRecentGames();
   const allGraphs = useAllGraphs();
-  const { gameRange } = useSettings();
 
   const fromGames = useMemo(() => {
     const slips = new Map<string, number>();
@@ -90,154 +64,96 @@ function InsightsView({ repId }: { repId: string }) {
     return { slips, surprises };
   }, [recentGames, allGraphs, graph, color]);
 
-  const insights = useMemo(
-    () => (graph && cards && logs ? computeInsights({ graph, cards, logs, gameSlips: fromGames.slips, surprises: fromGames.surprises }) : undefined),
-    [graph, cards, logs, fromGames],
-  );
+  return useMemo(() => {
+    if (!scope || !graph || !cards || !logs) return undefined;
+    const insights = computeInsights({ graph, cards, logs, gameSlips: fromGames.slips, surprises: fromGames.surprises });
+    const chapterFor = (moveId: string) => {
+      const m = graph.byId.get(moveId);
+      return m ? chapterOfMoveId(sourcesOf(m)[0]) : (scope.chapterIds[0] ?? '');
+    };
+    return { graph, insights, cardById: new Map(cards.map((c) => [c.id, c])), chapterFor, recentGames: recentGames?.length ?? 0 };
+  }, [scope, graph, cards, logs, fromGames, recentGames]);
+}
 
-  if (!rep || !graph || !insights) return <div className="muted">Loading…</div>;
-  if (!graph.size) return <Empty>No moves here yet.</Empty>;
+/** How many of a line's moves (yours, below and including its first) are at each strength. */
+function lineStrengths(graph: RepGraph, line: LineInsight, cardById: ReadonlyMap<string, ReviewCard>): Record<Strength, number> {
+  const out = Object.fromEntries(STRENGTHS.map((s) => [s, 0])) as Record<Strength, number>;
+  let n = 0;
+  for (const id of movesUnder(graph, line.id)) {
+    const m = graph.byId.get(id);
+    if (!m?.mine) continue;
+    const card = cardById.get(cardIdOf(m));
+    out[card ? strengthOf(card) : 'new']++;
+    n++;
+  }
+  for (const s of STRENGTHS) out[s] = n ? out[s] / n : 0;
+  return out;
+}
+
+/** The Map's training details: totals, and every line as a tree with its moves by strength. */
+export function TrainingDetails({ scopeId, data }: { scopeId: string; data: ScopeInsights }) {
+  const { gameRange } = useSettings();
+  const { insights, graph } = data;
   const t = insights.total;
-  const learnedMoves = insights.moves.filter((m) => m.mastery !== undefined);
-
   return (
-    <>
-      <div className="panel">
-        <div className="row">
-          <h2 style={{ margin: 0 }}>{rep.name}</h2>
-          <ColorPill color={rep.color} />
-          <span className="spacer" />
-          <button className="primary" disabled={!learnedMoves.length} onClick={() => navigate('train', { rep: repId, mode: 'drill', t: String(Date.now()) })}>
-            Drill my weakest moves
-          </button>
-        </div>
-        <p className="muted small" style={{ marginTop: 8 }}>
-          <b>Mastery</b> (0–100) blends how often you get a move right in training, how likely you are to remember it right now (FSRS
-          recall), its difficulty (which rises each time you miss it) and how often you left your prep there in real games. Lines add up
-          everything below them; the weakest are listed first.
-        </p>
-      </div>
-
+    <div className="col" style={{ gap: 12 }}>
       <div className="grid3">
-        <Stat value={<span style={{ color: masteryColor(t.mastery) }}>{t.mastery ?? '—'}</span>} label="Mastery" />
         <Stat value={pct(insights.recentAccuracy)} label="Accuracy (30 days)" hint={`${insights.recentAttempts} training attempts in the last 30 days`} />
-        <Stat value={pct(t.recall)} label="Recall now" hint="Average chance you'd remember each learned move today" />
+        <Stat value={pct(t.recall)} label="Recall now" hint="Average chance you'd remember each learned move today (FSRS)" />
         <Stat value={`${t.learned}/${t.moves}`} label="Moves learned" />
         <Stat value={t.gameSlips} label="Forgot prep in games" hint={`Times you played something other than your prepared move in real games (${rangeLabel(gameRange).toLowerCase()})`} />
         <Stat value={t.surprises} label="Opponent surprises" hint={`Games where the opponent left your repertoire (${rangeLabel(gameRange).toLowerCase()})`} />
       </div>
-
       <div className="row small">
         <span>Games counted for forgotten prep &amp; surprises</span>
-        <GameRangeSelect count={recentGames?.length} />
+        <GameRangeSelect count={data.recentGames} />
       </div>
-
-      <div className="panel">
-        <h2>Lines</h2>
-        {!t.learned && <div className="note">Learn some moves first — mastery appears once you've trained them.</div>}
-        <TableWrap>
-          <table className="data">
-            <thead>
-              <tr>
-                <th>Line</th>
-                <th className="num hide-sm">Learned</th>
-                <th className="num hide-sm">Accuracy</th>
-                <th className="num hide-sm">Recall</th>
-                <th className="num hide-sm" title="Times you played something other than your prepared move here in real games">Forgot in games</th>
-                <th>Mastery</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {insights.lines.map((l) => (
-                <LineRow key={l.id} line={l} depth={0} repId={repId} chapterFor={chapterFor} defaultOpen />
-              ))}
-            </tbody>
-          </table>
-        </TableWrap>
-      </div>
-
-      <div className="panel">
-        <h2>Trickiest moves</h2>
-        {learnedMoves.length === 0 ? (
-          <Empty>Nothing learned yet.</Empty>
-        ) : (
-          <TableWrap>
-          <table className="data">
-            <thead>
-              <tr>
-                <th>Position</th>
-                <th>Move</th>
-                <th className="hide-sm">Difficulty</th>
-                <th className="num hide-sm">Accuracy</th>
-                <th className="num hide-sm">Recall</th>
-                <th className="num hide-sm" title="Times you played something other than your prepared move here in real games">Forgot in games</th>
-                <th>Mastery</th>
-                <th className="hide-sm">Next</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {learnedMoves.slice(0, 25).map((m) => {
-                const d = difficultyLabel(m.card);
-                return (
-                  <tr key={m.move.id}>
-                    <td className="mono small line-cell">{formatLine(m.path) || 'Start'}</td>
-                    <td>
-                      <b style={{ color: 'var(--mine)' }}>{m.move.san}</b>
-                    </td>
-                    <td className="hide-sm">
-                      <span className={`badge ${d === 'hard' ? 'bad' : d === 'medium' ? 'due' : 'good'}`} title={`FSRS difficulty ${m.card.difficulty.toFixed(1)} / 10`}>
-                        {d}
-                      </span>
-                    </td>
-                    <td className="num hide-sm" title={`${m.attempts - m.misses}/${m.attempts} right first time`}>
-                      {pct(m.accuracy)}
-                    </td>
-                    <td className="num hide-sm">{pct(m.recall)}</td>
-                    <td className="num hide-sm">{m.gameSlips || ''}</td>
-                    <td>
-                      <MasteryBar value={m.mastery} />
-                    </td>
-                    <td className="small muted hide-sm">{m.card.due <= Date.now() ? 'due' : formatInterval(m.card.due - Date.now())}</td>
-                    <td>
-                      <div className="list-actions">
-                        <button className="small primary" onClick={() => navigate('train', { rep: repId, mode: 'drill', under: m.move.id, t: String(Date.now()) })}>
-                          Drill
-                        </button>
-                        <button className="small" onClick={() => navigate(`repertoire/${chapterFor(m.move.id)}`, { line: [...m.path, m.move.san].join(' ') })}>
-                          Open
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          </TableWrap>
-        )}
-      </div>
-    </>
+      <h3 style={{ margin: 0 }}>Lines</h3>
+      {!t.learned && <div className="note">Learn some moves first — accuracy and recall appear once you've trained them.</div>}
+      <TableWrap>
+        <table className="data">
+          <thead>
+            <tr>
+              <th>Line</th>
+              <th title="Your moves in it, by strength (as on the map)">Moves</th>
+              <th className="num hide-sm">Accuracy</th>
+              <th className="num hide-sm">Recall</th>
+              <th className="num hide-sm" title="Times you played something other than your prepared move here in real games">
+                Forgot in games
+              </th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {insights.lines.map((l) => (
+              <LineRow key={l.id} line={l} depth={0} scopeId={scopeId} data={data} graph={graph} defaultOpen />
+            ))}
+          </tbody>
+        </table>
+      </TableWrap>
+    </div>
   );
 }
 
 function LineRow({
   line,
   depth,
-  repId,
-  chapterFor,
+  scopeId,
+  data,
+  graph,
   defaultOpen = false,
 }: {
   line: LineInsight;
   depth: number;
-  repId: string;
-  chapterFor: (moveId: string) => string;
+  scopeId: string;
+  data: ScopeInsights;
+  graph: RepGraph;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const sans = line.segment.map((m) => m.san);
   const hasKids = line.children.length > 0;
+  const s = useMemo(() => lineStrengths(graph, line, data.cardById), [graph, line, data.cardById]);
   return (
     <>
       <tr>
@@ -252,32 +168,30 @@ function LineRow({
             </span>
           </span>
         </td>
-        <td className="num hide-sm">
-          {line.learned}/{line.moves}
+        <td>
+          <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }} title={`${line.learned}/${line.moves} learned`}>
+            <WeightedBar s={s} slim />
+          </span>
         </td>
         <td className="num hide-sm">{pct(line.accuracy)}</td>
         <td className="num hide-sm">{pct(line.recall)}</td>
         <td className="num hide-sm">{line.gameSlips || ''}</td>
         <td>
-          <MasteryBar value={line.mastery} />
-        </td>
-        <td>
           <div className="list-actions">
             <button
               className="small"
-              onClick={() => navigate('train', { rep: repId, mode: 'drill', under: line.id, t: String(Date.now()) })}
+              onClick={() => navigate('train', { rep: scopeId, mode: 'drill', under: line.id, t: String(Date.now()) })}
               title="Practice every move in this line, learned or not — each one you play counts as reviewed"
             >
               Drill
             </button>
-            <button className="small" onClick={() => navigate(`repertoire/${chapterFor(line.id)}`, { line: [...line.prefix, ...sans].join(' ') })}>
+            <button className="small" onClick={() => navigate(`repertoire/${data.chapterFor(line.id)}`, { line: [...line.prefix, ...sans].join(' ') })}>
               Open
             </button>
           </div>
         </td>
       </tr>
-      {open && line.children.map((c) => <LineRow key={c.id} line={c} depth={depth + 1} repId={repId} chapterFor={chapterFor} />)}
+      {open && line.children.map((c) => <LineRow key={c.id} line={c} depth={depth + 1} scopeId={scopeId} data={data} graph={graph} />)}
     </>
   );
 }
-

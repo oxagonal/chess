@@ -440,8 +440,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               <button onClick={() => navigate('train', { rep: rep.id, mode: 'review' })}>
                 Review <span className="badge due">{dueCount}</span>
               </button>
-              <button onClick={() => navigate(`coverage/${rep.color}`)}>Coverage</button>
-              <button onClick={() => navigate(`insights/${rep.id}`)}>Insights</button>
+              <button onClick={() => navigate(`map/${rep.id}`)}>Map — gaps, weak moves</button>
             </>
           )}
           <button onClick={() => updateSettings({ builderNav: nav === 'inline' ? 'scoresheet' : 'inline' })}>
@@ -459,11 +458,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           <a className="btn small" href={href('train', { rep: rep.id, mode: 'review' })}>
             Review <span className="badge due">{dueCount}</span>
           </a>
-          <a className="btn small" href={href(`coverage/${rep.color}`)}>
-            Coverage
-          </a>
-          <a className="btn small" href={href(`insights/${rep.id}`)}>
-            Insights
+          <a className="btn small" href={href(`map/${rep.id}`)} title="How well you know this, its gaps and your weakest moves">
+            Map
           </a>
           <a className="btn small" href={href('repertoire')}>
             All

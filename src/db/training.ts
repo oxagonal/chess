@@ -84,6 +84,11 @@ export async function loadTrainCounts(now = Date.now()): Promise<Record<'all' | 
   return { all: { due: white.due + black.due, fresh: white.fresh + black.fresh }, white, black };
 }
 
+/** What there is to train in one scope (a Train link's: 'all', a color, `set:<id>` or a chapter). */
+export async function loadScopeCounts(scopeId: string, now = Date.now()): Promise<TrainCounts> {
+  return trainCounts(scopeId, await loadTrainingData(), now);
+}
+
 /** Moves due for review across everything (the Train tab's badge) — cheap while nothing is due at all. */
 export async function loadDueCount(now = Date.now()): Promise<number> {
   const any = await db.cards.where('due').belowOrEqual(now).filter((c) => c.state !== 0).count();

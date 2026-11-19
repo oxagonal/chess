@@ -7,8 +7,7 @@ import { useRoute, href, type Route } from './router';
 import { HomePage } from './pages/Home';
 import { RepertoirePage } from './pages/Repertoire';
 import { TrainPage } from './pages/Train';
-import { CoveragePage } from './pages/Coverage';
-import { InsightsPage } from './pages/Insights';
+import { MapPage } from './pages/MapPage';
 import { GamesPage } from './pages/Games';
 import { SettingsPage } from './pages/Settings';
 import { SyncIndicator } from './components/SyncPanel';
@@ -32,8 +31,7 @@ const TABS: Tab[] = [
   { path: '', label: 'Home', page: HomePage },
   { path: 'repertoire', label: 'Repertoire', page: RepertoirePage },
   { path: 'train', label: 'Train', page: TrainPage },
-  { path: 'insights', label: 'Insights', page: InsightsPage },
-  { path: 'coverage', label: 'Coverage', page: CoveragePage },
+  { path: 'map', label: 'Map', page: MapPage },
   { path: 'games', label: 'Games', page: GamesPage },
   { path: 'settings', label: 'Settings', page: SettingsPage },
 ];
@@ -44,6 +42,21 @@ const TABS: Tab[] = [
  * session. Tapping Games while in Games goes to the list.
  */
 const LAST_GAMES_KEY = 'chess-prep:lastGames';
+
+/**
+ * Old addresses: Coverage and Insights were tabs of their own, and the map a view of the Repertoire —
+ * they're all the Map tab now (bookmarks and links keep working).
+ */
+function movedTo(route: Route): string | undefined {
+  const [top, sub] = route.path;
+  if (top === 'coverage' || top === 'insights') return href(sub ? `map/${sub}` : 'map');
+  if (top === 'repertoire' && !sub && route.query.get('view') === 'map') {
+    const set = route.query.get('set');
+    const color = route.query.get('color');
+    return href(set ? `map/set:${set}` : color ? `map/${color}` : 'map');
+  }
+  return undefined;
+}
 
 function useLastGames(route: Route): string {
   const [last, setLast] = useState(() => {
@@ -74,7 +87,11 @@ export function App() {
   const now = useNow();
   // What a review would actually have — not a due card of a move you've taken out of training.
   const due = useLiveQuery(() => loadDueCount(now), [now]);
-  const tab = TABS.find((t) => t.path === (route.path[0] ?? '')) ?? TABS[0];
+  const moved = movedTo(route);
+  useEffect(() => {
+    if (moved) window.location.replace(moved);
+  }, [moved]);
+  const tab = TABS.find((t) => t.path === (moved ? 'map' : (route.path[0] ?? ''))) ?? TABS[0];
   const Page = tab.page;
   const lastGames = useLastGames(route);
   const tabHref = (t: Tab) => (t.path === 'games' && tab !== t && lastGames ? lastGames : href(t.path));
@@ -103,9 +120,7 @@ export function App() {
         <span className="spacer" />
         <SyncIndicator />
       </header>
-      <main className="main">
-        <Page route={route} />
-      </main>
+      <main className="main">{!moved && <Page route={route} />}</main>
     </div>
   );
 }

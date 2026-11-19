@@ -7,11 +7,16 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   several chapters is one card, learned once. A *repertoire* is a saved set of chapters (say an Exchange
   Caro-Kann and an Italian for one tournament) that you can train, measure and check — it says where its
   chapters give you different moves in the same position. Train all of a color, a repertoire or one chapter.
-- **Map** — Repertoire → Map: each chapter as a row of squares, one per line, colored by how well you know
-  its weakest move (not learned, missed last time, learning, growing, solid; hollow when due), with lines by strength
-  over the last 30 days. With a Coverage run, the bar on top (and each chapter's strip) is of all your games: the
-  share your lines don't cover (games that leave them while still more common than your coverage target), and the
-  *rare sidelines* — opponent moves rarer than the target, which stay outside your prep even with every gap filled. Hover a square for the line, its position and its status, and practice it.
+- **Map** — its own tab, for all of a color, a repertoire or one chapter, organized by the questions it
+  answers. *How ready am I?* One bar of all your games: your lines by how well you know their weakest move
+  (not learned, missed last time, learning, growing, solid), the games your lines don't cover (they leave
+  them while still more common than your coverage target), and the *rare sidelines* (opponent moves rarer
+  than the target, which stay outside your prep even with every gap filled) — with the Coverage run's
+  target and Run button under it. *What next?* To-dos with one action each: review what's due, prepare the
+  gaps, drill your weakest moves. *Where?* Each chapter as a strip of its lines, as wide as they come up
+  (hover a line for its position and status, and practice it). *Details*, on demand: how the coverage
+  numbers come about, the positions worth knowing cold, and your lines as a tree with accuracy, recall and
+  slips in games. How well you know something is always the same strength bands.
 - **Split into chapters** — a chapter's ⋯ menu suggests chapters from the opening names of its lines (by
   position, so transposed move orders land together); rename, merge or leave out suggestions first.
 - **Import wizard** — Repertoire → *Import a Lichess study or PGN*: study chapters become chapters (or go into
@@ -49,18 +54,20 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   second miss shows the answer as an arrow. An **answer timer** (⚙ in a session, or Settings → Training; 10 s by
   default, 0 turns it off) grades how quickly you find each move in reviews and drills: in time is Good, in the
   first quarter of it Easy, slower Hard — so moves you know cold come back later and ones you dig for, sooner.
-- **Coverage — "1 in N games"** — assuming you play your prep and opponents answer like players at your
-  rating, how often does each position appear? Lists the opponent moves you'll face at least once every
-  N games that your repertoire doesn't answer (*gaps*), positions where it's your move with nothing prepared,
-  and the positions worth knowing cold. Optionally restrict training to positions above the threshold.
+- **Coverage — "1 in N games"** (on the Map) — assuming you play your prep and opponents answer like players
+  at your rating, how often does each position appear? Finds the opponent moves you'll face at least once
+  every N games that your repertoire doesn't answer (*gaps*), positions where it's your move with nothing
+  prepared, and the positions worth knowing cold. A color's run measures each of its chapters too (another
+  chapter's answer to a move counts); a repertoire has its own. Optionally restrict training to positions
+  above the threshold.
 - **Games** — downloads your Lichess and Chess.com games (incrementally), and takes **over-the-board games** you
   enter (play the moves on a board, or paste PGN — a multi-game PGN is matched to your name) and checks each one against your
   repertoires: where *you* left your prep ("forgot prep"), where the *opponent* did (gaps), or where the
   line simply ended. Forgotten moves can be sent straight back into review; opponent surprises open the
   builder at that position so you can prepare an answer.
-- **Insights** — a 0–100 *mastery* score per move and per line, blending training accuracy, FSRS recall
-  and difficulty, and slips in real games. Lines are shown as a tree (weakest first), plus a list of your
-  trickiest moves; *Drill* practices any line or your weakest moves on demand.
+- **Weakest moves** (on the Map) — your learned moves ranked by strength band and, within one, by a blend
+  of training accuracy, FSRS recall and difficulty, and slips in real games; *Drill* practices any line or
+  your weakest moves on demand.
 
 - **Sync between devices** — optional: keep your phone and computer in step through a secret gist in your
   own GitHub account (see below).
