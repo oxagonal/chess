@@ -28,6 +28,7 @@ import { clocksAt, formatClock, formatMoveTime, moveTimes } from '../lib/clocks'
 import { MATERIAL_ROLES, materialBalance, type MaterialRole } from '../lib/material';
 import { Board, type Arrow } from '../components/Board';
 import { PhoneStudio } from '../components/PhoneStudio';
+import { EvalBar } from '../components/EvalBar';
 import { PositionTools } from '../components/PositionTools';
 import { MoveNote } from '../components/MoveNote';
 import { MoveList, type SideNode } from '../components/MoveList';
@@ -71,7 +72,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
   const [cursor, setCursor] = useState<number | null>(left ? left.cursor : (initialPly ?? null));
   const [flipped, setFlipped] = useState(left?.flipped ?? false);
   const [menu, setMenu] = useState<AnnotationTarget | null>(null);
-  /** Phones: the card about your prep, closed with its ✕ (↩ Prep opens it again). */
+  /** Phones: the card about your prep, closed with its ✕ until the board leaves that move. */
   const [prepClosed, setPrepClosed] = useState(false);
   const [layoutVersion, setLayoutVersion] = useState(0);
   /** Where the board is in a side line (`at` = moves into it), or null when it's on the game itself. */
@@ -567,9 +568,12 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
     // What the game did with your prep matters at one move — where it left your prep (or your prep
     // ran out) — so instead of a tab it pops up over the tabs when the board gets there.
     const prepPly = devPly ?? (r.kind === 'end-of-prep' ? r.bookPlies : undefined);
-    const prepCard = !inLine && !prepClosed && prepPly !== undefined && cur === prepPly && (
+    const atPrep = !inLine && prepPly !== undefined && cur === prepPly;
+    // Closed for this visit: coming back to the move shows it again.
+    if (prepClosed && !atPrep) setPrepClosed(false);
+    const prepCard = atPrep && !prepClosed && (
       <>
-        <button className="ghost small ps-popup-close" onClick={() => setPrepClosed(true)} aria-label="Close" title="Close (↩ Prep brings it back)">
+        <button className="ghost small ps-popup-close" onClick={() => setPrepClosed(true)} aria-label="Close" title="Close (it comes back when you return to this move)">
           ✕
         </button>
         <div className="ps-popup-body">{prepOutcome(true)}</div>
@@ -583,6 +587,8 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
           top={strip(opposite(orientation))}
           board={board}
           bottom={strip(orientation)}
+          // (the computer review's evaluation of a game position until Stockfish has one)
+          evalBar={<EvalBar fenKey={key} orientation={orientation} fallback={inLine ? undefined : (review?.evals[cur] ?? undefined)} />}
           tabs={[
             { id: 'moves', label: 'Moves', content: movesPanel },
             { id: 'review', label: 'Review', content: reviewPanel },
@@ -594,19 +600,6 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
           controls={
             <>
               {navButtons}
-              {prepPly !== undefined && (
-                <button
-                  className="small"
-                  onClick={() => {
-                    setSel(null);
-                    goTo(prepPly);
-                    setPrepClosed(false);
-                  }}
-                  title={devPly !== undefined ? 'Go to where the game left your prep' : 'Go to where your prep ended'}
-                >
-                  ↩ Prep
-                </button>
-              )}
               {/* The game itself: when and where it was played, and its links. */}
               <MoreMenu label="Game">
                 <div className="menu-note muted small keep-case">

@@ -897,7 +897,17 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
   /* Play from memory: no header or tabs, but the status box and the line need room */
   .phone-studio.one-tab { --ps-chrome: 52px; --ps-pane: 150px; }
   .phone-studio > * { flex: none; margin-inline: 8px; }
-  .phone-studio > .ps-board { align-self: center; margin-inline: 0; width: min(100cqw, max(180px, 100cqh - var(--ps-chrome) - var(--ps-pane))); }
+  /* The board (with the evaluation bar on its left when there's room); --ps-scale is set with the grip. */
+  .phone-studio > .ps-board-row { margin-inline: 0; display: flex; justify-content: center; gap: 6px; }
+  .ps-board { flex: none; width: calc(min(100cqw, max(180px, 100cqh - var(--ps-chrome) - var(--ps-pane))) * var(--ps-scale, 1)); }
+  .ps-evalbar { flex: none; width: 18px; display: flex; }
+  /* The grip under the board takes no room of its own: it sits in the gaps around it. */
+  .phone-studio > .ps-grip {
+    position: relative; z-index: 3; height: 16px; margin-block: -11px; display: flex; align-items: center; justify-content: center;
+    touch-action: none; cursor: ns-resize; -webkit-user-select: none; user-select: none;
+  }
+  .ps-grip > span { width: 38px; height: 4px; border-radius: 2px; background: var(--border); }
+  .ps-grip:active > span { background: var(--accent); }
   .phone-studio > .ps-pane { flex: 1 1 0; min-height: 0; position: relative; margin-inline: 0; }
   .ps-tab { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 8px 10px; }
   .ps-tab[hidden] { display: none; }
@@ -1037,3 +1047,14 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+
+/* Evaluation bar beside a board: White's share from White's side (bottom unless flipped). */
+.eval-bar { position: relative; flex: 1; display: flex; border-radius: 4px; overflow: hidden; background: #3a3734; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
+.eval-bar.white-below { flex-direction: column-reverse; }
+.eval-bar.white-above { flex-direction: column; }
+.eval-white { flex: none; background: #f0eee9; transition: height 0.35s ease; }
+.eval-score { position: absolute; left: 0; right: 0; text-align: center; font-size: 8.5px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
+.eval-bar.white-below .eval-score.near, .eval-bar.white-above .eval-score.near { bottom: 3px; }
+.eval-bar.white-below .eval-score.far, .eval-bar.white-above .eval-score.far { top: 3px; }
+.eval-score.white { color: #2a2825; }
+.eval-score.black { color: #eeebe6; }

@@ -17,6 +17,7 @@ const Studio = lazy(() => import('../components/Studio').then((m) => ({ default:
 import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import { Board } from '../components/Board';
 import { PhoneStudio } from '../components/PhoneStudio';
+import { EvalBar } from '../components/EvalBar';
 import { PositionTools } from '../components/PositionTools';
 import { RepertoireHome } from './RepertoireHome';
 import { ExplorerPanel } from '../components/ExplorerPanel';
@@ -747,6 +748,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
         className={`builder-phone ${zen ? 'zen' : ''}`}
         head={!zen && header}
         board={board}
+        evalBar={!zen && <EvalBar fenKey={key} orientation={orientation} />}
         tabs={
           zen
             ? [{ id: 'memory', label: 'Play from memory', content: <>{memoryPanel}{movesPanel}</> }]
