@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from './db/db';
+import { loadDueCount } from './db/training';
+import { useNow } from './hooks';
 import { useRoute, href, type Route } from './router';
 import { HomePage } from './pages/Home';
 import { RepertoirePage } from './pages/Repertoire';
@@ -67,19 +68,11 @@ function useLastGames(route: Route): string {
   return last;
 }
 
-function useNow(intervalMs = 30_000) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(t);
-  }, [intervalMs]);
-  return now;
-}
-
 export function App() {
   const route = useRoute();
   const now = useNow();
-  const due = useLiveQuery(() => db.cards.where('due').belowOrEqual(now).filter((c) => c.state !== 0).count(), [now]);
+  // What a review would actually have — not a due card of a move you've taken out of training.
+  const due = useLiveQuery(() => loadDueCount(now), [now]);
   const tab = TABS.find((t) => t.path === (route.path[0] ?? '')) ?? TABS[0];
   const Page = tab.page;
   const lastGames = useLastGames(route);

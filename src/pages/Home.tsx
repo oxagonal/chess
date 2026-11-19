@@ -2,11 +2,12 @@ import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { useSettings } from '../db/settings';
-import { useAllGraphs, useCards, useLearnedToday, useRecentGames, useRepertoires, startOfToday } from '../hooks';
+import { useAllGraphs, useCards, useLearnedToday, useNow, useRecentGames, useRepertoires, startOfToday } from '../hooks';
 import { rangeLabel } from '../lib/gameRange';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { analyzeGame, summarize } from '../lib/prep';
-import { isDue, isMature, isNew } from '../lib/srs';
+import { isMature, isNew } from '../lib/srs';
+import { loadTrainCounts, type TrainCounts } from '../db/training';
 import { Stat } from '../components/ui';
 import { href } from '../router';
 import { COLORS, colorName, useChaptersAndSets } from '../db/scopes';
@@ -24,6 +25,9 @@ export function HomePage() {
   const learnedToday = useLearnedToday();
   const reviewsToday = useLiveQuery(() => db.reviewLog.where('reviewedAt').aboveOrEqual(startOfToday()).count(), []);
   const coverageCount = useLiveQuery(() => db.coverage.count(), []);
+  // What Review and Learn would take (not a due card of a move you've taken out of training).
+  const now = useNow();
+  const toTrain = useLiveQuery(() => loadTrainCounts(now), [now]);
 
   const recent = useMemo(() => {
     if (!games || !graphs) return undefined;
@@ -31,12 +35,10 @@ export function HomePage() {
     return summarize(games, results);
   }, [games, graphs]);
 
-  if (!reps || !cards) return null;
-  const now = Date.now();
-  const due = cards.filter((c) => isDue(c, now)).length;
-  const fresh = cards.filter(isNew).length;
+  if (!reps || !cards || !toTrain) return null;
+  const { due, fresh } = toTrain.all;
   const mature = cards.filter(isMature).length;
-  const learned = cards.length - fresh;
+  const learned = cards.filter((c) => !isNew(c)).length;
   const newLeft = Math.max(0, settings.newPerDay - (learnedToday ?? 0));
 
   const steps = [
@@ -99,7 +101,7 @@ export function HomePage() {
         </div>
       )}
 
-      {reps.length > 0 && <RepertoireAtAGlance />}
+      {reps.length > 0 && <RepertoireAtAGlance toTrain={toTrain} />}
 
       <div className="grid2">
 
@@ -137,23 +139,22 @@ export function HomePage() {
 }
 
 /** Each color at a glance: how much you know well, what's due, and the chapters that need work. */
-function RepertoireAtAGlance() {
+function RepertoireAtAGlance({ toTrain }: { toTrain: Record<Color, TrainCounts> }) {
   const { chapters, collections } = useChaptersAndSets();
   if (!chapters || !collections) return null;
   const colors = COLORS.filter((c) => chapters.some((ch) => ch.color === c));
   return (
     <div className="grid2">
       {colors.map((c) => (
-        <ColorGlance key={c} color={c} chapters={chapters} collections={collections} />
+        <ColorGlance key={c} color={c} chapters={chapters} collections={collections} due={toTrain[c].due} />
       ))}
     </div>
   );
 }
 
-function ColorGlance({ color, chapters, collections }: { color: Color; chapters: Chapter[]; collections: Collection[] }) {
+function ColorGlance({ color, chapters, collections, due }: { color: Color; chapters: Chapter[]; collections: Collection[]; due: number }) {
   const { maps, allLines, overall, cov } = useMapData(color, chapters, collections);
   if (!maps) return <div className="panel" />;
-  const due = allLines.filter((l) => l.due).length;
   const count = chapters.filter((ch) => ch.color === color).length;
   const weakest = maps
     .filter((m) => m.lines.length)

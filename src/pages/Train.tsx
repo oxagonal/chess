@@ -13,16 +13,17 @@ import { PHONE_QUERY, useCards, useChapterGraphs, useMediaQuery, startOfToday } 
 import { ChapterTree } from '../components/ChapterTree';
 import { LineCard } from '../components/LineCard';
 import { mapLine } from '../lib/map';
-import { COLORS, colorName, loadScopeGraph, scopeIdsFor, scopeOf, repertoireScopeId, useChaptersAndSets, type Scope } from '../db/scopes';
-import { cardsOf, chapterOfMoveId, sourcesOf, trainable, unionGraph } from '../lib/chapters';
+import { COLORS, colorName, loadScopeGraph, scopeIdsFor, repertoireScopeId, useChaptersAndSets, type Scope } from '../db/scopes';
+import { coverageFor, trainCounts, trainedCards } from '../db/training';
+import { cardsOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
 import { href, navigate } from '../router';
 import { compactLine, formatLine, playUci, startPos } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
-import { asQuiz, filterByProbability, moveOrders, orderCards, planLine, type PlannedStep } from '../lib/trainer';
+import { asQuiz, moveOrders, orderCards, planLine, type PlannedStep } from '../lib/trainer';
 import { Builder } from './Repertoire';
 import { computeInsights, movesForLine, movesUnder } from '../lib/insights';
 import { formatInterval, isDue, isNew, Rating } from '../lib/srs';
-import type { CoverageResult, RepMove, ReviewCard } from '../lib/types';
+import type { RepMove, ReviewCard } from '../lib/types';
 
 /** review = due moves, learn = new moves, drill = extra practice of a chosen line / your weakest moves. */
 type SessionMode = 'review' | 'learn' | 'drill';
@@ -48,15 +49,6 @@ export function TrainPage({ route }: PageProps) {
 
 /* ---------------------------------------------------------------- chooser */
 
-/**
- * The coverage run that decides which positions are likely enough to train (Settings → only likely
- * positions): the scope's own, else its color's — a chapter rarely has a run of its own, and how
- * often a position comes up doesn't depend on which chapter it's in.
- */
-function coverageFor(scope: Scope, runs: readonly CoverageResult[] | undefined): CoverageResult | undefined {
-  return runs?.find((r) => r.repId === scope.id) ?? runs?.find((r) => r.repId === scope.color);
-}
-
 function TrainChooser() {
   const { chapters, collections } = useChaptersAndSets();
   const moves = useLiveQuery(() => db.moves.toArray(), []);
@@ -70,27 +62,11 @@ function TrainChooser() {
   if (!chapters.length) return <Empty>Create a chapter first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
 
   const newLeft = Math.max(0, settings.newPerDay - (learnedToday ?? 0));
-  const countsFor = (scopeId: string) => {
-    const rc = scopeIdsFor(scopeId).flatMap((id) => {
-      const scope = scopeOf(id, chapters, collections, settings);
-      if (!scope) return [];
-      const ids = new Set(scope.chapterIds);
-      let mine = cardsOf(unionGraph(scope.color, trainable(scope.color, moves.filter((m) => ids.has(m.repId)))), cards);
-      const cov = settings.trainOnlyLikely ? coverageFor(scope, coverage) : undefined;
-      if (cov) mine = filterByProbability(mine, cov.probs, cov.threshold);
-      return mine;
-    });
-    return { due: rc.filter((c) => isDue(c, now)).length, fresh: rc.filter(isNew).length };
-  };
+  const data = { chapters, collections, moves, cards, settings, runs: coverage };
+  const countsFor = (scopeId: string) => trainCounts(scopeId, data, now);
   const all = countsFor('all');
   /** Due and new across some chapters of a color (a shared move counted once). */
-  const countsOfChapters = (color: 'white' | 'black', ids: string[]) => {
-    const set = new Set(ids);
-    let mine = cardsOf(unionGraph(color, trainable(color, moves.filter((m) => set.has(m.repId)))), cards);
-    const cov = settings.trainOnlyLikely ? coverage?.find((r) => r.repId === color) : undefined;
-    if (cov) mine = filterByProbability(mine, cov.probs, cov.threshold);
-    return { due: mine.filter((c) => isDue(c, now)).length, fresh: mine.filter(isNew).length };
-  };
+  const countsOfChapters = (color: 'white' | 'black', ids: string[]) => trainCounts(color, data, now, ids);
   const row = (scopeId: string, title: ReactNode, color?: 'white' | 'black', sub?: string) => {
     const c = countsFor(scopeId);
     return (
@@ -246,14 +222,14 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
         const { scope: rep, graph } = loaded;
         reps.push(rep);
         graphs.set(rep.id, graph);
-        const cards = cardsOf(graph, await db.cards.where('color').equals(rep.color).toArray());
-        // A line you picked yourself trains every move in it, learned or not.
-        // Drilling a chosen line or move takes every move in it, learned or not (drilling one counts as
-        // learning it); the weakest-moves drill only has learned moves to choose from.
-        let pool = cards.filter((c) => (mode === 'review' ? isDue(c, now) : mode === 'learn' ? isNew(c) : at || under ? true : !isNew(c)));
+        const colorCards = await db.cards.where('color').equals(rep.color).toArray();
+        const cards = cardsOf(graph, colorCards);
         const cov = coverageFor(rep, runs);
         if (cov) probs.set(rep.id, cov.probs);
         if (mode === 'drill') {
+          // Drilling a chosen line or move takes every move in it, learned or not (drilling one counts as
+          // learning it); the weakest-moves drill only has learned moves to choose from.
+          let pool = cards.filter((c) => (at || under ? true : !isNew(c)));
           if (at) {
             const ids = movesForLine(graph, at);
             pool = pool.filter((c) => ids.has(c.id));
@@ -270,10 +246,9 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
           queue.push(...orderCards(pool, graph, cov?.probs));
           continue;
         }
-        if (s.trainOnlyLikely) {
-          if (cov) pool = filterByProbability(pool, cov.probs, cov.threshold);
-          else notes.push(`No Coverage run for ${colorName(rep.color)} yet, so all of “${rep.name}” is included.`);
-        }
+        // The same cards the due and new counts everywhere are taken from.
+        const pool = trainedCards(rep, graph, colorCards, s, runs).filter((c) => (mode === 'review' ? isDue(c, now) : isNew(c)));
+        if (s.trainOnlyLikely && !cov) notes.push(`No Coverage run for ${colorName(rep.color)} yet, so all of “${rep.name}” is included.`);
         queue.push(...orderCards(pool, graph, cov?.probs));
       }
       let finalQueue = queue;

@@ -62,7 +62,13 @@ async function movesOf(chapterIds: string[]): Promise<RepMove[]> {
 export async function loadScopeGraph(id: string): Promise<{ scope: Scope; graph: RepGraph } | undefined> {
   const scope = await loadScope(id);
   if (!scope) return undefined;
-  return { scope, graph: unionGraph(scope.color, trainable(scope.color, await movesOf(scope.chapterIds)), scope.id) };
+  return { scope, graph: trainingGraph(scope, await movesOf(scope.chapterIds)) };
+}
+
+/** A scope's graph for training: the union of its chapters' trained moves (`moves` may hold others). */
+export function trainingGraph(scope: Scope, moves: readonly RepMove[]): RepGraph {
+  const ids = new Set(scope.chapterIds);
+  return unionGraph(scope.color, trainable(scope.color, moves.filter((m) => ids.has(m.repId))), scope.id);
 }
 
 /** Set a scope's coverage target (the colors' live in Settings, a chapter's or repertoire's on itself). */
