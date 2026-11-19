@@ -127,6 +127,16 @@ export function agoLabel(ts: number, now = Date.now()): string {
   return `${years} year${years === 1 ? '' : 's'} ago`;
 }
 
+/** agoLabel for narrow columns: "today", "3d", "5w", "2mo", "1y". */
+export function agoShort(ts: number, now = Date.now()): string {
+  const days = Math.round((new Date(now).setHours(0, 0, 0, 0) - new Date(ts).setHours(0, 0, 0, 0)) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days < 14) return `${days}d`;
+  if (days < 61) return `${Math.floor(days / 7)}w`;
+  if (days < 365) return `${Math.floor(days / 30.44)}mo`;
+  return `${Math.floor(days / 365.25)}y`;
+}
+
 export function ProgressBar({ value }: { value: number }) {
   return (
     <div className="progress">

@@ -10,7 +10,7 @@ import { opposite, turnOfKey, type Color } from '../lib/chess';
 import { PlayersBar, filterBySource, usePlayerGames, useScoutPlayerId, type ScoutSource } from './PlayersScout';
 import { useRecentGames } from '../hooks';
 import { GameRangeSelect } from './GameRangeSelect';
-import { TableWrap, WdlBar, agoLabel, fmtDate, shortCount } from './ui';
+import { TableWrap, WdlBar, agoLabel, agoShort, fmtDate, shortCount } from './ui';
 import { oneInNumber } from '../lib/coverage';
 import { cloudMoveEvals, engineLinesFor, evalScore, formatEval, onEngineLines, type EngineLine, type MoveEval } from '../services/engine';
 import { href } from '../router';
@@ -375,7 +375,12 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                 </th>
               )}
               {cols.has('result') && <th className="result">Result</th>}
-              {showLast && <th className="nowrap">Last played</th>}
+              {showLast && (
+                <th className="nowrap" title="When the move was last played">
+                  <span className="hide-sm">Last played</span>
+                  <span className="show-sm">Last</span>
+                </th>
+              )}
               {showPrepared && (
                 <th className="num" title="Prepared from the position after the move: the share of games reaching it that stay in your prep">
                   Prepared
@@ -440,7 +445,14 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   )}
                   {showLast && (
                     <td className="small nowrap" title={stat?.lastPlayed ? fmtDate(stat.lastPlayed) : undefined}>
-                      {stat?.lastPlayed ? agoLabel(stat.lastPlayed) : <span className="muted">—</span>}
+                      {stat?.lastPlayed ? (
+                        <>
+                          <span className="hide-sm">{agoLabel(stat.lastPlayed)}</span>
+                          <span className="show-sm">{agoShort(stat.lastPlayed)}</span>
+                        </>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
                     </td>
                   )}
                   {showPrepared && <td className="num">{rep?.prepared}</td>}

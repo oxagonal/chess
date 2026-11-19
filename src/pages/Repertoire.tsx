@@ -754,16 +754,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
                 { id: 'moves', label: 'Moves', content: movesPanel },
                 { id: 'explorer', label: 'Explorer', content: explorer },
                 { id: 'engine', label: 'Engine', content: <>{positionTools}{engine}</> },
-                {
-                  id: 'coverage',
-                  label: 'Coverage',
-                  content: (
-                    <>
-                      {coverageBox}
-                      <ChaptersPanel color={rep.color} line={line.slice(0, cursor).map((m) => m.san)} current={colorMode ? undefined : rep.id} />
-                    </>
-                  ),
-                },
+                // (Chapters: the switcher on the chapter's name, at the top.)
+                { id: 'coverage', label: 'Coverage', content: coverageBox },
               ]
         }
         controls={
