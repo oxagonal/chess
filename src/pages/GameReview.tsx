@@ -38,7 +38,7 @@ import { GameReviewPanel } from '../components/GameReviewPanel';
 import { TakeawaysPanel } from '../components/TakeawaysPanel';
 import { AnnotationMenu, type AnnotationTarget } from '../components/AnnotationMenu';
 import { annotateProps } from '../components/NotePopover';
-import { Empty, fmtDate } from '../components/ui';
+import { Empty, MoreMenu, fmtDate } from '../components/ui';
 import type { StudioPanelDef } from '../components/Studio';
 import { href, navigate } from '../router';
 import type { GameSource, StoredGame } from '../lib/types';
@@ -71,6 +71,8 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
   const [cursor, setCursor] = useState<number | null>(left ? left.cursor : (initialPly ?? null));
   const [flipped, setFlipped] = useState(left?.flipped ?? false);
   const [menu, setMenu] = useState<AnnotationTarget | null>(null);
+  /** Phones: the card about your prep, closed with its ✕ (↩ Prep opens it again). */
+  const [prepClosed, setPrepClosed] = useState(false);
   const [layoutVersion, setLayoutVersion] = useState(0);
   /** Where the board is in a side line (`at` = moves into it), or null when it's on the game itself. */
   const [sel, setSel] = useState<{ id: string; at: number } | null>(left?.sel ?? null);
@@ -393,24 +395,10 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
     </div>
   );
 
-  const gamePanel = (
-    <div className="panel col review-game" style={{ gap: 10 }}>
-      <div>
-        <div className="keep-case review-players">
-          <b>{game.white}</b> {game.whiteElo ? <span className="muted">({game.whiteElo})</span> : null} – <b>{game.black}</b>{' '}
-          {game.blackElo ? <span className="muted">({game.blackElo})</span> : null}
-        </div>
-        <div className="muted small">
-          {fmtDate(game.playedAt)} · {sourceName(game.source)} {game.timeClass}
-          {game.event ? ` · ${game.event}` : ''} · {game.result}
-          {game.opening ? ` · ${game.opening}` : ''}{' '}
-          {game.url && (
-            <a href={game.url} target="_blank" rel="noreferrer">
-              open on site ↗
-            </a>
-          )}
-        </div>
-      </div>
+  // Where the game left your prep (or your prep ended), and the note on your prepared move: in the
+  // Game panel — and on a phone, popping up when the board reaches that move.
+  const prepOutcome = (popup = false) => (
+    <>
       <div className={`feedback ${r.kind === 'you-deviated' ? 'bad' : r.kind === 'opponent-deviated' ? 'hint' : 'good'}`}>
         <b>{PREP_LABEL[r.kind]}</b>
         <div style={{ marginTop: 4 }}>
@@ -457,7 +445,33 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
       </div>
       {r.kind === 'you-deviated' &&
         r.key &&
-        graph?.childrenOf(r.key).filter((m) => m.mine).map((m) => <MoveNote key={m.id} id={sourcesOf(m)[0]} san={m.san} label="(your prep)" compact prompt />)}
+        graph
+          ?.childrenOf(r.key)
+          .filter((m) => m.mine)
+          // In the phone's pop-up the box doesn't grab the cursor: that would bring up the keyboard
+          // every time the board passes the move.
+          .map((m) => <MoveNote key={m.id} id={sourcesOf(m)[0]} san={m.san} label="(your prep)" compact prompt autoFocus={popup ? false : undefined} />)}
+    </>
+  );
+  const gamePanel = (
+    <div className="panel col review-game" style={{ gap: 10 }}>
+      <div>
+        <div className="keep-case review-players">
+          <b>{game.white}</b> {game.whiteElo ? <span className="muted">({game.whiteElo})</span> : null} – <b>{game.black}</b>{' '}
+          {game.blackElo ? <span className="muted">({game.blackElo})</span> : null}
+        </div>
+        <div className="muted small">
+          {fmtDate(game.playedAt)} · {sourceName(game.source)} {game.timeClass}
+          {game.event ? ` · ${game.event}` : ''} · {game.result}
+          {game.opening ? ` · ${game.opening}` : ''}{' '}
+          {game.url && (
+            <a href={game.url} target="_blank" rel="noreferrer">
+              open on site ↗
+            </a>
+          )}
+        </div>
+      </div>
+      {prepOutcome()}
       <div className="row">
         <a href={href('games')} className="btn small">
           ← All games
@@ -550,6 +564,17 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
   // Phones: the players and the board stay on screen; the moves, computer review, Stockfish,
   // explorer, your takeaways and the game's prep are tabs under it, the move buttons at the bottom.
   if (phone) {
+    // What the game did with your prep matters at one move — where it left your prep (or your prep
+    // ran out) — so instead of a tab it pops up over the tabs when the board gets there.
+    const prepPly = devPly ?? (r.kind === 'end-of-prep' ? r.bookPlies : undefined);
+    const prepCard = !inLine && !prepClosed && prepPly !== undefined && cur === prepPly && (
+      <>
+        <button className="ghost small ps-popup-close" onClick={() => setPrepClosed(true)} aria-label="Close" title="Close (↩ Prep brings it back)">
+          ✕
+        </button>
+        <div className="ps-popup-body">{prepOutcome(true)}</div>
+      </>
+    );
     return (
       <>
         <PhoneStudio
@@ -564,16 +589,49 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
             { id: 'engine', label: 'Engine', content: <><PositionTools pos={pos} ply={plyHere} orientation={orientation} />{engine}</> },
             { id: 'explorer', label: 'Explorer', content: explorer },
             { id: 'notes', label: 'Notes', mark: game.reviewedAt ? <span className="ps-mark" title="Reviewed">✓</span> : undefined, content: takeaways },
-            { id: 'game', label: 'Game', content: <>{gamePanel}{chapters}</> },
           ]}
+          popup={prepCard || undefined}
           controls={
             <>
               {navButtons}
-              {devPly !== undefined && (
-                <button className="small" onClick={() => goTo(devPly)} title="Go to where you left your prep">
+              {prepPly !== undefined && (
+                <button
+                  className="small"
+                  onClick={() => {
+                    setSel(null);
+                    goTo(prepPly);
+                    setPrepClosed(false);
+                  }}
+                  title={devPly !== undefined ? 'Go to where the game left your prep' : 'Go to where your prep ended'}
+                >
                   ↩ Prep
                 </button>
               )}
+              {/* The game itself: when and where it was played, and its links. */}
+              <MoreMenu label="Game">
+                <div className="menu-note muted small keep-case">
+                  {fmtDate(game.playedAt)} · {sourceName(game.source)} {game.timeClass}
+                  {game.event ? ` · ${game.event}` : ''} · {game.result}
+                  {game.opening ? ` · ${game.opening}` : ''}
+                </div>
+                {game.url && <button onClick={() => window.open(game.url, '_blank', 'noreferrer')}>Open on {sourceName(game.source)} ↗</button>}
+                {game.source === 'otb' && (
+                  <>
+                    <button onClick={() => navigate(`games/edit/${encodeURIComponent(game.id)}`)}>Edit game</button>
+                    <button
+                      className="danger"
+                      onClick={async () => {
+                        if (!confirm('Delete this game?')) return;
+                        await db.games.delete(game.id);
+                        navigate('games');
+                      }}
+                    >
+                      Delete game…
+                    </button>
+                  </>
+                )}
+                <button onClick={() => navigate('games')}>All games</button>
+              </MoreMenu>
             </>
           }
         />

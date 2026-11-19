@@ -12,7 +12,7 @@ export function MoveNote({
   san,
   label,
   compact = false,
-  autoFocus = false,
+  autoFocus,
   prompt = false,
   inline = false,
 }: {
@@ -21,6 +21,7 @@ export function MoveNote({
   /** Shown after the move, e.g. "(missed)". */
   label?: string;
   compact?: boolean;
+  /** Put the cursor in the box (by default: when prompting for a note that isn't written yet). */
   autoFocus?: boolean;
   /** You just got this move wrong: if it has no note yet, ask for one and put the cursor in the box. */
   prompt?: boolean;
@@ -99,7 +100,7 @@ export function MoveNote({
       <textarea
         rows={compact ? 2 : 3}
         value={text ?? stored}
-        autoFocus={autoFocus || (prompt && !stored)}
+        autoFocus={autoFocus ?? (prompt && !stored)}
         placeholder={asking ? `Why ${san}? The idea, the plan, the trap…` : `Note on ${san}`}
         onChange={(e) => setText(e.target.value)}
         onBlur={save}

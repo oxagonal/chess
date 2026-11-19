@@ -284,6 +284,17 @@ export function oneInNumber(prob: number): string {
   return Math.round(n).toLocaleString();
 }
 
+const compactN = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+
+/** oneInNumber kept short like a count of games: "2.5", "142", "1.2K", "14.8K", "1.4M". */
+export function oneInShort(prob: number): string {
+  if (prob <= 0) return '—';
+  const n = 1 / prob;
+  if (n < 1.05) return '1';
+  if (n < 10) return n.toFixed(1).replace(/\.0$/, '');
+  return compactN.format(Math.round(n));
+}
+
 export function pct(x: number, digits = 1): string {
   return `${(x * 100).toFixed(digits)}%`;
 }

@@ -925,6 +925,17 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
   .ps-tabs button:hover:not(:disabled) { background: none; color: var(--text); }
   .ps-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
   .ps-mark { color: var(--good); font-weight: 800; }
+  /* Over the tabs, at the move it's about (e.g. where the game left your prep). */
+  .ps-popup {
+    position: absolute; z-index: 6; top: 4px; left: 8px; right: 8px; max-height: calc(100% - 8px); display: flex;
+    border-radius: 10px; background: var(--bg2); border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  }
+  .ps-popup-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 6px; }
+  .ps-popup .feedback { margin: 0; padding-right: 36px; }
+  .ps-popup .movenote { margin-top: 6px; }
+  .ps-popup-close { position: absolute; top: 8px; right: 8px; z-index: 1; }
+  /* A menu in the bottom row opens upwards. */
+  .ps-controls .menu-pop { top: auto; bottom: calc(100% + 6px); }
   /* The move buttons: one row of wide tap targets under your thumb. */
   .ps-controls { display: flex; gap: 5px; align-items: center; }
   .ps-controls > button { flex: 1 1 0; justify-content: center; min-height: 40px; padding: 0 4px; font-size: 15px; }
@@ -941,6 +952,8 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
   .phone-studio .moves-head { flex-wrap: nowrap; gap: 5px; overflow-x: auto; scrollbar-width: none; }
   .phone-studio .moves-head::-webkit-scrollbar { display: none; }
   .phone-studio .moves-head > * { flex: none; }
+  /* The builder's actions (+ Add line…) stay at the top of the tab while the moves scroll under them. */
+  .ps-tab > .moves-panel > .moves-head { position: sticky; top: 0; z-index: 2; margin: 0 -8px 6px; padding: 4px 8px; background: var(--bg); }
   .phone-studio .moves-head > h3, .phone-studio .moves-head > .moves-opening, .phone-studio .moves-head > .spacer { display: none; }
   .phone-studio .review-moves .moves-head { display: none; }
   .phone-studio .movelist2 { grid-template-columns: 30px 1fr 1fr; font-size: 13.5px; }

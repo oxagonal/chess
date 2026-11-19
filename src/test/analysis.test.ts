@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RepGraph } from '../lib/graph';
 import { movesFromLines } from '../lib/lines';
-import { computeCoverage, oneIn, likelyPositions } from '../lib/coverage';
+import { computeCoverage, oneIn, oneInShort, likelyPositions } from '../lib/coverage';
 import { analyzeGame, summarize } from '../lib/prep';
 import { parseLichessGame } from '../lib/importers/lichess';
 import { parseChessComGame, archiveMonthIndex } from '../lib/importers/chesscom';
@@ -18,6 +18,9 @@ const stat = (moves: [string, string, number][]): PositionStats => {
 };
 
 describe('coverage (1 in N)', () => {
+  it('keeps 1 in N short like a count of games', () => {
+    expect([1, 0.4, 1 / 142, 1 / 1234, 1 / 14800, 1 / 1_400_000].map(oneInShort)).toEqual(['1', '2.5', '142', '1.2K', '14.8K', '1.4M']);
+  });
   // Black repertoire vs 1.e4 / 1.d4
   const moves = movesFromLines('b', 'black', ['e4 c5 Nf3 d6', 'e4 c5 Nc3 Nc6', 'd4 Nf6']);
   const g = new RepGraph('black', moves);

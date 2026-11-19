@@ -27,6 +27,7 @@ export function PhoneStudio({
   bottom,
   tabs,
   controls,
+  popup,
   className = '',
 }: {
   /** Which page (for remembering its tab). */
@@ -40,6 +41,8 @@ export function PhoneStudio({
   tabs: PhoneTab[];
   /** The bottom row: the move buttons. */
   controls: ReactNode;
+  /** Something that matters at the move you're on: shown over the tabs (never the board). */
+  popup?: ReactNode;
   className?: string;
 }) {
   const storeKey = `chess-prep:phoneTab:${page}`;
@@ -88,6 +91,11 @@ export function PhoneStudio({
             {t.content}
           </div>
         ))}
+        {popup && (
+          <div className="ps-popup" role="dialog">
+            {popup}
+          </div>
+        )}
       </div>
       <div className="ps-controls">{controls}</div>
     </div>

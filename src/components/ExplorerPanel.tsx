@@ -11,7 +11,7 @@ import { PlayersBar, filterBySource, usePlayerGames, useScoutPlayerId, type Scou
 import { useRecentGames } from '../hooks';
 import { GameRangeSelect } from './GameRangeSelect';
 import { TableWrap, WdlBar, agoLabel, agoShort, fmtDate, shortCount } from './ui';
-import { oneInNumber } from '../lib/coverage';
+import { oneIn, oneInShort } from '../lib/coverage';
 import { cloudMoveEvals, engineLinesFor, evalScore, formatEval, onEngineLines, type EngineLine, type MoveEval } from '../services/engine';
 import { href } from '../router';
 
@@ -419,7 +419,11 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                     </td>
                   )}
                   {cols.has('share') && <td className="num">{stat && total ? ((n / total) * 100).toFixed(1) : '—'}</td>}
-                  {showReach && <td className="num">{stat && total ? <b>{n ? oneInNumber((reachHere! * n) / total) : 'never'}</b> : '—'}</td>}
+                  {showReach && (
+                    <td className="num" title={stat && total && n ? `${oneIn((reachHere! * n) / total)} games` : undefined}>
+                      {stat && total ? <b>{n ? oneInShort((reachHere! * n) / total) : 'never'}</b> : '—'}
+                    </td>
+                  )}
                   {showEval && (
                     <td
                       className="num"
