@@ -39,23 +39,22 @@ export function EnginePanel({
   const depth = settings[k.depth];
   const on = settings.loaded && enabled;
   const lineCount = Math.min(5, Math.max(1, settings[k.lines]));
-  const [lines, setLines] = useState<EngineLine[]>([]);
-  const [status, setStatus] = useState<AnalysisStatus | undefined>();
+  // What Stockfish found, and in which position: after a move the box is empty until the new position's
+  // lines come — never, for a frame, the last position's lines against the new board.
+  const [found, setFound] = useState<{ key: string; lines: EngineLine[]; status: AnalysisStatus }>();
+  const lines = found?.key === fenKey ? found.lines : [];
+  const status = found?.key === fenKey ? found.status : undefined;
   const [showOptions, setShowOptions] = useState(false);
 
   useEffect(() => {
-    setLines([]);
-    setStatus(undefined);
+    setFound(undefined);
     if (!on) return;
     const pos = posFromFen(fenKey);
     if (!pos || pos.isEnd()) return;
     let stop: (() => void) | undefined;
     // Small delay so stepping quickly through a line doesn't start (and abort) a search per move.
     const t = setTimeout(() => {
-      stop = analysePosition(fenKey, depth, lineCount, (l, s) => {
-        setLines(l);
-        setStatus(s);
-      });
+      stop = analysePosition(fenKey, depth, lineCount, (l, s) => setFound({ key: fenKey, lines: l, status: s }));
     }, 200);
     return () => {
       clearTimeout(t);
@@ -118,25 +117,32 @@ export function EnginePanel({
       </span>
     </div>
   );
-  const linesList =
-    on &&
-    (over ? (
-      <div className="muted small">Game over in this position.</div>
-    ) : !lines.length ? (
-      atTop ? null : <div className="muted small">Thinking…</div>
-    ) : (
-      <div className="engine-lines">
-        {lines.map((l, i) => {
-          const sans = toSan(l.moves);
+  // Always as many rows as lines were asked for — empty ones while Stockfish thinks, or when it finds
+  // fewer (few legal moves, a short cloud answer) — so the box keeps its height as you step through
+  // moves and nothing sized around it (on a phone, the board) jumps.
+  // (At the top the head row already says so.)
+  const note = atTop ? '' : over ? 'Game over in this position.' : !lines.length ? 'Thinking…' : '';
+  const linesList = on && (
+    <div className="engine-lines">
+      {Array.from({ length: lineCount }, (_, i) => {
+        const l = over ? undefined : lines[i];
+        if (!l)
           return (
-            <button key={i} className="engine-line" onClick={() => sans[0] && onPlay?.(sans[0])} title={onPlay && sans[0] ? `Play ${sans[0]}` : undefined}>
-              <span className={`engine-line-eval ${(l.eval.mate ?? l.eval.cp ?? 0) < 0 ? 'black' : 'white'}`}>{formatEval(l.eval)}</span>
-              <span className="engine-line-moves">{formatLine(sans, ply)}</span>
-            </button>
+            <div key={i} className="engine-line empty" aria-hidden={i === 0 && note ? undefined : true}>
+              <span className="engine-line-eval">{' '}</span>
+              <span className="engine-line-moves">{(i === 0 && note) || '\u00a0'}</span>
+            </div>
           );
-        })}
-      </div>
-    ));
+        const sans = toSan(l.moves);
+        return (
+          <button key={i} className="engine-line" onClick={() => sans[0] && onPlay?.(sans[0])} title={onPlay && sans[0] ? `Play ${sans[0]}` : undefined}>
+            <span className={`engine-line-eval ${(l.eval.mate ?? l.eval.cp ?? 0) < 0 ? 'black' : 'white'}`}>{formatEval(l.eval)}</span>
+            <span className="engine-line-moves">{formatLine(sans, ply) || '\u00a0'}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 
   if (atTop)
     return (
@@ -191,9 +197,14 @@ export function EnginePanel({
         </button>
       </div>
       {optionsRow}
-      {on && best && (
-        <div className="evalbar" title={`White's winning chances: ${Math.round(winChance(best))}%`}>
-          <div style={{ width: `${winChance(best)}%` }} />
+      {/* Kept (hidden) while Stockfish thinks, so the box doesn't change height. */}
+      {on && (
+        <div
+          className="evalbar"
+          style={best ? undefined : { visibility: 'hidden' }}
+          title={best ? `White's winning chances: ${Math.round(winChance(best))}%` : undefined}
+        >
+          <div style={{ width: `${best ? winChance(best) : 50}%` }} />
         </div>
       )}
       {linesList}

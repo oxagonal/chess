@@ -300,6 +300,8 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .engine h3 { font-size: 11px; }
 .engine .engine-eval { font-size: 15px; padding: 0 6px; border-radius: 5px; line-height: 1.5; }
 .engine > .row { gap: 6px; }
+/* As tall as the evaluation badge, so the header doesn't grow when an evaluation comes in. */
+.panel.engine > .row:first-child { min-height: 23px; }
 .engine > .row button.small { padding: 2px 7px; }
 .engine .engine-eval.white { background: #e8e6e1; color: #161512; }
 .engine .engine-eval.black { background: #0c0b0a; color: #e8e6e1; border: 1px solid var(--border-soft); }
@@ -308,6 +310,8 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .engine-lines { display: flex; flex-direction: column; gap: 0; }
 .engine-line { display: flex; gap: 10px; align-items: baseline; justify-content: flex-start; text-align: left; background: transparent; border: none; padding: 2px 4px; border-radius: 4px; font-weight: 400; font-size: 13px; line-height: 1.45; white-space: nowrap; overflow: hidden; }
 .engine-line:hover { background: var(--panel2); }
+/* A row kept free (Stockfish still thinking, or fewer lines than asked for) so the box doesn't change height. */
+.engine-line.empty, .engine-line.empty:hover { background: transparent; cursor: default; }
 .engine-line-eval { flex: 0 0 auto; min-width: 44px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 12px; padding: 0 5px; border-radius: 4px; }
 /* Each line's score matches the main badge: light when White is better, dark when Black is. */
 .engine-line-eval.white { background: #e8e6e1; color: #161512; }
