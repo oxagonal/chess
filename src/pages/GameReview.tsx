@@ -29,7 +29,7 @@ import { MATERIAL_ROLES, materialBalance, type MaterialRole } from '../lib/mater
 import { Board, type Arrow } from '../components/Board';
 import { PhoneStudio } from '../components/PhoneStudio';
 import { EvalBar } from '../components/EvalBar';
-import { PositionTools } from '../components/PositionTools';
+import { PositionMenuItems, PositionTools } from '../components/PositionTools';
 import { MoveNote } from '../components/MoveNote';
 import { MoveList, type SideNode } from '../components/MoveList';
 import { EnginePanel } from '../components/EnginePanel';
@@ -589,10 +589,11 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
           bottom={strip(orientation)}
           // (the computer review's evaluation of a game position until Stockfish has one)
           evalBar={<EvalBar fenKey={key} orientation={orientation} fallback={inLine ? undefined : (review?.evals[cur] ?? undefined)} />}
+          // Stockfish at the top, like Chess.com
+          engine={<EnginePanel top fenKey={key} ply={plyHere} onPlay={(san) => play({ san })} />}
           tabs={[
             { id: 'moves', label: 'Moves', content: movesPanel },
             { id: 'review', label: 'Review', content: reviewPanel },
-            { id: 'engine', label: 'Engine', content: <><PositionTools pos={pos} ply={plyHere} orientation={orientation} />{engine}</> },
             { id: 'explorer', label: 'Explorer', content: explorer },
             { id: 'notes', label: 'Notes', mark: game.reviewedAt ? <span className="ps-mark" title="Reviewed">✓</span> : undefined, content: takeaways },
           ]}
@@ -623,6 +624,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
                     </button>
                   </>
                 )}
+                <PositionMenuItems pos={pos} ply={plyHere} orientation={orientation} />
                 <button onClick={() => navigate('games')}>All games</button>
               </MoreMenu>
             </>

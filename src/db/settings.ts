@@ -67,6 +67,10 @@ export interface AppSettings {
   engineDepth: number;
   /** How many best lines the Stockfish box shows (1–5). */
   engineLines: number;
+  /** The same three on phones, set apart (fewer lines fit above a phone's board). */
+  phoneEngineEnabled: boolean;
+  phoneEngineDepth: number;
+  phoneEngineLines: number;
   /** Builder moves panel: a scoresheet with side lines, or inline notation (one block of text) — like a Lichess study. */
   builderNav: 'scoresheet' | 'inline';
   /** Which of your games count everywhere (Games, Insights, Home, "My games" explorer, coverage from your opponents). */
@@ -117,6 +121,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   engineEnabled: true,
   engineDepth: 18,
   engineLines: 3,
+  phoneEngineEnabled: true,
+  phoneEngineDepth: 18,
+  phoneEngineLines: 2,
   builderNav: 'scoresheet',
   gameRange: '1m',
   opponentRange: '1y',

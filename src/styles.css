@@ -874,9 +874,10 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 /* PhoneStudio (like the Lichess and Chess.com apps' analysis boards): the board stays on screen,
    everything else lives in tabs under it — each scrolling in its own box — and the move buttons sit
    at the bottom; the page itself never scrolls. The header bar gives up its room (the app's tab bar
-   stays). The board is as wide as the screen, or as tall as what's left after the rows around it
-   (--ps-chrome) and the smallest tab box (--ps-pane): it depends only on the screen, so it never
-   moves. Text and buttons are a size smaller than elsewhere. */
+   stays). Stockfish sits at the top, like Chess.com's. The board is as wide as the screen, or as tall
+   as what's left after the rows around it and the smallest tab box (measured: --ps-fit), times the
+   size chosen with the grip (--ps-scale) — it doesn't move as you play. Text and buttons are a size
+   smaller than elsewhere. */
 .memory-status { margin-top: 8px; }
 .menu-note { padding: 6px 11px 4px; border-top: 1px solid var(--border-soft); margin-top: 3px; }
 /* The current move stays readable when it isn't saved yet (grey italic elsewhere). */
@@ -886,21 +887,16 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
   .app:has(.phone-studio) .topbar > :not(.nav) { display: none; }
   .main:has(> .phone-studio) { padding: 6px 0 calc(62px + env(safe-area-inset-bottom)); }
   .phone-studio {
-    /* builder: header, tabs, buttons and gaps */
-    --ps-chrome: 130px;
-    --ps-pane: 140px;
     height: calc(100dvh - env(safe-area-inset-top) - 6px - 62px - env(safe-area-inset-bottom));
     display: flex; flex-direction: column; gap: 6px; container-type: size; font-size: 13px;
   }
-  /* game review: two player strips instead of the header */
-  .phone-studio.review-phone { --ps-chrome: 160px; }
-  /* Play from memory: no header or tabs, but the status box and the line need room */
-  .phone-studio.one-tab { --ps-chrome: 52px; --ps-pane: 150px; }
   .phone-studio > * { flex: none; margin-inline: 8px; }
   /* The board (with the evaluation bar on its left when there's room); --ps-scale is set with the grip. */
   .phone-studio > .ps-board-row { margin-inline: 0; display: flex; justify-content: center; gap: 6px; }
-  .ps-board { flex: none; width: calc(min(100cqw, max(180px, 100cqh - var(--ps-chrome) - var(--ps-pane))) * var(--ps-scale, 1)); }
+  /* --ps-fit (the largest board that fits) is measured by PhoneStudio. */
+  .ps-board { flex: none; width: calc(var(--ps-fit, 100cqw) * var(--ps-scale, 1)); }
   .ps-evalbar { flex: none; width: 18px; display: flex; }
+  .ps-evalbar:empty { display: none; }
   /* The grip under the board takes no room of its own: it sits in the gaps around it. */
   .phone-studio > .ps-grip {
     position: relative; z-index: 3; height: 16px; margin-block: -11px; display: flex; align-items: center; justify-content: center;
@@ -1058,3 +1054,22 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .eval-bar.white-below .eval-score.far, .eval-bar.white-above .eval-score.far { top: 3px; }
 .eval-score.white { color: #2a2825; }
 .eval-score.black { color: #eeebe6; }
+
+/* Stockfish at the top of the phone studio, like Chess.com: a switch, the evaluation bar, the lines. */
+.engine-top { display: flex; flex-direction: column; gap: 2px; }
+.engine-top-head { flex-wrap: nowrap; gap: 6px; min-height: 28px; }
+.engine-top-head > button.ghost { flex: none; min-height: 28px; padding: 2px 6px; }
+.engine-top-note { flex: 1; min-width: 0; }
+.evalbar.engine-top-bar { position: relative; flex: 1; min-width: 0; height: 20px; margin: 0; border-radius: 4px; background: #3a3734; }
+.evalbar.engine-top-bar > div { background: #f0eee9; }
+.engine-top-eval { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.engine-top-eval.on-white { left: 7px; color: #22201d; }
+.engine-top-eval.on-black { right: 7px; color: #eeebe6; }
+button.engine-switch { position: relative; flex: none; width: 36px; height: 22px; min-height: 0; padding: 0; border-radius: 999px; background: var(--panel3); border: 1px solid var(--border); }
+button.engine-switch:hover:not(:disabled) { background: var(--panel3); }
+button.engine-switch > span { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: left 0.15s, background 0.15s; }
+button.engine-switch.on, button.engine-switch.on:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+button.engine-switch.on > span { left: 17px; background: #fff; }
+.engine-top .engine-lines .engine-line { min-height: 0; padding: 1px 2px; font-size: 12px; line-height: 1.5; }
+.engine-top .engine-line-eval { min-width: 40px; font-size: 11px; }
+.engine-top .engine-options { margin: 2px 0; }

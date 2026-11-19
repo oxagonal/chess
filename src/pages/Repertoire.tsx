@@ -18,7 +18,7 @@ import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import { Board } from '../components/Board';
 import { PhoneStudio } from '../components/PhoneStudio';
 import { EvalBar } from '../components/EvalBar';
-import { PositionTools } from '../components/PositionTools';
+import { PositionMenuItems, PositionTools } from '../components/PositionTools';
 import { RepertoireHome } from './RepertoireHome';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { InlineMoves } from '../components/InlineMoves';
@@ -445,6 +445,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           <button onClick={() => updateSettings({ builderNav: nav === 'inline' ? 'scoresheet' : 'inline' })}>
             {nav === 'inline' ? 'Show moves as a scoresheet' : 'Show moves inline'}
           </button>
+          <PositionMenuItems pos={pos} ply={cursor} orientation={orientation} />
           {!onDone && <button onClick={() => navigate('repertoire')}>All repertoires</button>}
           <div className="menu-note muted small">{counts}</div>
         </MoreMenu>
@@ -749,13 +750,14 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
         head={!zen && header}
         board={board}
         evalBar={!zen && <EvalBar fenKey={key} orientation={orientation} />}
+        // Stockfish at the top, like Chess.com (not while playing from memory)
+        engine={!zen && <EnginePanel top fenKey={key} ply={cursor} onPlay={(san) => play(san)} />}
         tabs={
           zen
             ? [{ id: 'memory', label: 'Play from memory', content: <>{memoryPanel}{movesPanel}</> }]
             : [
                 { id: 'moves', label: 'Moves', content: movesPanel },
                 { id: 'explorer', label: 'Explorer', content: explorer },
-                { id: 'engine', label: 'Engine', content: <>{positionTools}{engine}</> },
                 // (Chapters: the switcher on the chapter's name, at the top.)
                 { id: 'coverage', label: 'Coverage', content: coverageBox },
               ]

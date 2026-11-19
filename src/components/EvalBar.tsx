@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Color } from '../lib/chess';
 import { formatEvalShort, type Score } from '../lib/review';
 import { cloudLines, engineLinesFor, onEngineLines, winChance, type MoveEval } from '../services/engine';
+import { useSettings } from '../db/settings';
 
 /**
  * The evaluation of position `key` (White's point of view): what the Stockfish box has found there
@@ -41,6 +42,9 @@ function usePositionEval(key: string): MoveEval | undefined {
  */
 export function EvalBar({ fenKey, orientation, fallback }: { fenKey: string; orientation: Color; fallback?: Score }) {
   const live = usePositionEval(fenKey);
+  // (Phones only.) Stockfish switched off means no evaluation on show — e.g. to think for yourself.
+  const { phoneEngineEnabled, loaded } = useSettings();
+  if (!loaded || !phoneEngineEnabled) return null;
   const ev: Score | undefined = live ?? fallback;
   const white = ev ? winChance({ ...ev, depth: 0, source: 'local' }) : 50;
   const better: Color = white >= 50 ? 'white' : 'black';

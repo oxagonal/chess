@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { revealInBox } from './MoveList';
 
 /** One tab under the board. */
@@ -32,6 +32,7 @@ export function PhoneStudio({
   controls,
   popup,
   evalBar,
+  engine,
   className = '',
 }: {
   /** Which page (for remembering its tab). */
@@ -49,6 +50,8 @@ export function PhoneStudio({
   popup?: ReactNode;
   /** An evaluation bar, shown on the board's left when there's room beside it. */
   evalBar?: ReactNode;
+  /** Stockfish, at the top like Chess.com's (it switches itself on and off there). */
+  engine?: ReactNode;
   className?: string;
 }) {
   const storeKey = `chess-prep:phoneTab:${page}`;
@@ -81,15 +84,32 @@ export function PhoneStudio({
   });
   const root = useRef<HTMLDivElement>(null);
   const boardBox = useRef<HTMLDivElement>(null);
-  const [room, setRoom] = useState(0);
-  useEffect(() => {
-    const measure = () => setRoom((root.current?.clientWidth ?? 0) - (boardBox.current?.getBoundingClientRect().width ?? 0));
+  // The largest board that fits: the screen's width, or the height left once every other row (header,
+  // Stockfish, players, tabs, buttons…) and the smallest tab box have their room — measured, so it
+  // follows Stockfish being switched on or off.
+  const [dims, setDims] = useState<{ fit: number; width: number } | undefined>();
+  const paneMin = tabs.length > 1 ? 140 : 150;
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const others = () => ([...el.children] as HTMLElement[]).filter((k) => !k.classList.contains('ps-board-row') && !k.classList.contains('ps-pane'));
+    const measure = () => {
+      const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
+      let taken = gap * (el.children.length - 1) + paneMin;
+      for (const k of others()) {
+        const st = getComputedStyle(k);
+        taken += k.getBoundingClientRect().height + parseFloat(st.marginTop) + parseFloat(st.marginBottom);
+      }
+      const fit = Math.max(180, Math.floor(Math.min(el.clientWidth, el.clientHeight - taken)));
+      setDims((d) => (d && d.fit === fit && d.width === el.clientWidth ? d : { fit, width: el.clientWidth }));
+    };
     const ro = new ResizeObserver(measure);
-    if (root.current) ro.observe(root.current);
-    if (boardBox.current) ro.observe(boardBox.current);
+    ro.observe(el);
+    for (const k of others()) ro.observe(k);
     measure();
     return () => ro.disconnect();
-  }, []);
+  }, [paneMin, !!head, !!engine, !!top, !!bottom]);
+  const room = dims ? dims.width - dims.fit * scale : 0;
   const saveScale = (v: number) => {
     try {
       localStorage.setItem(scaleKey, String(v));
@@ -130,8 +150,13 @@ export function PhoneStudio({
   }, [active?.id]);
 
   return (
-    <div ref={root} className={`phone-studio ${tabs.length > 1 ? '' : 'one-tab'} ${className}`} style={{ '--ps-scale': scale } as CSSProperties}>
+    <div
+      ref={root}
+      className={`phone-studio ${tabs.length > 1 ? '' : 'one-tab'} ${className}`}
+      style={{ '--ps-scale': scale, ...(dims ? { '--ps-fit': `${dims.fit}px` } : {}) } as CSSProperties}
+    >
       {head && <div className="ps-head">{head}</div>}
+      {engine && <div className="ps-engine">{engine}</div>}
       {top}
       <div className="ps-board-row">
         {evalBar && room >= 30 && <div className="ps-evalbar">{evalBar}</div>}

@@ -77,3 +77,26 @@ export function PositionTools({ pos, ply, orientation }: { pos: Position; ply?: 
     </div>
   );
 }
+
+/**
+ * The same as menu items (the phone's ⋯ menus): Analyze on Lichess, and Copy FEN — which stays open
+ * to say it copied.
+ */
+export function PositionMenuItems({ pos, ply, orientation }: { pos: Position; ply?: number; orientation: Color }) {
+  const fen = fullFen(pos, ply);
+  const [copied, setCopied] = useState(false);
+  return (
+    <>
+      <button onClick={() => window.open(lichessAnalysisUrl(fen, orientation), '_blank', 'noreferrer')}>Analyze on Lichess ↗</button>
+      <button
+        title={fen}
+        onClick={async (e) => {
+          e.stopPropagation();
+          setCopied(await copyText(fen, null));
+        }}
+      >
+        {copied ? 'Copied ✓' : 'Copy FEN'}
+      </button>
+    </>
+  );
+}
