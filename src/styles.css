@@ -405,6 +405,11 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .str-seg.str-new { background: var(--panel3); }
 /* Games that leave your lines while still common (from a coverage run): amber, like the gaps. */
 .str-swatch.str-uncovered, .str-seg.str-uncovered, .strip-seg.str-uncovered { background: color-mix(in srgb, var(--warn) 75%, var(--panel)); }
+/* Rare sidelines (opponent moves rarer than the target): out of your prep by design — faint stripes. */
+.str-swatch.str-rare, .str-seg.str-rare, .strip-seg.str-rare {
+  background: repeating-linear-gradient(135deg, #4a4640 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px #3d3a35;
+}
+.strip-seg.str-rare, .strip-seg.str-rare:hover { cursor: default; outline: none; }
 /* The map: readiness weighted by how often lines come up, and each chapter as a strip of its lines. */
 .readiness { display: flex; flex-direction: column; gap: 10px; }
 .readiness-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }

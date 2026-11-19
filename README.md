@@ -9,8 +9,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   chapters give you different moves in the same position. Train all of a color, a repertoire or one chapter.
 - **Map** — Repertoire → Map: each chapter as a row of squares, one per line, colored by how well you know
   its weakest move (not learned, missed last time, learning, growing, solid; hollow when due), with lines by strength
-  over the last 30 days. With a Coverage run, the bar on top is of all your games, including the share your lines
-  don't cover (games that leave them while still more common than your coverage target). Hover a square for the line, its position and its status, and practice it.
+  over the last 30 days. With a Coverage run, the bar on top (and each chapter's strip) is of all your games: the
+  share your lines don't cover (games that leave them while still more common than your coverage target), and the
+  *rare sidelines* — opponent moves rarer than the target, which stay outside your prep even with every gap filled. Hover a square for the line, its position and its status, and practice it.
 - **Split into chapters** — a chapter's ⋯ menu suggests chapters from the opening names of its lines (by
   position, so transposed move orders land together); rename, merge or leave out suggestions first.
 - **Import wizard** — Repertoire → *Import a Lichess study or PGN*: study chapters become chapters (or go into

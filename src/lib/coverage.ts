@@ -126,8 +126,10 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
 
   // Backward pass: coverage of each position = share of games reaching it that stay in book until
   // they get rarer than the threshold. Consistent with the forward pass: at the root it equals
-  // 1 − (gap mass + unprepared mass).
+  // 1 − (gap mass + unprepared mass). Alongside, the part of that covered share that leaves your lines
+  // by an opponent move rarer than the threshold (`rare`): fine by your target, but out of your prep.
   const cover = new Map<string, number>();
+  const rare = new Map<string, number>();
   for (let i = order.length - 1; i >= 0; i--) {
     const key = order[i];
     const p = prob.get(key) ?? 0;
@@ -137,26 +139,37 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
     }
     const kids = kidsOf(key);
     const childCover = (k: string) => cover.get(k) ?? 1;
+    const childRare = (k: string) => rare.get(k) ?? 0;
+    const evenly = (f: (k: string) => number) => kids.reduce((a, m) => a + f(m.toKey), 0) / kids.length;
     if (graph.isMyTurn(key)) {
       if (!kids.length) cover.set(key, isGameOver(key) ? 1 : 0);
-      else cover.set(key, kids.reduce((a, m) => a + childCover(m.toKey), 0) / kids.length);
+      else {
+        cover.set(key, evenly(childCover));
+        rare.set(key, evenly(childRare));
+      }
       continue;
     }
     const stats = statsAt.get(key);
     if (!stats) {
-      cover.set(key, kids.length ? kids.reduce((a, m) => a + childCover(m.toKey), 0) / kids.length : 1);
+      cover.set(key, kids.length ? evenly(childCover) : 1);
+      if (kids.length) rare.set(key, evenly(childRare));
       continue;
     }
     // Games that end here or continue with moves too rare to be listed count as covered.
     let c = 1;
+    let r = 0;
     for (const ms of stats.moves) {
       const freq = moveGames(ms) / stats.total;
       if (!freq) continue;
       const edge = kids.find((m) => m.san === ms.san);
-      if (edge) c -= freq * (1 - childCover(edge.toKey));
-      else if (p * freq >= threshold) c -= freq;
+      if (edge) {
+        c -= freq * (1 - childCover(edge.toKey));
+        r += freq * childRare(edge.toKey);
+      } else if (p * freq >= threshold) c -= freq;
+      else r += freq;
     }
     cover.set(key, Math.max(0, Math.min(1, c)));
+    rare.set(key, Math.max(0, Math.min(1, r)));
   }
 
   gaps.sort((a, b) => b.prob - a.prob);
@@ -178,6 +191,7 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
     noData,
     queried,
     coverage: Object.fromEntries(cover),
+    rare: Object.fromEntries([...rare].filter(([, v]) => v > 0)),
     algo: COVERAGE_ALGO,
   };
 }

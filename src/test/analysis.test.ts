@@ -43,6 +43,23 @@ describe('coverage (1 in N)', () => {
     expect(res.unfinished).toEqual([]);
   });
 
+  it('splits the covered games into your lines and rare sidelines', async () => {
+    // 1.b3 (4%) is rarer than 1 in 20, 1.g3 (6%) is a gap; after 1.e4 c5, 2.a3 (3% of those games) is rare.
+    const g3 = new RepGraph('black', movesFromLines('b', 'black', ['e4 c5 Nf3 d6']));
+    const stats: Record<string, PositionStats> = {
+      [START_KEY]: stat([['e4', 'e2e4', 90], ['g3', 'g2g3', 6], ['b3', 'b2b3', 4]]),
+      [keyAfter('e4 c5')]: stat([['Nf3', 'g1f3', 97], ['a3', 'a2a3', 3]]),
+    };
+    const res = await computeCoverage(g3, async (k) => stats[k], { repId: 'b', threshold: 1 / 20, source: 'lichess', paramsLabel: 't' });
+    const covered = res.coverage![START_KEY];
+    const rare = res.rare![START_KEY];
+    expect(1 - covered).toBeCloseTo(0.06); // not covered: 1.g3
+    expect(rare).toBeCloseTo(0.04 + 0.9 * 0.03); // rare sidelines: 1.b3, and 2.a3
+    // What's left is the games that stay on your line to its end.
+    expect(covered - rare).toBeCloseTo(res.probs[keyAfter('e4 c5 Nf3 d6')]);
+    expect(res.rare![keyAfter('e4 c5')]).toBeCloseTo(0.03);
+  });
+
   it('flags your-move positions with no prepared answer', async () => {
     const g2 = new RepGraph('black', movesFromLines('b', 'black', ['e4 c5 Nf3']));
     const res = await computeCoverage(g2, async (k) => db[k], { repId: 'b', threshold: 1 / 20, source: 'lichess', paramsLabel: 't' });
