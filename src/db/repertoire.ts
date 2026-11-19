@@ -3,7 +3,7 @@ import { getSettings, type AppSettings } from './settings';
 import { moveId, RepGraph } from '../lib/graph';
 import { toRepMove, edgesForLine } from '../lib/lines';
 import { graphToPgn, pgnToEdges, type ImportedEdge } from '../lib/pgn';
-import { grade, gradeAhead, newCard, Rating } from '../lib/srs';
+import { easyAllowed, grade, gradeAhead, gradeForAnswer, newCard, Rating } from '../lib/srs';
 import { START_KEY, type Color } from '../lib/chess';
 import type { Collection, Repertoire, RepMove, ReviewCard, ReviewSource } from '../lib/types';
 import type { Grade } from 'ts-fsrs';
@@ -447,6 +447,23 @@ export async function gradeCard(
     await db.reviewLog.add({ cardId, color: card.color, rating, state: card.state, reviewedAt: now, source, gameId });
     return next;
   });
+}
+
+/**
+ * Grade a trainer answer: from whether you missed and how long you took (the answer timer), with Easy
+ * only where easyAllowed says so — read here from the card and its last answer, so the grade the
+ * trainer shows is the one saved.
+ */
+export async function gradeAnswer(
+  cardId: string,
+  answer: { missed: boolean; ms?: number; limitMs?: number },
+  source: ReviewSource,
+  opts: { ahead?: boolean } = {},
+): Promise<{ card?: ReviewCard; rating: Grade }> {
+  const card = await db.cards.get(cardId);
+  const last = await db.reviewLog.where('cardId').equals(cardId).last();
+  const rating = gradeForAnswer(answer.missed, answer.ms, answer.limitMs, !!card && easyAllowed(card, last?.rating));
+  return { card: await gradeCard(cardId, rating, source, undefined, opts), rating };
 }
 
 /** Make cards due right now (e.g. after forgetting them in a real game). */

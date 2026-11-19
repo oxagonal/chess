@@ -1,7 +1,8 @@
 /**
  * Spaced repetition built on FSRS (ts-fsrs). Each of *your* repertoire moves is a card.
  * Grades are derived automatically from how you answered (gradeForAnswer):
- *   correct first try → Good — or, with the answer timer, Easy when quick and Hard when slow;
+ *   correct first try → Good — or, with the answer timer, Hard when slow, and Easy when quick on a
+ *   move already in regular reviews that you didn't miss last time (easyAllowed);
  *   correct after a wrong attempt / hint → Again.
  */
 import { createEmptyCard, fsrs, Rating, State, type Card, type Grade } from 'ts-fsrs';
@@ -67,14 +68,32 @@ export function grade(card: ReviewCard, rating: Grade, settings: SrsSettings = D
   return { ...card, ...fromFsrs(next) };
 }
 
+/** The longest a quick answer can take and still be Easy, whatever the timer: Easy means you knew it at once. */
+export const EASY_MAX_MS = 2000;
+
+/** How quick an answer must be to count as Easy: the first quarter of the timer, at most EASY_MAX_MS. */
+export const easyWithin = (limitMs: number) => Math.min(limitMs / 4, EASY_MAX_MS);
+
 /**
  * The grade for an answer. `ms`: how long it took, `limitMs`: the answer timer (0 or no `ms`: untimed).
- * Correct within the time is Good, within its first quarter Easy, slower Hard; a miss is Again.
+ * Correct within the time is Good, slower Hard; a miss is Again. Easy is kept for answers that are
+ * quick (easyWithin) on a move where it's allowed (`easyOk`, see easyAllowed) — FSRS gives Easy a big
+ * bonus, so it must mean "knew it at once", not "played it fast": otherwise a quick answer is Good.
  */
-export function gradeForAnswer(missed: boolean, ms?: number, limitMs = 0): Grade {
+export function gradeForAnswer(missed: boolean, ms?: number, limitMs = 0, easyOk = true): Grade {
   if (missed) return Rating.Again;
   if (!limitMs || ms === undefined) return Rating.Good;
-  return ms > limitMs ? Rating.Hard : ms <= limitMs / 4 ? Rating.Easy : Rating.Good;
+  if (ms > limitMs) return Rating.Hard;
+  return easyOk && ms <= easyWithin(limitMs) ? Rating.Easy : Rating.Good;
+}
+
+/**
+ * Whether a quick answer on this move may count as Easy: it's in regular reviews (not new, still in its
+ * learning steps, or relearning after a miss — Easy would skip those steps) and your last answer on it
+ * (`lastRating`, training or a game) wasn't a miss.
+ */
+export function easyAllowed(card: Pick<ReviewCard, 'state'>, lastRating?: number): boolean {
+  return card.state === State.Review && lastRating !== Rating.Again;
 }
 
 /**

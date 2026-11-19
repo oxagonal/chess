@@ -146,7 +146,13 @@ describe('the answer timer', () => {
     const { gradeForAnswer } = await import('../lib/srs');
     const limit = 10_000;
     expect(gradeForAnswer(false, 1_500, limit)).toBe(Rating.Easy);
-    expect(gradeForAnswer(false, 2_500, limit)).toBe(Rating.Easy);
+    expect(gradeForAnswer(false, 2_000, limit)).toBe(Rating.Easy);
+    // Quick means at once: never more than 2 s, whatever the timer (a quarter of 10 s would be 2.5 s).
+    expect(gradeForAnswer(false, 2_500, limit)).toBe(Rating.Good);
+    expect(gradeForAnswer(false, 2_500, 60_000)).toBe(Rating.Good);
+    expect(gradeForAnswer(false, 900, 3_000)).toBe(Rating.Good); // a quarter of 3 s is 0.75 s
+    // Not allowed on this move: a quick answer is just Good.
+    expect(gradeForAnswer(false, 1_000, limit, false)).toBe(Rating.Good);
     expect(gradeForAnswer(false, 6_000, limit)).toBe(Rating.Good);
     expect(gradeForAnswer(false, 10_000, limit)).toBe(Rating.Good);
     expect(gradeForAnswer(false, 14_000, limit)).toBe(Rating.Hard);
@@ -154,6 +160,16 @@ describe('the answer timer', () => {
     // Off, or not timed: Good.
     expect(gradeForAnswer(false, 30_000, 0)).toBe(Rating.Good);
     expect(gradeForAnswer(false, undefined, limit)).toBe(Rating.Good);
+  });
+
+  it('allows Easy only on a move in regular reviews that you did not miss last time', async () => {
+    const { easyAllowed } = await import('../lib/srs');
+    expect(easyAllowed({ state: State.Review }, Rating.Good)).toBe(true);
+    expect(easyAllowed({ state: State.Review }, undefined)).toBe(true);
+    expect(easyAllowed({ state: State.Review }, Rating.Again)).toBe(false); // last answer a miss (or forgotten in a game)
+    expect(easyAllowed({ state: State.Relearning }, Rating.Good)).toBe(false); // relearning after a miss
+    expect(easyAllowed({ state: State.Learning }, Rating.Good)).toBe(false); // still in its learning steps
+    expect(easyAllowed({ state: State.New })).toBe(false);
   });
 
   it('lengthens a due move more when quick and less when slow — but a quick drill ahead of time only restarts it', async () => {

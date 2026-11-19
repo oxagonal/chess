@@ -4,7 +4,7 @@ import type { Chess } from 'chessops/chess';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { getSettings, updateSettings, useSettings, type AppSettings } from '../db/settings';
-import { gradeCard } from '../db/repertoire';
+import { gradeAnswer } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
 import { AnswerTimerInput } from '../components/AnswerTimerInput';
 import { Board, type Arrow } from '../components/Board';
@@ -23,7 +23,7 @@ import type { RepGraph } from '../lib/graph';
 import { asQuiz, moveOrders, orderCards, planLine, type PlannedStep } from '../lib/trainer';
 import { Builder } from './Repertoire';
 import { computeInsights, movesForLine, movesUnder, weakestMoves } from '../lib/insights';
-import { formatInterval, gradeForAnswer, isDue, isNew, Rating, type Grade } from '../lib/srs';
+import { formatInterval, isDue, isNew, Rating, type Grade } from '../lib/srs';
 import type { RepMove, ReviewCard } from '../lib/types';
 
 /** review = due moves, learn = new moves, drill = extra practice of a chosen line / your weakest moves. */
@@ -331,13 +331,13 @@ function AnswerClock({ limitMs, elapsed }: { limitMs: number; elapsed: () => num
     return () => clearInterval(t);
   }, [elapsed]);
   const left = Math.max(0, limitMs - ms);
-  const phase = ms > limitMs ? 'over' : ms <= limitMs / 4 ? 'quick' : 'ok';
+  const phase = ms > limitMs ? 'over' : 'ok';
   // No room of its own: the seconds sit at the end of the first line, the bar along the box's top.
   return (
     <span
       className={`answer-clock ${phase}`}
       role="timer"
-      title="Answer timer (⚙ Settings): in time is Good, in the first quarter Easy, slower Hard"
+      title="Answer timer (⚙ Settings): a right answer in time is Good, slower Hard (and Easy when quick on a move you know well)"
     >
       <span className="answer-clock-bar" aria-hidden="true">
         <span style={{ width: `${(left / limitMs) * 100}%` }} />
@@ -633,25 +633,26 @@ function Session({ setup }: { setup: SessionSetup }) {
           if (line.repeat) repeatRef.current.roundMissed = true;
           else missedPosRef.current.set(expected.id, { scopeId: line.repId, path: line.steps.slice(0, idx + 1).map((s) => s.move) });
         }
-        feedbackToken.current++;
+        const token = ++feedbackToken.current;
         // A drill counts every move you play as reviewed: one that isn't due yet has its interval
         // restarted from today (never grown — see gradeAhead). In a review line the moves around the
         // due ones are practice only.
         const graded = mode === 'drill' && !gradedRef.current.has(expected.id);
-        const g = gradeForAnswer(missed, ms, limitMs);
-        setFeedback({
-          kind: missed ? 'hint' : 'good',
-          text: (
-            <>
-              <b>{missed ? `${expected.san} — keep it in mind.` : `✓ ${expected.san}`}</b>
-              {graded && <Speed grade={g} ms={ms} />}
-            </>
-          ),
-        });
+        const show = (g?: Grade) =>
+          setFeedback({
+            kind: missed ? 'hint' : 'good',
+            text: (
+              <>
+                <b>{missed ? `${expected.san} — keep it in mind.` : `✓ ${expected.san}`}</b>
+                {g !== undefined && <Speed grade={g} ms={ms} />}
+              </>
+            ),
+          });
+        show();
         if (graded) {
           gradedRef.current.add(expected.id);
           setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (missed ? 0 : 1), failed: s.failed + (missed ? 1 : 0) }));
-          void gradeCard(expected.id, g, 'review', undefined, { ahead: true });
+          void gradeAnswer(expected.id, { missed, ms, limitMs }, 'review', { ahead: true }).then(({ rating }) => token === feedbackToken.current && show(rating));
         }
         return;
       }
@@ -664,22 +665,22 @@ function Session({ setup }: { setup: SessionSetup }) {
       }
       pendingRef.current.delete(expected.id);
       setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (failed ? 0 : 1), failed: s.failed + (failed ? 1 : 0) }));
-      const g = gradeForAnswer(failed, ms, limitMs);
-      const body = (interval?: string) => (
+      // The grade (and so whether a quick answer is Easy) is settled where it's saved: gradeAnswer.
+      const body = (g?: Grade, interval?: string) => (
         <>
           <b>{failed ? `${expected.san} — keep practicing it.` : `✓ ${expected.san}`}</b>
-          <Speed grade={g} ms={ms} />
+          {g !== undefined && <Speed grade={g} ms={ms} />}
           {interval && <span className="muted"> · next review in {interval}</span>}
           {/* No note after a correct answer: a missed move opens its note under the board instead. */}
         </>
       );
       const token = ++feedbackToken.current;
       setFeedback({ kind: failed ? 'hint' : 'good', text: body() });
-      const updated = await gradeCard(expected.id, g, mode === 'learn' ? 'learn' : 'review', undefined, {
+      const { card: updated, rating } = await gradeAnswer(expected.id, { missed: failed, ms, limitMs }, mode === 'learn' ? 'learn' : 'review', {
         ahead: mode === 'drill',
       });
       if (updated && token === feedbackToken.current) {
-        setFeedback({ kind: failed ? 'hint' : 'good', text: body(formatInterval(updated.due - Date.now())) });
+        setFeedback({ kind: failed ? 'hint' : 'good', text: body(rating, formatInterval(updated.due - Date.now())) });
       }
       return;
     }
@@ -852,8 +853,9 @@ function Session({ setup }: { setup: SessionSetup }) {
       <label className="answer-timer">
         <AnswerTimerInput />
         <span>
-          <b>Answer timer</b> — seconds per move in reviews and drills (0 = off). A right answer in time is Good, in the first quarter
-          of it Easy, slower Hard: moves you know cold come back later, ones you have to dig for sooner.
+          <b>Answer timer</b> — seconds per move in reviews and drills (0 = off). A right answer in time is Good, slower Hard — and
+          Easy when you play it at once (in the first quarter of the time, 2 s at most) on a move that's already in regular reviews and
+          that you didn't miss last time. Moves you know cold come back later, ones you have to dig for sooner.
         </span>
       </label>
       <div className="muted small">Changes apply from the next line.</div>

@@ -1,11 +1,11 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../db/db';
-import { addLine, createRepertoire, setNoTrain } from '../db/repertoire';
+import { addLine, createRepertoire, gradeAnswer, setNoTrain } from '../db/repertoire';
 import { getSettings, updateSettings } from '../db/settings';
 import { loadScopeGraph } from '../db/scopes';
 import { loadDueCount, loadTrainCounts, trainedCards } from '../db/training';
-import { isDue } from '../lib/srs';
+import { isDue, Rating, State } from '../lib/srs';
 import type { CoverageResult } from '../lib/types';
 
 beforeEach(async () => {
@@ -61,5 +61,30 @@ describe('due counts match what a review trains', () => {
     expect(await loadDueCount()).toBe(1);
     expect((await loadTrainCounts()).all.due).toBe(1);
     expect(await reviewQueue()).toEqual(['c5']);
+  });
+});
+
+describe('grading a timed answer', () => {
+  it('saves a quick answer as Easy only on a move in regular reviews not missed last time', async () => {
+    const rep = await createRepertoire('Sicilian', 'black');
+    await addLine(rep.id, ['e4', 'c5']);
+    const id = (await db.cards.toArray())[0].id;
+    const quick = { missed: false, ms: 800, limitMs: 10_000 };
+    const DAY = 86_400_000;
+    const asReview = () => db.cards.update(id, { state: State.Review, stability: 20, difficulty: 5, scheduledDays: 20, lastReview: Date.now() - 20 * DAY, due: Date.now() });
+
+    // New / learning: no Easy.
+    expect((await gradeAnswer(id, quick, 'learn')).rating).toBe(Rating.Good);
+    // In regular reviews, last answer fine: Easy.
+    await asReview();
+    expect((await gradeAnswer(id, quick, 'review')).rating).toBe(Rating.Easy);
+    // Missed it: the next quick answer is Good (Easy would skip relearning), and so is the first after relearning.
+    await asReview();
+    expect((await gradeAnswer(id, { missed: true }, 'review')).rating).toBe(Rating.Again);
+    await asReview();
+    expect((await gradeAnswer(id, quick, 'review')).rating).toBe(Rating.Good);
+    // Slow is Hard either way.
+    await asReview();
+    expect((await gradeAnswer(id, { missed: false, ms: 12_000, limitMs: 10_000 }, 'review')).rating).toBe(Rating.Hard);
   });
 });

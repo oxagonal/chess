@@ -694,7 +694,6 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .answer-clock.over .answer-clock-time { color: var(--warn); }
 .answer-clock-bar { position: absolute; top: 4px; left: 12px; right: 12px; height: 3px; border-radius: 2px; background: var(--panel3); overflow: hidden; }
 .answer-clock-bar > span { display: block; height: 100%; background: var(--accent2); transition: width .2s linear; }
-.answer-clock.quick .answer-clock-bar > span { background: var(--good); }
 .tp-info .movenote { margin-top: 6px; padding: 6px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
 .tp-info .movenote.prompt { box-shadow: none; }
 .tp-info .movenote.prompt textarea { border-color: var(--warn); }

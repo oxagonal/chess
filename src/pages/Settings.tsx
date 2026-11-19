@@ -192,7 +192,7 @@ export function SettingsPage() {
             <span>Max interval (days)</span>
             <input type="number" min={7} max={3650} value={s.maxIntervalDays} onChange={(e) => set({ maxIntervalDays: Number(e.target.value) })} style={{ width: 100 }} />
           </label>
-          <label className="field" title="Seconds per move in reviews and drills (0 = off): a right answer in time is Good, in the first quarter of it Easy, slower Hard">
+          <label className="field" title="Seconds per move in reviews and drills (0 = off): a right answer in time is Good, slower Hard, and Easy when played at once on a move you know well">
             <span>Answer timer (s)</span>
             <AnswerTimerInput />
           </label>
@@ -211,7 +211,7 @@ export function SettingsPage() {
         </label>
         <p className="muted small">
           Higher retention means more frequent reviews. 90% is a good default; raise it before a tournament. The answer timer grades
-          how quickly you find a move in reviews and drills (0 = off): in time is Good, in the first quarter of it Easy, slower Hard.
+          how quickly you find a move in reviews and drills (0 = off): in time is Good, slower Hard, and Easy when you play it at once (in the first quarter of the time, 2 s at most) on a move that's already in regular reviews and that you didn't miss last time.
         </p>
         <AppBadgeSetting />
       </div>

@@ -62,7 +62,8 @@ export interface AppSettings {
   trainRepeatUntilRight: boolean;
   /**
    * Trainer's answer timer, in seconds (0 = off): in reviews and drills a correct answer within it is
-   * Good, within its first quarter Easy, and slower Hard (see lib/srs gradeForAnswer).
+   * Good and slower Hard; Easy only when quick on a move in regular reviews you didn't miss last time
+   * (see lib/srs gradeForAnswer and easyAllowed).
    */
   trainAnswerSeconds: number;
   /** Builder: save every move played on the board straight into the repertoire. */

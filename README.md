@@ -52,8 +52,10 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   from the starting position (opponent moves and moves that aren't due are played for you) and asks only
   for the due moves. A wrong move snaps back and you retry **right there** — the line never restarts. A
   second miss shows the answer as an arrow. An **answer timer** (⚙ in a session, or Settings → Training; 10 s by
-  default, 0 turns it off) grades how quickly you find each move in reviews and drills: in time is Good, in the
-  first quarter of it Easy, slower Hard — so moves you know cold come back later and ones you dig for, sooner.
+  default, 0 turns it off) grades how quickly you find each move in reviews and drills: in time is Good, slower
+  Hard — so ones you dig for come back sooner. Easy (which FSRS rewards with a much longer interval) is kept for
+  moves you play at once — in the first quarter of the time, 2 s at most — that are already in regular reviews
+  and that you didn't miss last time; never right after a miss or while a move is still being learned.
 - **Coverage — "1 in N games"** (on the Map) — assuming you play your prep and opponents answer like players
   at your rating, how often does each position appear? Finds the opponent moves you'll face at least once
   every N games that your repertoire doesn't answer (*gaps*), positions where it's your move with nothing
