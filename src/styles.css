@@ -957,6 +957,8 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
   .phone-studio .builder-head { flex-wrap: nowrap; gap: 6px; min-height: 30px; }
   .phone-studio .builder-head h1 { font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .phone-studio .builder-head > :not(h1, .spacer) { flex: none; }
+  /* The chapter's name gives way (cut short with …) so the row never runs off the screen. */
+  .phone-studio .builder-head > .chapter-switcher { flex: 0 1 auto; }
   .phone-studio .builder-head .pill { font-size: 11px; }
   /* Moves: the builder's actions in one row (it scrolls sideways if they don't fit). */
   .phone-studio .moves-head { flex-wrap: nowrap; gap: 5px; overflow-x: auto; scrollbar-width: none; }

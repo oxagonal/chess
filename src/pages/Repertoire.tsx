@@ -413,8 +413,10 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
         onClick={startMemory}
         disabled={reach.loading && cursor > 0}
         title="It plays your opponents' most popular moves and you answer. Your moves are saved as already known (no need to learn them), until everything from here is filled in down to your 1-in-N goal."
+        aria-label={phone && onDone ? 'Play from memory' : undefined}
       >
-        ▶ {phone ? 'From memory' : `Play from memory${cursor > 0 ? ' from here' : ''}`}
+        {/* Opened from training, a phone's row also has Continue: just ▶, so the chapter's name still shows. */}
+        ▶{phone && onDone ? '' : phone ? ' From memory' : ` Play from memory${cursor > 0 ? ' from here' : ''}`}
       </button>
       {!phone && <span className="spacer" />}
       {!stacked && (
