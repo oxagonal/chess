@@ -104,7 +104,9 @@ On the phone, open the site and install it:
 - **Android (Chrome):** ⋮ → *Install app* / *Add to Home screen*
 
 It then opens full-screen with its own icon and works offline for training (game sync, the explorer and
-coverage need a connection).
+coverage need a connection). Its icon can show how many moves are due (Settings → Training → *Show due moves on
+the app icon*): iPhone and iPad only show a web app's number once it may send notifications — Chess Prep
+never sends any, and the number is updated whenever the app is open.
 
 **Moving to a new address:** browsers keep the data per website, so the new
 site starts empty. Turn on sync (below) on the old site, then connect the new site with the same token — or

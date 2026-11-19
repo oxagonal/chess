@@ -17,6 +17,7 @@ import { SyncPanel } from '../components/SyncPanel';
 import { AboutPanel } from '../components/AboutPanel';
 import { useSyncStatus } from '../services/cloudSync';
 import { AnswerTimerInput } from '../components/AnswerTimerInput';
+import { AppBadgeSetting } from '../components/AppBadgeSetting';
 
 const SPEEDS = ['ultraBullet', 'bullet', 'blitz', 'rapid', 'classical', 'correspondence'];
 
@@ -212,6 +213,7 @@ export function SettingsPage() {
           Higher retention means more frequent reviews. 90% is a good default; raise it before a tournament. The answer timer grades
           how quickly you find a move in reviews and drills (0 = off): in time is Good, in the first quarter of it Easy, slower Hard.
         </p>
+        <AppBadgeSetting />
       </div>
 
       <div className="panel col">

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { loadDueCount } from './db/training';
+import { setDueBadge } from './services/appBadge';
 import { useNow } from './hooks';
 import { useRoute, href, type Route } from './router';
 import { HomePage } from './pages/Home';
@@ -80,6 +81,8 @@ export function App() {
 
   useEffect(() => {
     document.title = due ? `(${due}) Chess Prep` : 'Chess Prep';
+    // And on the installed app's icon, where the browser supports it.
+    if (due !== undefined) setDueBadge(due);
   }, [due]);
 
   return (
