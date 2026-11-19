@@ -92,7 +92,7 @@ export function useMapData(scopeId: string, chapters: Chapter[], collections: Co
     gapRun && rootCoverage !== undefined
       ? {
           share: clamp01(1 - rootCoverage),
-          rare: gapRun.rare ? clamp01(gapRun.rare[START_KEY] ?? 0) : undefined,
+          rare: gapRun.sidelines ? clamp01(gapRun.sidelines[START_KEY] ?? 0) : undefined,
           oneInN: Math.round(1 / gapRun.threshold),
           scopeId: gapRun.repId,
         }
@@ -113,7 +113,7 @@ export function useMapData(scopeId: string, chapters: Chapter[], collections: Co
       const key = g && lines.length && gapRun?.coverage ? chapterPosition(g, names, chapter.name).key : undefined;
       const at = key === undefined ? undefined : gapRun?.coverage?.[key];
       const uncovered = at === undefined ? 0 : clamp01(1 - at);
-      const rare = at === undefined ? 0 : clamp01(gapRun?.rare?.[key!] ?? 0);
+      const rare = at === undefined ? 0 : clamp01(gapRun?.sidelines?.[key!] ?? 0);
       // The lines' share of the chapter's games, and the other two as weights beside the lines'.
       const inLines = Math.max(0.01, 1 - uncovered - rare);
       const total = weights.reduce((a, w) => a + w, 0);
@@ -165,7 +165,7 @@ function scaled(s: Record<Strength, number>, by: number): Record<Strength, numbe
 const uncoveredHint = (u: Pick<Uncovered, 'oneInN'>) =>
   `games that leave your lines while still common — at an opponent move you have no answer to, or a position with no move of yours, met at least 1 in ${u.oneInN} games`;
 const rareHint = (u: Pick<Uncovered, 'oneInN'>) =>
-  `games where the opponent leaves your lines with a move rarer than 1 in ${u.oneInN} — beyond your coverage target, so they stay outside your prep even with every gap filled`;
+  `games where the opponent leaves your lines with a move rarer than 1 in ${u.oneInN} before they reach your target depth — beyond your target, so they stay outside your prep even with every gap filled (games that reach your target depth count as your lines)`;
 
 /** Share known well (growing or solid), weighted. */
 export { readyOf, shares, WeightedBar };
@@ -240,7 +240,8 @@ export function Readiness({ data, subject, onGaps, children }: { data: MapData; 
             {' '}
             {uncovered.rare !== undefined ? (
               <>
-                <b>Rare sidelines</b>: opponent moves rarer than that — beyond your target, they stay out even with every gap filled.
+                <b>Rare sidelines</b>: opponent moves rarer than that, before your lines reach your target depth — they stay out even with
+                every gap filled.
               </>
             ) : (
               <>Run Coverage again to also see the rare sidelines (opponent moves rarer than your target).</>

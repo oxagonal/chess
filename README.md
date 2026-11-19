@@ -11,7 +11,8 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   answers. *How ready am I?* One bar of all your games: your lines by how well you know their weakest move
   (not learned, missed last time, learning, growing, solid), the games your lines don't cover (they leave
   them while still more common than your coverage target), and the *rare sidelines* (opponent moves rarer
-  than the target, which stay outside your prep even with every gap filled) — with the Coverage run's
+  than the target that leave your lines before they reach your target depth, which stay outside your prep
+  even with every gap filled; games that reach your target depth count as your lines) — with the Coverage run's
   target and Run button under it. *What next?* To-dos with one action each: review what's due, prepare the
   gaps, drill your weakest moves. *Where?* Each chapter as a strip of its lines, as wide as they come up
   (hover a line for its position and status, and practice it). *Details*, on demand: how the coverage

@@ -52,12 +52,32 @@ describe('coverage (1 in N)', () => {
     };
     const res = await computeCoverage(g3, async (k) => stats[k], { repId: 'b', threshold: 1 / 20, source: 'lichess', paramsLabel: 't' });
     const covered = res.coverage![START_KEY];
-    const rare = res.rare![START_KEY];
+    const rare = res.sidelines![START_KEY];
     expect(1 - covered).toBeCloseTo(0.06); // not covered: 1.g3
     expect(rare).toBeCloseTo(0.04 + 0.9 * 0.03); // rare sidelines: 1.b3, and 2.a3
     // What's left is the games that stay on your line to its end.
     expect(covered - rare).toBeCloseTo(res.probs[keyAfter('e4 c5 Nf3 d6')]);
-    expect(res.rare![keyAfter('e4 c5')]).toBeCloseTo(0.03);
+    expect(res.sidelines![keyAfter('e4 c5')]).toBeCloseTo(0.03);
+  });
+
+  it('counts the games past the end of a line that reached your target depth as your lines, not sidelines', async () => {
+    // After 1.e4 c5 2.Nf3 d6 (90% · 97% ≈ 87% of games, opponent to move) every reply is rarer than the
+    // 1 in 2 target: the line has gone as deep as the target asks, so its end is no sideline.
+    const g = new RepGraph('black', movesFromLines('b', 'black', ['e4 c5 Nf3 d6']));
+    const stats: Record<string, PositionStats> = {
+      [START_KEY]: stat([['e4', 'e2e4', 90], ['b3', 'b2b3', 10]]),
+      [keyAfter('e4 c5')]: stat([['Nf3', 'g1f3', 97], ['a3', 'a2a3', 3]]),
+      [keyAfter('e4 c5 Nf3 d6')]: stat([['d4', 'd2d4', 40], ['c3', 'c2c3', 35], ['Bb5+', 'f1b5', 25]]),
+    };
+    const res = await computeCoverage(g, async (k) => stats[k], { repId: 'b', threshold: 0.5, source: 'lichess', paramsLabel: 't' });
+    expect(res.coverage![START_KEY]).toBeCloseTo(1);
+    expect(res.sidelines?.[keyAfter('e4 c5 Nf3 d6')] ?? 0).toBe(0);
+    // 1.b3 (10%) and 2.a3 do leave before the target depth: the main moves there are common.
+    expect(res.sidelines![START_KEY]).toBeCloseTo(0.1 + 0.9 * 0.03);
+    // Preparing a reply past the target changes nothing.
+    const deeper = new RepGraph('black', movesFromLines('b', 'black', ['e4 c5 Nf3 d6 d4 cxd4']));
+    const res2 = await computeCoverage(deeper, async (k) => stats[k], { repId: 'b', threshold: 0.5, source: 'lichess', paramsLabel: 't' });
+    expect(res2.sidelines![START_KEY]).toBeCloseTo(res.sidelines![START_KEY]);
   });
 
   it('flags your-move positions with no prepared answer', async () => {

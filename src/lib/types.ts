@@ -224,10 +224,12 @@ export interface CoverageResult {
   coverage?: Record<string, number>;
   /**
    * For each repertoire position (only where it isn't 0): of the games that reach it, the share that
-   * leave your lines by an opponent move rarer than the threshold — counted as covered above, but out
-   * of your prep even once every gap is filled (the map's "rare sidelines"). Missing on old results.
+   * leave your lines by an opponent move rarer than the threshold before they reach your target depth
+   * (where some reply still needs an answer) — counted as covered above, but out of your prep even
+   * once every gap is filled: the map's "rare sidelines". Missing on older results (an earlier `rare`
+   * field also counted the games past your lines' end, so it isn't used).
    */
-  rare?: Record<string, number>;
+  sidelines?: Record<string, number>;
   /** Version of the analysis that produced this result. */
   algo?: number;
   /** Set automatically on every write; the newer copy wins when devices sync. */

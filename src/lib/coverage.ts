@@ -126,8 +126,11 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
 
   // Backward pass: coverage of each position = share of games reaching it that stay in book until
   // they get rarer than the threshold. Consistent with the forward pass: at the root it equals
-  // 1 − (gap mass + unprepared mass). Alongside, the part of that covered share that leaves your lines
-  // by an opponent move rarer than the threshold (`rare`): fine by your target, but out of your prep.
+  // 1 − (gap mass + unprepared mass). Alongside, the part of that covered share that are rare
+  // sidelines (`rare`): the opponent leaves your lines with a move rarer than the threshold *before
+  // they reach your target depth* — at a position where some reply is still common enough to need an
+  // answer. Once every reply is rarer than that, the games have gone as deep as your target asks: the
+  // rest of them is past your lines' end, not a sideline (and preparing further there changes nothing).
   const cover = new Map<string, number>();
   const rare = new Map<string, number>();
   for (let i = order.length - 1; i >= 0; i--) {
@@ -156,17 +159,19 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
       continue;
     }
     // Games that end here or continue with moves too rare to be listed count as covered.
+    const freqOf = (ms: (typeof stats.moves)[number]) => moveGames(ms) / stats.total;
+    const atDepth = !stats.moves.some((ms) => p * freqOf(ms) >= threshold);
     let c = 1;
     let r = 0;
     for (const ms of stats.moves) {
-      const freq = moveGames(ms) / stats.total;
+      const freq = freqOf(ms);
       if (!freq) continue;
       const edge = kids.find((m) => m.san === ms.san);
       if (edge) {
         c -= freq * (1 - childCover(edge.toKey));
         r += freq * childRare(edge.toKey);
       } else if (p * freq >= threshold) c -= freq;
-      else r += freq;
+      else if (!atDepth) r += freq;
     }
     cover.set(key, Math.max(0, Math.min(1, c)));
     rare.set(key, Math.max(0, Math.min(1, r)));
@@ -191,7 +196,7 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
     noData,
     queried,
     coverage: Object.fromEntries(cover),
-    rare: Object.fromEntries([...rare].filter(([, v]) => v > 0)),
+    sidelines: Object.fromEntries([...rare].filter(([, v]) => v > 0)),
     algo: COVERAGE_ALGO,
   };
 }
