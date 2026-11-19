@@ -703,7 +703,6 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           san: c.san,
           uci: c.uci,
           mine: c.mine,
-          comment: c.comment,
           prepared:
             prepared !== undefined && childProb !== undefined && childProb >= 1 / goalN ? (
               <span className="small" style={{ color: coverColor(prepared) }} title="Prepared from the position after this move">

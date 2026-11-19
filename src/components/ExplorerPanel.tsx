@@ -22,7 +22,6 @@ export interface SavedMove {
   id: string;
   san: string;
   mine: boolean;
-  comment?: string;
   /** Standard UCI, used for engine evals of saved moves the database doesn't list. */
   uci?: string;
   /** Extra badges shown in the row (review status…). */
@@ -407,11 +406,6 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   <td>
                     <b className="san">{san}</b>
                     {rep && ' ✓'}
-                    {rep?.comment && (
-                      <div className="muted small explorer-comment" title={rep.comment}>
-                        {rep.comment}
-                      </div>
-                    )}
                   </td>
                   {cols.has('games') && (
                     <td className="num" title={stat ? `${n.toLocaleString()} games` : undefined}>

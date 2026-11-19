@@ -366,7 +366,6 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .evalbox sup { font-size: 9px; margin-left: 1px; }
 .explorer tr.inrep.mine td:first-child { color: var(--mine); }
 .explorer tr.inrep.theirs td:first-child { color: var(--theirs); }
-.explorer .explorer-comment { font-weight: 400; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .explorer .show-all { width: 100%; justify-content: center; margin-top: 8px; color: var(--muted); }
 
 .feedback { min-height: 52px; padding: 12px 14px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--border-soft); font-size: 15px; }
@@ -404,6 +403,8 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .str-bar.slim { height: 6px; width: 120px; flex: none; }
 .str-seg { min-width: 3px; background: var(--str, transparent); }
 .str-seg.str-new { background: var(--panel3); }
+/* Games that leave your lines while still common (from a coverage run): amber, like the gaps. */
+.str-swatch.str-uncovered, .str-seg.str-uncovered { background: color-mix(in srgb, var(--warn) 75%, var(--panel)); }
 /* The map: readiness weighted by how often lines come up, and each chapter as a strip of its lines. */
 .readiness { display: flex; flex-direction: column; gap: 10px; }
 .readiness-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
@@ -766,7 +767,6 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
    that pushes them off the edge of a narrow pane. */
 .studio-inner > .explorer td.result, .studio-inner > .explorer th.result { width: 100%; }
 .studio-inner > .explorer .wdl { min-width: 36px; container-type: inline-size; }
-.studio-inner > .explorer .explorer-comment { max-width: 160px; }
 /* Too narrow for the percentages to fit: just the bar (the tooltip still has them). */
 @container (max-width: 110px) { .wdl > div { font-size: 0; } }
 .studio-inner > .explorer { padding-top: 6px; }

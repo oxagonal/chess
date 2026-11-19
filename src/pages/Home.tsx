@@ -153,7 +153,7 @@ function RepertoireAtAGlance({ toTrain }: { toTrain: Record<Color, TrainCounts> 
 }
 
 function ColorGlance({ color, chapters, collections, due }: { color: Color; chapters: Chapter[]; collections: Collection[]; due: number }) {
-  const { maps, allLines, overall, cov } = useMapData(color, chapters, collections);
+  const { maps, allLines, overall, cov, uncovered } = useMapData(color, chapters, collections);
   if (!maps) return <div className="panel" />;
   const count = chapters.filter((ch) => ch.color === color).length;
   const weakest = maps
@@ -181,7 +181,7 @@ function ColorGlance({ color, chapters, collections, due }: { color: Color; chap
             <b>{Math.round(readyOf(overall) * 100)}%</b>
             <span className="muted small">{cov ? 'of your games go down lines you know well' : 'of your lines you know well'}</span>
           </div>
-          <WeightedBar s={overall} />
+          <WeightedBar s={overall} uncovered={uncovered} />
           {weakest.length > 0 && (
             <div className="glance-weak">
               <span className="muted small">Needs work</span>

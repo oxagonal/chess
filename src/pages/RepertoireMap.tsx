@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { useSettings } from '../db/settings';
-import { colorName, scopeOf } from '../db/scopes';
+import { colorName, repertoireScopeId, scopeOf } from '../db/scopes';
 import { startOfToday, useCards, useChapterGraphs, useCoverage } from '../hooks';
 import { chapterLines, STRENGTH_HINT, STRENGTH_LABEL, STRENGTHS, strengthHistory, type MapLine, type Strength } from '../lib/map';
 import { chapterPosition } from '../lib/chapters';
-import { compactLine, formatLine, type Color } from '../lib/chess';
+import { compactLine, formatLine, START_KEY, type Color } from '../lib/chess';
 import type { Chapter, Collection, CoverageResult } from '../lib/types';
 import { isCoverageFresh } from '../services/coverage';
 import { LineCard } from '../components/LineCard';
@@ -49,9 +49,19 @@ export function useMapData(color: Color, chapters: Chapter[], collections: Colle
   const settings = useSettings();
   const run = useCoverage(color);
   const set = collections.find((c) => c.id === setId && c.color === color);
+  const setRun = useCoverage(set && repertoireScopeId(set.id));
   const shown = chapters.filter((c) => c.color === color && (!set || set.chapterIds.includes(c.id)));
   const scope = settings.loaded ? scopeOf(color, chapters, collections, settings) : undefined;
   const cov: CoverageResult | undefined = scope && run && isCoverageFresh(run, scope, settings) ? run : undefined;
+  // The games your lines don't cover — from the run of what's shown (the color, or the repertoire):
+  // one minus its coverage of the start position, as on the Coverage page.
+  const setScope = set && settings.loaded ? scopeOf(repertoireScopeId(set.id), chapters, collections, settings) : undefined;
+  const gapRun = set ? (setScope && setRun && isCoverageFresh(setRun, setScope, settings) ? setRun : undefined) : cov;
+  const rootCoverage = gapRun?.coverage?.[START_KEY];
+  const uncovered: Uncovered | undefined =
+    gapRun && rootCoverage !== undefined
+      ? { share: Math.min(1, Math.max(0, 1 - rootCoverage)), oneInN: Math.round(1 / gapRun.threshold), scopeId: gapRun.repId }
+      : undefined;
   const today = startOfToday();
   const maps = useMemo<ChapterMap[] | undefined>(() => {
     if (!graphs || !cards) return undefined;
@@ -68,8 +78,27 @@ export function useMapData(color: Color, chapters: Chapter[], collections: Colle
   }, [graphs, cards, shown.map((c) => c.id).join(), today, cov]);
   const allLines = useMemo(() => maps?.flatMap((m) => m.lines) ?? [], [maps]);
   const allWeights = useMemo(() => maps?.flatMap((m) => m.weights) ?? [], [maps]);
-  return { graphs, maps, allLines, allWeights, cov, set, today, overall: shares(allLines, allWeights) };
+  // With a run, shares of all your games (the lines' shares scaled to the games they cover).
+  const inLines = shares(allLines, allWeights);
+  const overall = uncovered ? scaled(inLines, 1 - uncovered.share) : inLines;
+  return { graphs, maps, allLines, allWeights, cov, set, today, overall, uncovered };
 }
+
+/** The share of your games that leave your lines while still common (a coverage run's gaps). */
+export interface Uncovered {
+  share: number;
+  /** The run's target: positions rarer than 1 in this many games don't count. */
+  oneInN: number;
+  /** The scope the run is for (its Coverage page lists the gaps). */
+  scopeId: string;
+}
+
+function scaled(s: Record<Strength, number>, by: number): Record<Strength, number> {
+  return Object.fromEntries(STRENGTHS.map((k) => [k, s[k] * by])) as Record<Strength, number>;
+}
+
+const uncoveredHint = (u: Uncovered) =>
+  `games that leave your lines while still common — at an opponent move you have no answer to, or a position with no move of yours, met at least 1 in ${u.oneInN} games`;
 
 /** Share known well (growing or solid), weighted. */
 export { readyOf, shares, WeightedBar };
@@ -93,7 +122,7 @@ export function RepertoireMap({
   const settings = useSettings();
   const logs = useLiveQuery(() => db.reviewLog.where('color').equals(color).toArray(), [color]);
   const [order, setOrder] = useState<'opening' | 'weakest' | 'strongest'>('opening');
-  const { graphs, maps, allLines, cov, set, today, overall } = useMapData(color, chapters, collections, setId);
+  const { graphs, maps, allLines, cov, set, today, overall, uncovered } = useMapData(color, chapters, collections, setId);
   // A week ago vs now, in lines known well.
   const week = useMemo(() => {
     if (!logs || !allLines.length) return undefined;
@@ -151,16 +180,28 @@ export function RepertoireMap({
                 </button>
               )}
             </div>
-            <WeightedBar s={overall} />
+            <WeightedBar s={overall} uncovered={uncovered} />
             <div className="readiness-legend">
               {ORDER.map((s) => (
                 <span key={s} title={STRENGTH_HINT[s]}>
                   <span className={`str-swatch str-${s}`} /> {STRENGTH_LABEL[s]} <b>{pct(overall[s])}</b>
                 </span>
               ))}
+              {uncovered && (
+                <span title={uncoveredHint(uncovered)}>
+                  <span className="str-swatch str-uncovered" /> Not covered <b>{pct(uncovered.share)}</b>
+                </span>
+              )}
             </div>
             <div className="muted small">
               {cov ? 'Weighted by how often each line comes up in your games.' : 'Every line counts the same — run Coverage to weight them by how often they come up.'}
+              {uncovered && uncovered.share > 0 && (
+                <>
+                  {' '}
+                  <b>Not covered</b>: games that leave your lines while still common (1 in {uncovered.oneInN} or more) —{' '}
+                  <a href={href(`coverage/${uncovered.scopeId}`)}>see the gaps</a>.
+                </>
+              )}
               {week !== undefined && week !== 0 && (
                 <>
                   {' '}
@@ -193,12 +234,15 @@ export function RepertoireMap({
   );
 }
 
-function WeightedBar({ s, slim = false }: { s: Record<Strength, number>; slim?: boolean }) {
+function WeightedBar({ s, uncovered, slim = false }: { s: Record<Strength, number>; uncovered?: Uncovered; slim?: boolean }) {
   return (
     <div className={`str-bar ${slim ? 'slim' : ''}`} aria-hidden="true">
       {ORDER.filter((k) => s[k] > 0).map((k) => (
         <span key={k} className={`str-seg str-${k}`} style={{ flexGrow: s[k] }} title={`${STRENGTH_LABEL[k]}: ${pct(s[k])}`} />
       ))}
+      {uncovered && uncovered.share > 0 && (
+        <span className="str-seg str-uncovered" style={{ flexGrow: uncovered.share }} title={`Not covered: ${pct(uncovered.share)} — ${uncoveredHint(uncovered)}`} />
+      )}
     </div>
   );
 }
