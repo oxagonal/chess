@@ -60,6 +60,11 @@ export interface AppSettings {
    * this on, again and again until you get every one of them right in a row.
    */
   trainRepeatUntilRight: boolean;
+  /**
+   * Trainer's answer timer, in seconds (0 = off): in reviews and drills a correct answer within it is
+   * Good, within its first quarter Easy, and slower Hard (see lib/srs gradeForAnswer).
+   */
+  trainAnswerSeconds: number;
   /** Builder: save every move played on the board straight into the repertoire. */
   builderAutoAdd: boolean;
   /** Show Stockfish evaluations next to each move in the builder. */
@@ -117,6 +122,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   trainAutoNext: false,
   trainSkipRepeats: false,
   trainRepeatUntilRight: false,
+  trainAnswerSeconds: 10,
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,

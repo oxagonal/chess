@@ -45,7 +45,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   *Learn* shows new lines and then has you replay them from memory; *Review* plays each due position out
   from the starting position (opponent moves and moves that aren't due are played for you) and asks only
   for the due moves. A wrong move snaps back and you retry **right there** — the line never restarts. A
-  second miss shows the answer as an arrow.
+  second miss shows the answer as an arrow. An **answer timer** (⚙ in a session, or Settings → Training; 10 s by
+  default, 0 turns it off) grades how quickly you find each move in reviews and drills: in time is Good, in the
+  first quarter of it Easy, slower Hard — so moves you know cold come back later and ones you dig for, sooner.
 - **Coverage — "1 in N games"** — assuming you play your prep and opponents answer like players at your
   rating, how often does each position appear? Lists the opponent moves you'll face at least once every
   N games that your repertoire doesn't answer (*gaps*), positions where it's your move with nothing prepared,

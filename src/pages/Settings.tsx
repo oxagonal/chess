@@ -16,6 +16,7 @@ import type { ProbabilitySource } from '../lib/types';
 import { SyncPanel } from '../components/SyncPanel';
 import { AboutPanel } from '../components/AboutPanel';
 import { useSyncStatus } from '../services/cloudSync';
+import { AnswerTimerInput } from '../components/AnswerTimerInput';
 
 const SPEEDS = ['ultraBullet', 'bullet', 'blitz', 'rapid', 'classical', 'correspondence'];
 
@@ -190,6 +191,10 @@ export function SettingsPage() {
             <span>Max interval (days)</span>
             <input type="number" min={7} max={3650} value={s.maxIntervalDays} onChange={(e) => set({ maxIntervalDays: Number(e.target.value) })} style={{ width: 100 }} />
           </label>
+          <label className="field" title="Seconds per move in reviews and drills (0 = off): a right answer in time is Good, in the first quarter of it Easy, slower Hard">
+            <span>Answer timer (s)</span>
+            <AnswerTimerInput />
+          </label>
           <label className="field">
             <span>Opponent move speed</span>
             <select value={s.autoPlayDelayMs} onChange={(e) => set({ autoPlayDelayMs: Number(e.target.value) })}>
@@ -204,7 +209,8 @@ export function SettingsPage() {
           Only train positions I'll meet at least as often as each repertoire's coverage target (uses its last Coverage run)
         </label>
         <p className="muted small">
-          Higher retention means more frequent reviews. 90% is a good default; raise it before a tournament.
+          Higher retention means more frequent reviews. 90% is a good default; raise it before a tournament. The answer timer grades
+          how quickly you find a move in reviews and drills (0 = off): in time is Good, in the first quarter of it Easy, slower Hard.
         </p>
       </div>
 

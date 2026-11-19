@@ -1,13 +1,15 @@
 /**
  * Spaced repetition built on FSRS (ts-fsrs). Each of *your* repertoire moves is a card.
- * Grades are derived automatically from how you answered:
- *   correct first try → Good, correct after a wrong attempt / hint → Again.
+ * Grades are derived automatically from how you answered (gradeForAnswer):
+ *   correct first try → Good — or, with the answer timer, Easy when quick and Hard when slow;
+ *   correct after a wrong attempt / hint → Again.
  */
 import { createEmptyCard, fsrs, Rating, State, type Card, type Grade } from 'ts-fsrs';
 import type { ReviewCard } from './types';
 import type { Color } from './chess';
 
 export { Rating, State };
+export type { Grade };
 
 export interface SrsSettings {
   requestRetention: number; // 0.7 .. 0.97
@@ -66,6 +68,16 @@ export function grade(card: ReviewCard, rating: Grade, settings: SrsSettings = D
 }
 
 /**
+ * The grade for an answer. `ms`: how long it took, `limitMs`: the answer timer (0 or no `ms`: untimed).
+ * Correct within the time is Good, within its first quarter Easy, slower Hard; a miss is Again.
+ */
+export function gradeForAnswer(missed: boolean, ms?: number, limitMs = 0): Grade {
+  if (missed) return Rating.Again;
+  if (!limitMs || ms === undefined) return Rating.Good;
+  return ms > limitMs ? Rating.Hard : ms <= limitMs / 4 ? Rating.Easy : Rating.Good;
+}
+
+/**
  * A drill: you practice a move whether or not it's due. A correct answer on a move that isn't due
  * yet restarts its current interval from today — as if its last review had been today — instead of
  * growing it: an early review proves little, and drilling a move again and again (even on different
@@ -73,7 +85,8 @@ export function grade(card: ReviewCard, rating: Grade, settings: SrsSettings = D
  * Misses, moves that are due anyway, and moves still in their (re)learning steps are graded as usual.
  */
 export function gradeAhead(card: ReviewCard, rating: Grade, settings: SrsSettings = DEFAULT_SRS, now = Date.now()): ReviewCard {
-  if (rating !== Rating.Good || card.state !== State.Review || card.due <= now || card.lastReview === undefined) {
+  // (A quick answer, Easy, is still only an early review: it restarts the interval like Good.)
+  if ((rating !== Rating.Good && rating !== Rating.Easy) || card.state !== State.Review || card.due <= now || card.lastReview === undefined) {
     return grade(card, rating, settings, now);
   }
   const interval = card.due - card.lastReview;

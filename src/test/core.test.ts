@@ -141,6 +141,38 @@ describe('drilling ahead of time', () => {
   });
 });
 
+describe('the answer timer', () => {
+  it('grades a right answer by how long it took: Easy, Good or Hard; a miss is Again', async () => {
+    const { gradeForAnswer } = await import('../lib/srs');
+    const limit = 10_000;
+    expect(gradeForAnswer(false, 1_500, limit)).toBe(Rating.Easy);
+    expect(gradeForAnswer(false, 2_500, limit)).toBe(Rating.Easy);
+    expect(gradeForAnswer(false, 6_000, limit)).toBe(Rating.Good);
+    expect(gradeForAnswer(false, 10_000, limit)).toBe(Rating.Good);
+    expect(gradeForAnswer(false, 14_000, limit)).toBe(Rating.Hard);
+    expect(gradeForAnswer(true, 1_000, limit)).toBe(Rating.Again);
+    // Off, or not timed: Good.
+    expect(gradeForAnswer(false, 30_000, 0)).toBe(Rating.Good);
+    expect(gradeForAnswer(false, undefined, limit)).toBe(Rating.Good);
+  });
+
+  it('lengthens a due move more when quick and less when slow — but a quick drill ahead of time only restarts it', async () => {
+    const { gradeAhead } = await import('../lib/srs');
+    const DAY = 86_400_000;
+    const t0 = Date.UTC(2026, 0, 1);
+    let c = grade(newCard({ id: 'x', color: 'white', fromKey: 'k', san: 'e4' }, t0 - 3 * DAY), Rating.Good, undefined, t0 - 3 * DAY);
+    c = { ...c, state: State.Review, stability: 20, lastReview: t0 - 20 * DAY, due: t0 };
+    const after = (r: Parameters<typeof grade>[1]) => grade(c, r, { requestRetention: 0.9, maximumIntervalDays: 365 }, t0).stability;
+    expect(after(Rating.Easy)).toBeGreaterThan(after(Rating.Good));
+    expect(after(Rating.Good)).toBeGreaterThan(after(Rating.Hard));
+    // 10 days early: Easy is treated like Good (interval restarted, not grown).
+    const early = { ...c, due: t0 + 10 * DAY };
+    const drilled = gradeAhead(early, Rating.Easy, undefined, t0);
+    expect(drilled.due).toBe(t0 + 30 * DAY);
+    expect(drilled.stability).toBe(20);
+  });
+});
+
 describe('trainer planning', () => {
   const moves = movesFromLines('r', 'white', ['e4 c5 Nf3 d6 d4', 'e4 c5 Nf3 Nc6 d4', 'e4 e5 Nf3 Nc6 Bb5']);
   const g = new RepGraph('white', moves);

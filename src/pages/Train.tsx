@@ -6,6 +6,7 @@ import { db } from '../db/db';
 import { getSettings, updateSettings, useSettings, type AppSettings } from '../db/settings';
 import { gradeCard } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
+import { AnswerTimerInput } from '../components/AnswerTimerInput';
 import { Board, type Arrow } from '../components/Board';
 import { PositionTools } from '../components/PositionTools';
 import { ColorPill, Empty, ProgressBar, Stat } from '../components/ui';
@@ -22,7 +23,7 @@ import type { RepGraph } from '../lib/graph';
 import { asQuiz, moveOrders, orderCards, planLine, type PlannedStep } from '../lib/trainer';
 import { Builder } from './Repertoire';
 import { computeInsights, movesForLine, movesUnder } from '../lib/insights';
-import { formatInterval, isDue, isNew, Rating } from '../lib/srs';
+import { formatInterval, gradeForAnswer, isDue, isNew, Rating, type Grade } from '../lib/srs';
 import type { RepMove, ReviewCard } from '../lib/types';
 
 /** review = due moves, learn = new moves, drill = extra practice of a chosen line / your weakest moves. */
@@ -305,6 +306,47 @@ function shuffled<T>(xs: readonly T[]): T[] {
 
 type Feedback = { kind: 'good' | 'bad' | 'hint' | 'show' | 'info'; text: ReactNode } | null;
 
+const seconds = (ms: number) => `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`;
+
+/** After a timed answer: how the answer timer graded it, when it wasn't plain Good. */
+function Speed({ grade, ms }: { grade: Grade; ms?: number }) {
+  if (ms === undefined || (grade !== Rating.Easy && grade !== Rating.Hard)) return null;
+  return (
+    <span className="muted">
+      {' '}
+      · {grade === Rating.Easy ? 'quick' : 'slow'} ({seconds(ms)}): <b className={grade === Rating.Easy ? 'good-text' : 'warn-text'}>{grade === Rating.Easy ? 'Easy' : 'Hard'}</b>
+    </span>
+  );
+}
+
+/**
+ * The answer timer on a question: a bar running down over the time you have. It reads the session's
+ * clock (which only runs while the app is on screen); green while an answer would still be Easy.
+ */
+function AnswerClock({ limitMs, elapsed }: { limitMs: number; elapsed: () => number }) {
+  const [ms, setMs] = useState(0);
+  useEffect(() => {
+    setMs(elapsed());
+    const t = setInterval(() => setMs(elapsed()), 200);
+    return () => clearInterval(t);
+  }, [elapsed]);
+  const left = Math.max(0, limitMs - ms);
+  const phase = ms > limitMs ? 'over' : ms <= limitMs / 4 ? 'quick' : 'ok';
+  // No room of its own: the seconds sit at the end of the first line, the bar along the box's top.
+  return (
+    <span
+      className={`answer-clock ${phase}`}
+      role="timer"
+      title="Answer timer (⚙ Settings): in time is Good, in the first quarter Easy, slower Hard"
+    >
+      <span className="answer-clock-bar" aria-hidden="true">
+        <span style={{ width: `${(left / limitMs) * 100}%` }} />
+      </span>
+      <span className="answer-clock-time small">{phase === 'over' ? 'over time · Hard' : `${Math.ceil(left / 1000)} s`}</span>
+    </span>
+  );
+}
+
 /** The note to show for a move you missed: its first chapter's (a union move can stand for several). */
 const noteFor = (m: RepMove) => ({ id: sourcesOf(m)[0], san: m.san });
 
@@ -348,6 +390,28 @@ function Session({ setup }: { setup: SessionSetup }) {
   const seenRef = useRef(new Set<string>());
   // Moves graded this session: a drill grades each move you play once, wherever it comes up.
   const gradedRef = useRef(new Set<string>());
+
+  // The answer timer (⚙): time spent on the question you're on, counting only while the app is on
+  // screen — so switching away doesn't make an answer slow. It restarts with every position.
+  const clockRef = useRef<{ spent: number; since: number | null }>({ spent: 0, since: null });
+  const answerMs = useCallback(() => {
+    const c = clockRef.current;
+    return c.spent + (c.since === null ? 0 : performance.now() - c.since);
+  }, []);
+  useEffect(() => {
+    const onVisibility = () => {
+      const c = clockRef.current;
+      const now = performance.now();
+      if (document.hidden) {
+        if (c.since !== null) (c.spent += now - c.since), (c.since = null);
+      } else if (c.since === null) c.since = now;
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+  useEffect(() => {
+    clockRef.current = { spent: 0, since: document.hidden ? null : performance.now() };
+  }, [line, idx]);
 
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const flashFor = (f: 'good' | 'bad' | 'hint') => {
@@ -527,6 +591,18 @@ function Session({ setup }: { setup: SessionSetup }) {
 
   const step = line && idx < line.steps.length ? line.steps[idx] : undefined;
   const waiting = !!step && !!line && !playedForYou(step);
+  // Timed: a question that's graded, in a review or drill (Learn has just shown you the line; missed
+  // positions coming back are practice).
+  const limitMs = Math.max(0, live.trainAnswerSeconds || 0) * 1000;
+  const timed =
+    !!limitMs &&
+    !!line &&
+    !!step &&
+    waiting &&
+    line.phase === 'quiz' &&
+    !line.repeat &&
+    mode !== 'learn' &&
+    (step.kind === 'quiz' || (mode === 'drill' && step.kind === 'practice' && !gradedRef.current.has(step.move.id)));
   const rep = line ? reps.get(line.repId) : undefined;
   const graph = line ? graphsRef.current.get(line.repId) : undefined;
 
@@ -536,6 +612,7 @@ function Session({ setup }: { setup: SessionSetup }) {
     if (!r) return;
     const expected = step.move;
     if (r.san === expected.san) {
+      const ms = timed ? answerMs() : undefined;
       seenRef.current.add(expected.id);
       // Move the board first so the piece never jumps back while the grade is being saved.
       flashFor('good');
@@ -557,14 +634,24 @@ function Session({ setup }: { setup: SessionSetup }) {
           else missedPosRef.current.set(expected.id, { scopeId: line.repId, path: line.steps.slice(0, idx + 1).map((s) => s.move) });
         }
         feedbackToken.current++;
-        setFeedback({ kind: missed ? 'hint' : 'good', text: <b>{missed ? `${expected.san} — keep it in mind.` : `✓ ${expected.san}`}</b> });
         // A drill counts every move you play as reviewed: one that isn't due yet has its interval
         // restarted from today (never grown — see gradeAhead). In a review line the moves around the
         // due ones are practice only.
-        if (mode === 'drill' && !gradedRef.current.has(expected.id)) {
+        const graded = mode === 'drill' && !gradedRef.current.has(expected.id);
+        const g = gradeForAnswer(missed, ms, limitMs);
+        setFeedback({
+          kind: missed ? 'hint' : 'good',
+          text: (
+            <>
+              <b>{missed ? `${expected.san} — keep it in mind.` : `✓ ${expected.san}`}</b>
+              {graded && <Speed grade={g} ms={ms} />}
+            </>
+          ),
+        });
+        if (graded) {
           gradedRef.current.add(expected.id);
           setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (missed ? 0 : 1), failed: s.failed + (missed ? 1 : 0) }));
-          void gradeCard(expected.id, missed ? Rating.Again : Rating.Good, 'review', undefined, { ahead: true });
+          void gradeCard(expected.id, g, 'review', undefined, { ahead: true });
         }
         return;
       }
@@ -577,16 +664,18 @@ function Session({ setup }: { setup: SessionSetup }) {
       }
       pendingRef.current.delete(expected.id);
       setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (failed ? 0 : 1), failed: s.failed + (failed ? 1 : 0) }));
+      const g = gradeForAnswer(failed, ms, limitMs);
       const body = (interval?: string) => (
         <>
           <b>{failed ? `${expected.san} — keep practicing it.` : `✓ ${expected.san}`}</b>
+          <Speed grade={g} ms={ms} />
           {interval && <span className="muted"> · next review in {interval}</span>}
           {/* No note after a correct answer: a missed move opens its note under the board instead. */}
         </>
       );
       const token = ++feedbackToken.current;
       setFeedback({ kind: failed ? 'hint' : 'good', text: body() });
-      const updated = await gradeCard(expected.id, failed ? Rating.Again : Rating.Good, mode === 'learn' ? 'learn' : 'review', undefined, {
+      const updated = await gradeCard(expected.id, g, mode === 'learn' ? 'learn' : 'review', undefined, {
         ahead: mode === 'drill',
       });
       if (updated && token === feedbackToken.current) {
@@ -760,6 +849,13 @@ function Session({ setup }: { setup: SessionSetup }) {
           once); with this on, again until you get all of them right in a row.
         </span>
       </label>
+      <label className="answer-timer">
+        <AnswerTimerInput />
+        <span>
+          <b>Answer timer</b> — seconds per move in reviews and drills (0 = off). A right answer in time is Good, in the first quarter
+          of it Easy, slower Hard: moves you know cold come back later, ones you have to dig for sooner.
+        </span>
+      </label>
       <div className="muted small">Changes apply from the next line.</div>
     </div>
   );
@@ -824,6 +920,7 @@ function Session({ setup }: { setup: SessionSetup }) {
         </div>
       )}
       {feedback && <div style={{ marginBottom: 4, marginTop: waiting && line?.phase === 'show' ? 6 : 0 }}>{feedback.text}</div>}
+      {timed && <AnswerClock key={`${line?.steps.map((x) => x.move.id).join()}|${idx}`} limitMs={limitMs} elapsed={answerMs} />}
       {waiting && line?.phase === 'quiz' && feedback?.kind !== 'bad' && <b>Your move — what's your prep here?</b>}
       {waiting && prevStep && !prevStep.move.mine && prevStep.move.comment && (
         <div className="muted small" style={{ marginTop: 6 }}>
