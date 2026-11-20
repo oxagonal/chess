@@ -10,7 +10,7 @@ import { OneInNSlider } from '../components/OneInNSlider';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { repertoireDepth } from '../lib/depth';
 import { useCoverage } from '../hooks';
-import { runCoverage, sourceLabel, effectiveBands } from '../services/coverage';
+import { compareTargets, runCoverage, sourceLabel, effectiveBands, type TargetRow } from '../services/coverage';
 import { likelyPositions, oneIn, pct } from '../lib/coverage';
 import { formatLine } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
@@ -125,6 +125,108 @@ export function scopeGaps(run: CoverageResult | undefined, under?: readonly stri
   return out.sort((a, b) => b.prob - a.prob);
 }
 
+/** The targets compared (plus the scope's own). */
+const COMPARE = [100, 200, 300, 500, 1000];
+
+/**
+ * "What target do I need?": not covered, rare sidelines, gaps to fill and moves to know at several
+ * targets side by side, for the scope a run is made for (a color or a repertoire) — computed on
+ * demand (the deeper ones may look up more positions), nothing stored. A row sets that target.
+ */
+export function TargetComparison({ scopeId }: { scopeId: string }) {
+  const settings = useSettings();
+  const { scope } = useScopeGraph(scopeId);
+  const [rows, setRows] = useState<TargetRow[]>();
+  const [busy, setBusy] = useState<{ n: number; queried: number }>();
+  const [error, setError] = useState<string | null>(null);
+  const ctrl = useRef<AbortController | null>(null);
+  if (!scope) return null;
+  const current = repTarget(scope, settings);
+  const targets = [...new Set([...COMPARE, current])].sort((a, b) => a - b);
+  const compare = async () => {
+    setError(null);
+    ctrl.current = new AbortController();
+    setBusy({ n: targets[targets.length - 1], queried: 0 });
+    try {
+      setRows(await compareTargets(scopeId, targets, { signal: ctrl.current.signal, onProgress: (n, queried) => setBusy({ n, queried }) }));
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') setError((e as Error).message);
+    } finally {
+      setBusy(undefined);
+    }
+  };
+  return (
+    <div className="col" style={{ gap: 8 }}>
+      <div className="row">
+        <h3 style={{ margin: 0 }}>Compare targets</h3>
+        <span className="muted small">for {scope.name}</span>
+        <span className="spacer" />
+        {busy ? (
+          <>
+            <span className="muted small">
+              1 in {busy.n}: looked up {busy.queried} positions…
+            </span>
+            <button className="small" onClick={() => ctrl.current?.abort()}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button className="small" onClick={compare}>
+            {rows ? 'Compare again' : 'Compare targets'}
+          </button>
+        )}
+      </div>
+      <p className="muted small" style={{ margin: 0 }}>
+        What a run at each target would say about your lines as they are now. A deeper target turns rare sidelines into gaps to fill
+        (so they only go away once you prepare them), and every gap is at least one more move to know. The deepest may look up more
+        positions first.
+      </p>
+      {error && <div className="error">{error}</div>}
+      {rows && (
+        <TableWrap>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Target</th>
+                <th className="num">Not covered</th>
+                <th className="num">Rare sidelines</th>
+                <th className="num" title="Gaps and unprepared positions — each at least one more move">
+                  Gaps to fill
+                </th>
+                <th className="num hide-sm" title="Your-move positions you have now that come up at least that often">
+                  Moves to know
+                </th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.n} className={r.n === current ? 'current-row' : ''}>
+                  <td>
+                    <b>1 in {r.n}</b>
+                    {r.n === current && <span className="muted small"> · yours</span>}
+                  </td>
+                  <td className="num">{pct(r.notCovered, 0)}</td>
+                  <td className="num">{pct(r.sidelines, 0)}</td>
+                  <td className="num">{r.open}</td>
+                  <td className="num hide-sm">{r.moves}</td>
+                  <td>
+                    {r.n !== current && (
+                      <button className="small" onClick={() => void setScopeTarget(scope, r.n)} title={`Make 1 in ${r.n} the target for ${scope.name} (then re-run Coverage)`}>
+                        Use
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
+      )}
+    </div>
+  );
+}
+
 /**
  * How the coverage numbers come about, for the Map's details: what's assumed, where opponents' moves
  * come from, a few totals and the positions worth knowing cold.
@@ -136,7 +238,10 @@ export function CoverageDetails({
   gaps,
   covered,
   onOpen,
+  runScopeId,
 }: {
+  /** The scope runs are made for (a chapter's is its color's): compared at other targets. */
+  runScopeId: string;
   scope: Scope;
   graph: RepGraph;
   run?: CoverageResult;
@@ -186,6 +291,7 @@ export function CoverageDetails({
           </div>
         )}
       </div>
+      <TargetComparison scopeId={runScopeId} />
       {run && (
         <>
           <div className="grid3">

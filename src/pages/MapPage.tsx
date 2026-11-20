@@ -124,6 +124,7 @@ function MapView({ scopeId, chapters, collections }: { scopeId: string; chapters
           <Section title="Coverage">
             {insights ? (
               <CoverageDetails
+                runScopeId={runScopeOf(scope)}
                 scope={scope}
                 graph={insights.graph}
                 run={data.gapRun}

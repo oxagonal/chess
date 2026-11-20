@@ -438,6 +438,7 @@ button.chip:hover:not(:disabled) { background: var(--border); }
 .todo-list li > button { flex: none; }
 .todo-what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .todo-what .str-swatch { width: 9px; height: 9px; }
+table.data tr.current-row td { background: var(--panel2); }
 .map-details-toggle { align-self: flex-start; color: var(--muted); white-space: normal; text-align: left; }
 .glance .str-bar { height: 8px; }
 .warn-text { color: var(--warn); }

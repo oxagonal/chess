@@ -1,7 +1,7 @@
 import { db } from '../db/db';
 import { getSettings, repTarget, type AppSettings } from '../db/settings';
 import { loadScope, loadScopeGraph } from '../db/scopes';
-import { computeCoverage, COVERAGE_ALGO } from '../lib/coverage';
+import { computeCoverage, COVERAGE_ALGO, likelyPositions } from '../lib/coverage';
 import { GameStatsIndex } from '../lib/mygames';
 import { bandsForRating, toLichessRating } from '../lib/ratings';
 import { moveGames, type CoverageResult, type PositionStats, type Repertoire } from '../lib/types';
@@ -41,6 +41,55 @@ export async function runCoverage(
   const loaded = await loadScopeGraph(scopeId);
   if (!loaded) throw new Error('Not found');
   return runCoverageForGraph(scopeId, loaded.graph, { oneInN: repTarget(loaded.scope, await getSettings()), ...opts });
+}
+
+/** What a coverage run at 1 in `n` games would say about a scope (Map → Details → compare targets). */
+export interface TargetRow {
+  n: number;
+  /** Share of games that leave your lines while still common (1 − coverage of the start). */
+  notCovered: number;
+  /** Rare sidelines: games leaving your lines by rarer moves before they reach the target depth. */
+  sidelines: number;
+  /** Gaps and unprepared positions to fill — each at least one more move. */
+  open: number;
+  /** Your-move positions reached at least 1 in n games (moves you have now). */
+  moves: number;
+}
+
+/**
+ * A scope's coverage at several targets, from one set of lookups, without storing anything: the
+ * deepest target first — it looks up every position the others need (explorer answers are cached),
+ * so the rest come quickly.
+ */
+export async function compareTargets(
+  scopeId: string,
+  targets: readonly number[],
+  opts: { signal?: AbortSignal; onProgress?: (n: number, queried: number) => void; provider?: StatsProvider } = {},
+): Promise<TargetRow[]> {
+  const loaded = await loadScopeGraph(scopeId);
+  if (!loaded) throw new Error('Not found');
+  const { graph } = loaded;
+  const s = await getSettings();
+  const provider = opts.provider ?? (await statsProvider(s, graph.color, opts.signal, 'low'));
+  const rows: TargetRow[] = [];
+  for (const n of [...new Set(targets)].sort((a, b) => b - a)) {
+    const r = await computeCoverage(graph, provider, {
+      repId: scopeId,
+      threshold: 1 / n,
+      source: s.probabilitySource,
+      paramsLabel: sourceLabel(s),
+      signal: opts.signal,
+      onProgress: (q) => opts.onProgress?.(n, q),
+    });
+    rows.push({
+      n,
+      notCovered: Math.min(1, Math.max(0, 1 - (r.coverage?.[graph.root] ?? 1))),
+      sidelines: r.sidelines?.[graph.root] ?? 0,
+      open: r.gaps.length + r.unfinished.length,
+      moves: likelyPositions(graph, r).filter((p) => p.myTurn).length,
+    });
+  }
+  return rows.sort((a, b) => a.n - b.n);
 }
 
 /** Run the analysis on an in-memory graph (the builder uses this to keep scores live). */
