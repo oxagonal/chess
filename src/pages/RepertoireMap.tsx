@@ -265,7 +265,7 @@ export function Readiness({ data, subject, onGaps, children }: { data: MapData; 
  * by how well you know each line's weakest move (hover or tap one for the details); by opening, or
  * weakest / strongest first. One chapter: just its strip, as "Lines".
  */
-export function ChapterSection({ data }: { data: MapData }) {
+export function ChapterSection({ data, actions, groupExtra }: { data: MapData } & StripExtras) {
   const [order, setOrder] = useState<'opening' | 'weakest' | 'strongest'>('opening');
   const { maps, graphs, cov, uncovered, scope } = data;
   if (!maps || !scope) return null;
@@ -291,7 +291,15 @@ export function ChapterSection({ data }: { data: MapData }) {
           </div>
         )}
       </div>
-      <ChapterStrips maps={sorted} color={scope.color} graphs={order === 'opening' && !one ? graphs : undefined} allGraphs={graphs} gaps={uncovered} />
+      <ChapterStrips
+        maps={sorted}
+        color={scope.color}
+        graphs={order === 'opening' && !one ? graphs : undefined}
+        allGraphs={graphs}
+        gaps={uncovered}
+        actions={actions}
+        groupExtra={groupExtra}
+      />
     </>
   );
 }
@@ -316,6 +324,12 @@ function WeightedBar({ s, uncovered, slim = false }: { s: Record<Strength, numbe
 
 type Open = { chapter: Chapter; line: MapLine; index: number; rect: DOMRect; pinned: boolean };
 
+/** What a page adds to the strips: each chapter's buttons (else a practice button), a group's badges. */
+interface StripExtras {
+  actions?: (chapter: Chapter) => ReactNode;
+  groupExtra?: (chapterIds: string[]) => ReactNode;
+}
+
 /** Each chapter as a strip of its lines; given `graphs`, grouped by first move and opening. */
 function ChapterStrips({
   maps,
@@ -323,6 +337,8 @@ function ChapterStrips({
   graphs,
   allGraphs,
   gaps,
+  actions,
+  groupExtra,
 }: {
   maps: ChapterMap[];
   color: Color;
@@ -330,7 +346,7 @@ function ChapterStrips({
   allGraphs?: ReadonlyMap<string, RepGraph>;
   /** The coverage run behind the not-covered shares (its target, and whose gaps to link to). */
   gaps?: Uncovered;
-}) {
+} & StripExtras) {
   const names = useOpeningIndex();
   const [open, setOpen] = useState<Open | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -369,11 +385,14 @@ function ChapterStrips({
               {pct(ready)}
             </span>
           )}
-          {lines.length > 0 && (
-            <button className="small ghost" onClick={practice}>
-              {dueCount ? `Review ${dueCount}` : fresh ? 'Learn' : 'Drill'} ▸
-            </button>
-          )}
+          {lines.length > 0 &&
+            (actions ? (
+              actions(chapter)
+            ) : (
+              <button className="small ghost" onClick={practice}>
+                {dueCount ? `Review ${dueCount}` : fresh ? 'Learn' : 'Drill'} ▸
+              </button>
+            ))}
         </div>
         {lines.length === 0 ? (
           <div className="muted small">No lines yet — add moves in the builder.</div>
@@ -441,6 +460,7 @@ function ChapterStrips({
               <>
                 <WeightedBar s={s} slim uncovered={gaps && (uncovered || rare) ? { ...gaps, share: uncovered, rare } : undefined} />
                 <span className="map-row-ready">{pct(readyOf(s))}</span>
+                {groupExtra?.(ids)}
               </>
             );
           }}

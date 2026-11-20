@@ -7,8 +7,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   several chapters is one card, learned once. A *repertoire* is a saved set of chapters (say an Exchange
   Caro-Kann and an Italian for one tournament) that you can train, measure and check — it says where its
   chapters give you different moves in the same position. Train all of a color, a repertoire or one chapter.
-- **Map** — its own tab, for all of a color, a repertoire or one chapter, organized by the questions it
-  answers. *How ready am I?* One bar of all your games: your lines by how well you know their weakest move
+- **Map** — the tab you train from and see where you stand, for all of a color, a repertoire or one chapter,
+  organized by the questions it answers. *Today*, across everything: what's due, what's new within your
+  daily limit, what you learned today, Review / Learn all of it, and "only train likely positions". *How ready am I?* One bar of all your games: your lines by how well you know their weakest move
   (not learned, missed last time, learning, growing, solid), the games your lines don't cover (they leave
   them while still more common than your coverage target), and the *rare sidelines* (opponent moves rarer
   than the target that leave your lines before they reach your target depth, which stay outside your prep
@@ -48,7 +49,8 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
 - **Explorer columns** — the explorer's ⚙ picks its columns (games, %, 1 in N, Stockfish eval, result, last
   played; saved with your settings, so they sync). In *My games* and *Players* each move shows when it was
   last played, and 🔍 lists the games behind a move or the position (any move order) on the Games tab.
-- **Spaced repetition** — every one of your moves is a card scheduled with [FSRS](https://github.com/open-spaced-repetition/ts-fsrs).
+- **Spaced repetition** — every one of your moves is a card scheduled with [FSRS](https://github.com/open-spaced-repetition/ts-fsrs),
+  trained from the Map (everything, a color, a repertoire or a chapter's row: Review, Learn, Drill).
   *Learn* shows new lines and then has you replay them from memory; *Review* plays each due position out
   from the starting position (opponent moves and moves that aren't due are played for you) and asks only
   for the due moves. A wrong move snaps back and you retry **right there** — the line never restarts. A

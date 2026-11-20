@@ -48,7 +48,7 @@ export function HomePage() {
   const steps = [
     { done: !!(settings.lichessUsername || settings.chesscomUsername), text: <>Add your Lichess / Chess.com usernames and rating in <a href={href('settings')}>Settings</a></> },
     { done: reps.length > 0, text: <>Create a chapter and add lines — or import a Lichess study (<a href={href('repertoire')}>Repertoire</a>)</> },
-    { done: learned > 0, text: <>Learn your first moves (<a href={href('train')}>Train</a>)</> },
+    { done: learned > 0, text: <>Learn your first moves (<a href={href('map')}>Map</a>)</> },
     { done: (coverageCount ?? 0) > 0, text: <>Run Coverage on the <a href={href('map')}>Map</a> to find the positions you'll meet often enough to prepare</> },
     { done: (allGameCount ?? 0) > 0, text: <>Import your games to see where you forget your prep (<a href={href('games')}>Games</a>)</> },
   ];
@@ -177,9 +177,11 @@ function ColorGlance({ color, chapters, collections, due }: { color: Color; chap
         <a className="btn small" href={href(`map/${color}`)}>
           Map
         </a>
-        <a className={`btn small ${due ? 'primary' : ''}`} href={href('train', { rep: color, mode: 'review' })}>
-          {due ? `Review ${due}` : 'Train'}
-        </a>
+        {due > 0 && (
+          <a className="btn small primary" href={href('train', { rep: color, mode: 'review', t: String(Date.now()) })}>
+            Review {due}
+          </a>
+        )}
       </div>
       {allLines.length > 0 && (
         <>

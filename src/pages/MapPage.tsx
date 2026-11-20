@@ -11,14 +11,15 @@ import { useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { colorName, scopeOf, useChaptersAndSets, type Scope } from '../db/scopes';
-import { useSettings } from '../db/settings';
-import { loadScopeCounts } from '../db/training';
+import { updateSettings, useSettings } from '../db/settings';
+import { learnedTodayCount, loadTrainingData, trainCounts, type TrainCounts, type TrainingData } from '../db/training';
+import { SessionButtons } from '../components/SessionButtons';
 import { lineTarget } from '../db/repertoire';
 import { defaultScope, ScopeSelect } from '../components/ScopeSelect';
 import { Empty } from '../components/ui';
 import { useNow } from '../hooks';
 import { chapterPosition } from '../lib/chapters';
-import { formatLine } from '../lib/chess';
+import { formatLine, START_KEY } from '../lib/chess';
 import { oneIn } from '../lib/coverage';
 import { STRENGTH_LABEL, strengthOf } from '../lib/map';
 import { weakestMoves } from '../lib/insights';
@@ -60,21 +61,97 @@ export function MapPage({ route }: PageProps) {
   if (asked === scopeId) remember(SCOPE_KEY, scopeId);
   return (
     <div className="col map-page" style={{ gap: 14 }}>
-      <div className="row">
-        <h1 style={{ margin: 0 }}>Map</h1>
-        <span className="spacer" />
-        <ScopeSelect value={scopeId} onChange={(id) => navigate(`map/${id}`)} chapters={chapters} collections={collections} />
-      </div>
-      <MapView key={scopeId} scopeId={scopeId} chapters={chapters} collections={collections} />
+      <h1 style={{ margin: 0 }}>Map</h1>
+      <MapTraining>
+        {(train) => (
+          <>
+            <TodayPanel train={train} />
+            <div className="row map-scope">
+              <ScopeSelect value={scopeId} onChange={(id) => navigate(`map/${id}`)} chapters={chapters} collections={collections} />
+            </div>
+            <MapView key={scopeId} scopeId={scopeId} chapters={chapters} collections={collections} train={train} />
+          </>
+        )}
+      </MapTraining>
     </div>
   );
 }
 
-function MapView({ scopeId, chapters, collections }: { scopeId: string; chapters: Chapter[]; collections: Collection[] }) {
+/**
+ * What there is to train — the Train tab's counts, here now: worked out live from the database with
+ * the same rule as every session (db/training), for any scope, with today's new-move allowance.
+ */
+interface Training {
+  data?: TrainingData;
+  now: number;
+  /** New moves today's limit still allows. */
+  newLeft: number;
+  learnedToday?: number;
+  countsOf: (scopeId: string, chapterIds?: readonly string[]) => TrainCounts | undefined;
+}
+
+function MapTraining({ children }: { children: (t: Training) => ReactNode }) {
+  const settings = useSettings();
+  const now = useNow();
+  const data = useLiveQuery(() => loadTrainingData(), []);
+  const learnedToday = useLiveQuery(learnedTodayCount, [now]);
+  const newLeft = Math.max(0, settings.newPerDay - (learnedToday ?? 0));
+  const countsOf = (scopeId: string, chapterIds?: readonly string[]) => (data ? trainCounts(scopeId, data, now, chapterIds) : undefined);
+  return <>{children({ data, now, newLeft, learnedToday, countsOf })}</>;
+}
+
+/** Today, across everything: what's due, what's new, Review / Learn all of it, and how training works. */
+function TodayPanel({ train }: { train: Training }) {
+  const settings = useSettings();
+  const all = train.countsOf('all');
+  const [how, setHow] = useState(false);
+  return (
+    <div className="panel col today" style={{ gap: 8 }}>
+      <div className="row">
+        <h2 style={{ margin: 0 }}>Today</h2>
+        <span className="muted small">
+          {all ? (
+            <>
+              <b>{all.due}</b> due · <b>{Math.min(train.newLeft, all.fresh)}</b> new of {settings.newPerDay} a day ·{' '}
+              <b>{train.learnedToday ?? 0}</b> learned today
+            </>
+          ) : (
+            '…'
+          )}
+        </span>
+        <span className="spacer" />
+        {all && <SessionButtons rep="all" due={all.due} fresh={Math.min(all.fresh, train.newLeft)} unlearned={all.fresh} />}
+      </div>
+      {/* Stop at your coverage target: a move 1 in 100,000 games deep isn't worth reviewing. */}
+      <label className="check" title="Needs a Coverage run for the color or repertoire; without one, everything is trained">
+        <input type="checkbox" checked={settings.trainOnlyLikely} onChange={(e) => updateSettings({ trainOnlyLikely: e.target.checked })} />
+        <span className="small">Only train positions you'll meet at least as often as your coverage target</span>
+      </label>
+      {settings.trainOnlyLikely && (
+        <div className="muted small">
+          Rarer positions are left out of Learn and Review, for each color or repertoire with a Coverage run; the rest is trained as
+          usual. Single moves you don't want trained at all: right-click them in the builder.
+        </div>
+      )}
+      <button className="linklike small" style={{ alignSelf: 'flex-start' }} onClick={() => setHow(!how)} aria-expanded={how}>
+        {how ? 'Hide' : 'How'} Learn and Review work
+      </button>
+      {how && (
+        <p className="muted small" style={{ margin: 0 }}>
+          <b>Learn</b> shows you new moves line by line, then has you replay them from memory — moves you already know are played for
+          you. <b>Review</b> quizzes moves that are due: you play the whole line from move 1 to the end of the branch, so you meet them
+          as they arise in a game. <b>Drill</b> practices a chapter, a line or your weakest moves whenever you like. Scheduling uses
+          FSRS; the answer timer (⚙ in a session) makes slow answers Hard and instant ones on well-known moves Easy.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function MapView({ scopeId, chapters, collections, train }: { scopeId: string; chapters: Chapter[]; collections: Collection[]; train: Training }) {
   const data = useMapData(scopeId, chapters, collections);
   const insights = useScopeInsights(scopeId);
-  const now = useNow();
-  const counts = useLiveQuery(() => loadScopeCounts(scopeId, now), [scopeId, now]);
+  const counts = train.countsOf(scopeId);
   const [details, setDetails] = useState(() => remembered(DETAILS_KEY) === '1');
   const { scope, maps, graphs, names } = data;
   if (!scope || !maps || !graphs) return <div className="muted">Loading…</div>;
@@ -109,12 +186,40 @@ function MapView({ scopeId, chapters, collections }: { scopeId: string; chapters
       </Readiness>
 
       <div className="map-todo">
-        <TrainCard scope={scope} due={counts?.due} fresh={counts?.fresh} />
+        <TrainCard scope={scope} counts={counts} newLeft={train.newLeft} />
         <GapsCard data={data} gaps={gaps} onOpen={openLine} />
         <WeakCard scopeId={scopeId} insights={insights} />
       </div>
 
-      <ChapterSection data={data} />
+      <ChapterSection
+        data={data}
+        actions={(ch) => {
+          const c = train.countsOf(ch.id);
+          return (
+            <span className="row map-row-actions">
+              {c && <SessionButtons compact rep={ch.id} due={c.due} fresh={Math.min(c.fresh, train.newLeft)} unlearned={c.fresh} />}
+              <button
+                className="small ghost"
+                onClick={() => navigate('train', { rep: ch.id, mode: 'drill', at: START_KEY, t: String(Date.now()) })}
+                title="Practice the whole chapter now, due or not — every move you play counts as reviewed"
+              >
+                Drill ▸
+              </button>
+            </span>
+          );
+        }}
+        groupExtra={(ids) => {
+          const c = train.countsOf(scope.color, ids);
+          return (
+            c && (
+              <>
+                {c.due > 0 && <span className="badge due">{c.due} due</span>}
+                {c.fresh > 0 && <span className="badge new">{c.fresh} new</span>}
+              </>
+            )
+          );
+        }}
+      />
 
       <button className="map-details-toggle ghost" aria-expanded={details} onClick={toggleDetails}>
         {details ? '▾' : '▸'} Details — how the coverage numbers come about, positions to know, your lines in a tree
@@ -154,26 +259,16 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 /* ------------------------------------------------------------------ to-dos */
 
-/** What's due and what's new here — the same counts as the Train tab (db/training). */
-function TrainCard({ scope, due, fresh }: { scope: Scope; due?: number; fresh?: number }) {
-  const go = (mode: 'review' | 'learn') => navigate('train', { rep: scope.id, mode, t: String(Date.now()) });
+/** What's due and what's new here (db/training's counts) — Review it, or Learn today's share. */
+function TrainCard({ scope, counts, newLeft }: { scope: Scope; counts?: TrainCounts; newLeft: number }) {
   return (
     <div className="panel col todo-card">
       <h3>Train</h3>
       <p className="muted small">
-        {due === undefined ? '…' : due ? `${due} move${due === 1 ? '' : 's'} due for review` : 'Nothing due right now'}
-        {fresh ? ` · ${fresh} new to learn` : ''}
+        {!counts ? '…' : counts.due ? `${counts.due} move${counts.due === 1 ? '' : 's'} due for review` : 'Nothing due right now'}
+        {counts?.fresh ? ` · ${counts.fresh} not learned yet` : ''}
       </p>
-      <div className="list-buttons">
-        <button className="primary small" disabled={!due} onClick={() => go('review')}>
-          Review {due || ''}
-        </button>
-        {!!fresh && (
-          <button className="blue small" onClick={() => go('learn')}>
-            Learn
-          </button>
-        )}
-      </div>
+      {counts && <SessionButtons rep={scope.id} due={counts.due} fresh={Math.min(counts.fresh, newLeft)} unlearned={counts.fresh} />}
     </div>
   );
 }

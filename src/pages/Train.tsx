@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
 import type { Chess } from 'chessops/chess';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
@@ -9,13 +8,13 @@ import { MoveNote } from '../components/MoveNote';
 import { AnswerTimerInput } from '../components/AnswerTimerInput';
 import { Board, type Arrow } from '../components/Board';
 import { PositionTools } from '../components/PositionTools';
-import { ColorPill, Empty, ProgressBar, Stat } from '../components/ui';
-import { PHONE_QUERY, useCards, useChapterGraphs, useMediaQuery, startOfToday } from '../hooks';
-import { ChapterTree } from '../components/ChapterTree';
+import { Empty, ProgressBar, Stat } from '../components/ui';
+import { PHONE_QUERY, useCards, useMediaQuery, startOfToday } from '../hooks';
 import { LineCard } from '../components/LineCard';
 import { mapLine } from '../lib/map';
-import { COLORS, colorName, loadScopeGraph, scopeIdsFor, repertoireScopeId, useChaptersAndSets, type Scope } from '../db/scopes';
-import { coverageFor, trainCounts, trainedCards } from '../db/training';
+import { colorName, loadScopeGraph, scopeIdsFor, useChaptersAndSets, type Scope } from '../db/scopes';
+import { coverageFor, learnedTodayCount, trainedCards } from '../db/training';
+import { EXTRA_BATCH } from '../components/SessionButtons';
 import { cardsOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
 import { href, navigate } from '../router';
 import { compactLine, formatLine, playUci, startPos } from '../lib/chess';
@@ -25,6 +24,9 @@ import { Builder } from './Repertoire';
 import { computeInsights, movesForLine, movesUnder, weakestMoves } from '../lib/insights';
 import { formatInterval, isDue, isNew, Rating, type Grade } from '../lib/srs';
 import type { RepMove, ReviewCard } from '../lib/types';
+
+/** Where a session goes back to: the Map of what it trained ('all': the Map as you left it). */
+const mapHref = (rep: string) => href(rep === 'all' ? 'map' : `map/${rep}`);
 
 /** review = due moves, learn = new moves, drill = extra practice of a chosen line / your weakest moves. */
 type SessionMode = 'review' | 'learn' | 'drill';
@@ -45,147 +47,8 @@ export function TrainPage({ route }: PageProps) {
         extra={Number(route.query.get('extra')) || undefined}
       />
     );
-  return <TrainChooser />;
-}
-
-/* ---------------------------------------------------------------- chooser */
-
-function TrainChooser() {
-  const { chapters, collections } = useChaptersAndSets();
-  const moves = useLiveQuery(() => db.moves.toArray(), []);
-  const cards = useCards();
-  const settings = useSettings();
-  const learnedToday = useLiveQuery(learnedTodayCount, []);
-  const coverage = useLiveQuery(() => db.coverage.toArray(), []);
-  const graphs = useChapterGraphs();
-  const now = Date.now();
-  if (!chapters || !collections || !moves || !cards || !settings.loaded || !graphs) return null;
-  if (!chapters.length) return <Empty>Create a chapter first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
-
-  const newLeft = Math.max(0, settings.newPerDay - (learnedToday ?? 0));
-  const data = { chapters, collections, moves, cards, settings, runs: coverage };
-  const countsFor = (scopeId: string) => trainCounts(scopeId, data, now);
-  const all = countsFor('all');
-  /** Due and new across some chapters of a color (a shared move counted once). */
-  const countsOfChapters = (color: 'white' | 'black', ids: string[]) => trainCounts(color, data, now, ids);
-  const row = (scopeId: string, title: ReactNode, color?: 'white' | 'black', sub?: string) => {
-    const c = countsFor(scopeId);
-    return (
-      <div key={scopeId} className="list-item">
-        <div className="list-main">
-          <div className="list-head">
-            {color && <ColorPill color={color} />}
-            <span className="list-title">{title}</span>
-            {sub && <span className="muted small">{sub}</span>}
-          </div>
-          <Counts due={c.due} fresh={c.fresh} />
-        </div>
-        <SessionButtons rep={scopeId} due={c.due} fresh={Math.min(c.fresh, newLeft)} unlearned={c.fresh} />
-      </div>
-    );
-  };
-
-  return (
-    <div className="col" style={{ gap: 16 }}>
-      <h1>Train</h1>
-      <div className="grid3">
-        <Stat value={all.due} label="Reviews due" />
-        <Stat value={`${Math.min(newLeft, all.fresh)}`} label="New moves today" hint={`${all.fresh} unlearned in total; daily limit ${settings.newPerDay}`} />
-        <Stat value={learnedToday ?? 0} label="Learned today" />
-      </div>
-      {/* Stop at your coverage target: a move 1 in 100,000 games deep isn't worth reviewing. */}
-      <label className="check train-likely" title="Needs a Coverage run for the color; without one, everything is trained">
-        <input type="checkbox" checked={settings.trainOnlyLikely} onChange={(e) => updateSettings({ trainOnlyLikely: e.target.checked })} />
-        Only train positions you'll meet at least as often as your coverage target
-      </label>
-      {settings.trainOnlyLikely && (
-        <div className="note">
-          Rarer positions are left out of Learn and Review, for each color or repertoire with a Coverage run; the rest is trained as
-          usual. Single moves you don't want trained at all: right-click them in the builder.
-        </div>
-      )}
-      <div className="panel list">
-        {row('all', 'Everything')}
-        {COLORS.filter((c) => chapters.some((ch) => ch.color === c)).map((c) => row(c, `All ${colorName(c)} chapters`, c))}
-      </div>
-      {collections.length > 0 && (
-        <>
-          <h3 style={{ margin: 0 }}>Repertoires</h3>
-          <div className="panel list">
-            {collections.map((r) => row(repertoireScopeId(r.id), r.name, r.color, `${r.chapterIds.length} chapter${r.chapterIds.length === 1 ? '' : 's'}`))}
-          </div>
-        </>
-      )}
-      {COLORS.filter((c) => chapters.some((ch) => ch.color === c)).map((color) => (
-        <div key={color} className="col" style={{ gap: 8 }}>
-          <h3 style={{ margin: 0 }}>{colorName(color)} chapters</h3>
-          <ChapterTree
-            color={color}
-            chapters={chapters}
-            graphs={graphs}
-            storageKey="train"
-            summary={(ids) => {
-              const c = countsOfChapters(color, ids);
-              return (
-                <>
-                  {c.due > 0 && <span className="badge due">{c.due} due</span>}
-                  {c.fresh > 0 && <span className="badge new">{c.fresh} new</span>}
-                </>
-              );
-            }}
-            row={(ch, label) => row(ch.id, label)}
-          />
-        </div>
-      ))}
-      <p className="muted small">
-        <b>Learn</b> shows you new moves of your repertoire line by line, then has you replay them from memory — moves you already know
-        are played for you. <b>Review</b> quizzes moves that are due: you play the whole line from move 1 to the end of the branch, so
-        you meet them as they arise in a game. Scheduling uses FSRS:
-        correct on the first try counts as “Good”, anything else as “Again”.
-      </p>
-    </div>
-  );
-}
-
-const EXTRA_BATCH = 10;
-
-function Counts({ due, fresh }: { due: number; fresh: number }) {
-  if (!due && !fresh) return <div className="list-meta">Nothing due, nothing new</div>;
-  return (
-    <div className="list-meta">
-      {due > 0 && <span className="badge due">{due} due</span>}
-      {fresh > 0 && <span className="badge new">{fresh} new</span>}
-    </div>
-  );
-}
-
-function SessionButtons({ rep, due, fresh, unlearned }: { rep: string; due: number; fresh: number; unlearned: number }) {
-  // Learn is never greyed out: past today's limit it learns another batch anyway, and with every
-  // move learned it opens the builder to add more.
-  const learn = () => {
-    if (fresh) navigate('train', { rep, mode: 'learn', t: String(Date.now()) });
-    else if (unlearned) navigate('train', { rep, mode: 'learn', extra: String(EXTRA_BATCH), t: String(Date.now()) });
-    else navigate(rep === 'all' || rep === 'white' || rep === 'black' || rep.startsWith('set:') ? 'repertoire' : `repertoire/${rep}`);
-  };
-  return (
-    <div className="list-buttons">
-      <button className="primary small" disabled={!due} onClick={() => navigate('train', { rep, mode: 'review', t: String(Date.now()) })}>
-        Review {due || ''}
-      </button>
-      <button
-        className="blue small"
-        onClick={learn}
-        title={fresh ? undefined : unlearned ? 'Today’s new-move limit is reached — learn more anyway' : 'Every move is learned — add new moves in the builder'}
-      >
-        {fresh ? `Learn ${fresh}` : unlearned ? `Learn ${Math.min(EXTRA_BATCH, unlearned)} more` : 'Learn'}
-      </button>
-    </div>
-  );
-}
-
-async function learnedTodayCount(): Promise<number> {
-  const logs = await db.reviewLog.where('reviewedAt').aboveOrEqual(startOfToday()).toArray();
-  return new Set(logs.filter((l) => l.state === 0).map((l) => l.cardId)).size;
+  // The Train tab is part of the Map now (App sends #/train there): only sessions are shown here.
+  return null;
 }
 
 /* ---------------------------------------------------------------- session */
@@ -275,8 +138,8 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
             ? 'No new moves to learn (or the daily limit is reached).'
             : 'Nothing to drill here yet — learn some moves first.'}
         <div style={{ marginTop: 12 }}>
-          <a className="btn" href={href('train')}>
-            Back to Train
+          <a className="btn" href={mapHref(repParam)}>
+            Back to the Map
           </a>
         </div>
       </Empty>
@@ -780,8 +643,8 @@ function Session({ setup }: { setup: SessionSetup }) {
             <Stat value={stats.failed} label="Missed" />
           </div>
           <div className="row" style={{ marginTop: 16 }}>
-            <a className="btn primary" href={href('train')}>
-              Back to Train
+            <a className="btn primary" href={mapHref(setup.reps.size === 1 ? [...setup.reps.keys()][0] : 'all')}>
+              Back to the Map
             </a>
             {mode === 'learn' && (
               <button
@@ -819,7 +682,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       ? `${repeatInfo.left} of ${repeatInfo.total} left${repeatInfo.round > 1 ? ` · round ${repeatInfo.round}` : ''}`
       : `${total - pendingRef.current.size} / ${total}`;
   const endButton = (
-    <a className="btn small" href={href('train')}>
+    <a className="btn small" href={mapHref(reps.size === 1 ? [...reps.keys()][0] : 'all')}>
       End
     </a>
   );

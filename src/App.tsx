@@ -21,6 +21,8 @@ interface Tab {
   path: string;
   label: string;
   page: ComponentType<PageProps>;
+  /** Not in the tab bar: reached from another tab, which stays highlighted (`under`). */
+  under?: string;
 }
 
 /**
@@ -30,8 +32,9 @@ interface Tab {
 const TABS: Tab[] = [
   { path: '', label: 'Home', page: HomePage },
   { path: 'repertoire', label: 'Repertoire', page: RepertoirePage },
-  { path: 'train', label: 'Train', page: TrainPage },
   { path: 'map', label: 'Map', page: MapPage },
+  // Training sessions (#/train?mode=…) are started from the Map.
+  { path: 'train', label: 'Train', page: TrainPage, under: 'map' },
   { path: 'games', label: 'Games', page: GamesPage },
   { path: 'settings', label: 'Settings', page: SettingsPage },
 ];
@@ -50,6 +53,11 @@ const LAST_GAMES_KEY = 'chess-prep:lastGames';
 function movedTo(route: Route): string | undefined {
   const [top, sub] = route.path;
   if (top === 'coverage' || top === 'insights') return href(sub ? `map/${sub}` : 'map');
+  // The Train tab is part of the Map: only sessions stay at #/train.
+  if (top === 'train' && !route.query.get('mode')) {
+    const rep = route.query.get('rep');
+    return href(rep && rep !== 'all' ? `map/${rep}` : 'map');
+  }
   if (top === 'repertoire' && !sub && route.query.get('view') === 'map') {
     const set = route.query.get('set');
     const color = route.query.get('color');
@@ -93,6 +101,8 @@ export function App() {
   }, [moved]);
   const tab = TABS.find((t) => t.path === (moved ? 'map' : (route.path[0] ?? ''))) ?? TABS[0];
   const Page = tab.page;
+  // The tab lit in the bar (a session lights the Map, where it was started).
+  const shownTab = (tab.under && TABS.find((t) => t.path === tab.under)) || tab;
   const lastGames = useLastGames(route);
   const tabHref = (t: Tab) => (t.path === 'games' && tab !== t && lastGames ? lastGames : href(t.path));
 
@@ -109,11 +119,11 @@ export function App() {
           ♞ Chess<span>Prep</span>
         </a>
         <nav className="nav row" style={{ flexWrap: 'nowrap' }}>
-          {TABS.map((t) => (
-            <a key={t.path} href={tabHref(t)} className={t === tab ? 'active' : ''} aria-current={t === tab ? 'page' : undefined}>
+          {TABS.filter((t) => !t.under).map((t) => (
+            <a key={t.path} href={tabHref(t)} className={t === shownTab ? 'active' : ''} aria-current={t === shownTab ? 'page' : undefined}>
               <span className="nav-icon">{NAV_ICONS[t.path]}</span>
               <span className="nav-label">{t.label}</span>
-              {t.path === 'train' && !!due && <span className="badge due">{due}</span>}
+              {t.path === 'map' && !!due && <span className="badge due">{due}</span>}
             </a>
           ))}
         </nav>

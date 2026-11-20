@@ -65,7 +65,8 @@ export function trainCounts(param: string, data: TrainingData, now = Date.now(),
   return counts;
 }
 
-async function loadTrainingData(): Promise<TrainingData> {
+/** Everything the counts are worked out from (for live queries: they follow every change). */
+export async function loadTrainingData(): Promise<TrainingData> {
   const [settings, chapters, collections, moves, cards, runs] = await Promise.all([
     getSettings(),
     db.repertoires.toArray(),
@@ -75,6 +76,14 @@ async function loadTrainingData(): Promise<TrainingData> {
     db.coverage.toArray(),
   ]);
   return { settings, chapters, collections, moves, cards, runs };
+}
+
+/** Moves learned today (first answered today): what the daily new-move limit counts. */
+export async function learnedTodayCount(): Promise<number> {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const logs = await db.reviewLog.where('reviewedAt').aboveOrEqual(start.getTime()).toArray();
+  return new Set(logs.filter((l) => l.state === 0).map((l) => l.cardId)).size;
 }
 
 /** What there is to train, everything and per color (for live queries: Home). */
