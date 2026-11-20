@@ -48,8 +48,9 @@ export function LichessAccount() {
       {status.error && <div className="error">{status.error}</div>}
       {!connected && (
         <div className="muted small">
-          Connecting fills in your username and is required for the Lichess opening explorer. It asks for one read-only permission:
-          reading your studies, so private and unlisted ones can be imported. It can't change anything on Lichess.
+          Connecting fills in your username and is required for the Lichess opening explorer. It asks to read your studies (so
+          private and unlisted ones can be imported) and to read and record your puzzles — the Puzzles tab picks them at your rating,
+          and counts your results on Lichess only if you let it.
         </div>
       )}
     </div>

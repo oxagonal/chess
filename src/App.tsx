@@ -8,6 +8,7 @@ import { HomePage } from './pages/Home';
 import { RepertoirePage } from './pages/Repertoire';
 import { TrainPage } from './pages/Train';
 import { MapPage } from './pages/MapPage';
+import { PuzzlesPage } from './pages/Puzzles';
 import { GamesPage } from './pages/Games';
 import { SettingsPage } from './pages/Settings';
 import { SyncIndicator } from './components/SyncPanel';
@@ -33,6 +34,7 @@ const TABS: Tab[] = [
   { path: '', label: 'Home', page: HomePage },
   { path: 'repertoire', label: 'Repertoire', page: RepertoirePage },
   { path: 'map', label: 'Map', page: MapPage },
+  { path: 'puzzles', label: 'Puzzles', page: PuzzlesPage },
   // Training sessions (#/train?mode=…) are started from the Map.
   { path: 'train', label: 'Train', page: TrainPage, under: 'map' },
   { path: 'games', label: 'Games', page: GamesPage },

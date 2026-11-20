@@ -236,6 +236,31 @@ export interface CoverageResult {
   modifiedAt?: number;
 }
 
+/**
+ * A Lichess puzzle you did on the Puzzles tab — your history, and the time you spend on tactics (the
+ * tactics third of the 1/3 rule). Synced between devices.
+ */
+export interface PuzzleAttempt {
+  /** `${puzzleId}|${startedAt}`. */
+  id: string;
+  puzzleId: string;
+  /** The puzzle's rating on Lichess, and its themes. */
+  rating: number;
+  themes: string[];
+  /** What it was picked by: 'mix', a theme or an opening's key. */
+  angle: string;
+  /** Solved without a wrong move or showing the solution. */
+  win: boolean;
+  /** Time spent on it while the app was on screen. */
+  ms: number;
+  startedAt: number;
+  /** Sent to Lichess, whether it counted toward your Lichess puzzle rating, and the change it made. */
+  reported?: boolean;
+  rated?: boolean;
+  ratingDiff?: number;
+  modifiedAt?: number;
+}
+
 /** A player in the over-the-board games database (gamesdb). */
 export interface DbLink {
   id: number;

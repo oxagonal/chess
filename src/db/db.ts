@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Collection, CoverageResult, Player, PlayerGame, PositionStats, Repertoire, RepMove, ReviewCard, ReviewLogEntry, StoredGame } from '../lib/types';
+import type { Collection, CoverageResult, Player, PlayerGame, PositionStats, PuzzleAttempt, Repertoire, RepMove, ReviewCard, ReviewLogEntry, StoredGame } from '../lib/types';
 import { migrateCardRows } from '../lib/chapters';
 import { trackChanges } from './changes';
 
@@ -35,6 +35,7 @@ export type ChessDB = Dexie & {
   players: EntityTable<Player, 'id'>;
   playerGames: EntityTable<PlayerGame, 'id'>;
   collections: EntityTable<Collection, 'id'>;
+  puzzleLog: EntityTable<PuzzleAttempt, 'id'>;
 };
 
 export function openDb(name = 'chess-prep'): ChessDB {
@@ -79,6 +80,8 @@ export function openDb(name = 'chess-prep'): ChessDB {
         await tx.table('kv').put({ ...settings, key: 'settings', value });
       }
     });
+  // Puzzles you did (the Puzzles tab).
+  db.version(5).stores({ puzzleLog: 'id, startedAt, puzzleId' });
   trackChanges(db);
   return db;
 }

@@ -372,7 +372,7 @@ export async function checkToken(token: string): Promise<ConnectCheck> {
   const login = await gitHubLogin(token);
   const gistId = (await findSyncGist(token)) ?? (await createSyncGist(token));
   const { doc } = await new GistTransport(token, gistId).read();
-  const remoteHasData = !!doc && SYNC_TABLES.some((t) => t !== 'kv' && doc.tables[t].rows.length > 0);
+  const remoteHasData = !!doc && SYNC_TABLES.some((t) => t !== 'kv' && (doc.tables[t]?.rows.length ?? 0) > 0);
   const localHasData = (await appDb.repertoires.count()) + (await appDb.cards.count()) + (await appDb.games.count()) > 0;
   return { token, login, gistId, remoteRepertoires: doc?.tables.repertoires.rows.length ?? 0, remoteHasData, localHasData };
 }

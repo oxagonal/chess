@@ -14,7 +14,7 @@ import type { Color } from './chess';
 import type { RepMove } from './types';
 import { cardIdOf, migrateCardRows } from './chapters';
 
-export const SYNC_TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players', 'collections'] as const;
+export const SYNC_TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players', 'collections', 'puzzleLog'] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
 export type Row = Record<string, any>;
@@ -82,6 +82,8 @@ export function rowVersion(table: SyncTable, row: Row): number {
       return Math.max(row.playedAt ?? 0, row.review?.analyzedAt ?? 0);
     case 'coverage':
       return row.computedAt ?? 0;
+    case 'puzzleLog':
+      return row.startedAt ?? 0;
     default:
       return 0;
   }
@@ -113,9 +115,10 @@ function rowBirth(table: SyncTable, row: Row): number {
  * dropped. Tombstones of the old ids can't match anything any more and are dropped too.
  */
 export function upgradeSyncDoc(doc: SyncDoc): SyncDoc {
-  if (doc.format >= SYNC_FORMAT) return doc;
   const tables = { ...doc.tables };
+  // A table added since the copy was saved (by an older version of the app) starts empty.
   for (const t of SYNC_TABLES) tables[t] ??= { rows: [], tombs: {} };
+  if (doc.format >= SYNC_FORMAT) return { ...doc, tables };
   const next = migrateCardRows(tables.cards.rows, tables.reviewLog.rows);
   tables.cards = { rows: next.cards, tombs: {} };
   tables.reviewLog = { rows: next.logs, tombs: {} };

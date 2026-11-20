@@ -1,7 +1,8 @@
 // "Connect Lichess": OAuth 2 with PKCE, which Lichess supports without registering an app.
 // Since 2026 the Lichess opening explorer only answers requests carrying a Lichess token. The token
-// asks for one permission, study:read, so your private and unlisted studies can be imported; it
-// can't change anything on Lichess. The same token speeds up game downloads, and /api/account
+// asks for study:read, so your private and unlisted studies can be imported, and puzzle:read /
+// puzzle:write, so the Puzzles tab gets puzzles at your rating and can record your results on Lichess
+// (only when you let it count them). The same token speeds up game downloads, and /api/account
 // tells us the username so it doesn't have to be typed.
 import { useSyncExternalStore } from 'react';
 import { getSettings, updateSettings } from '../db/settings';
@@ -9,8 +10,8 @@ import { getSettings, updateSettings } from '../db/settings';
 export const LICHESS = 'https://lichess.org';
 const CLIENT_ID = 'chess-prep';
 const PENDING_KEY = 'chess-prep:lichess-login';
-/** What the login asks for: reading your studies (for importing private and unlisted ones). */
-export const LICHESS_SCOPES = 'study:read';
+/** What the login asks for: reading your studies (to import private ones), reading and recording puzzles. */
+export const LICHESS_SCOPES = 'study:read puzzle:read puzzle:write';
 
 interface Pending {
   verifier: string;

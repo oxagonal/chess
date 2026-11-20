@@ -425,6 +425,21 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .glance-weak { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 button.chip { border: none; min-height: 0; padding: 1px 8px; font-weight: 400; font-size: 12px; line-height: 1.5; white-space: normal; text-align: left; }
 button.chip:hover:not(:disabled) { background: var(--border); }
+/* ---------- the Puzzles tab ---------- */
+.puzzle-picker { gap: 10px 16px; align-items: flex-end; }
+@media (max-width: 700px) {
+  /* The puzzle first: board and feedback right under the title, the choices after. */
+  .puzzles > .puzzle-layout { order: 1; }
+  .puzzles > .note, .puzzles > .puzzle-picker { order: 2; }
+  .puzzles > .puzzle-history { order: 3; }
+  /* Feedback and buttons above the board, so they're never under the tab bar. */
+  .puzzle-layout > :last-child { order: -1; }
+  .puzzle-note { display: none; }
+  /* The whole board above the tab bar: no taller than the screen leaves (title, feedback, buttons). */
+  .puzzle-layout > .board-col { width: min(100%, calc(100dvh - 62px - env(safe-area-inset-bottom) - 290px)); justify-self: center; }
+  .puzzle-picker > .field { flex: 1 1 140px; }
+  .puzzle-picker select { width: 100%; }
+}
 /* ---------- the Map tab: how ready, what next (to-dos), where (strips), details ---------- */
 .map-runbar { gap: 6px; padding-top: 10px; border-top: 1px solid var(--border-soft); }
 .map-runbar > .row { gap: 8px 14px; }

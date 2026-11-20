@@ -66,6 +66,11 @@ export interface AppSettings {
    * (see lib/srs gradeForAnswer and easyAllowed).
    */
   trainAnswerSeconds: number;
+  /** Puzzles: count them toward your Lichess puzzle rating (needs Lichess connected with puzzle permissions). */
+  puzzleRated: boolean;
+  /** Puzzles: what they're picked by ('mix', a theme or an opening's key) and how hard, around your rating. */
+  puzzleAngle: string;
+  puzzleDifficulty: 'easiest' | 'easier' | 'normal' | 'harder' | 'hardest';
   /** Builder: save every move played on the board straight into the repertoire. */
   builderAutoAdd: boolean;
   /** Show Stockfish evaluations next to each move in the builder. */
@@ -124,6 +129,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   trainSkipRepeats: false,
   trainRepeatUntilRight: false,
   trainAnswerSeconds: 10,
+  puzzleRated: true,
+  puzzleAngle: 'mix',
+  puzzleDifficulty: 'normal',
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,
