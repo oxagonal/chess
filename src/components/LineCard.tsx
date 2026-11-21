@@ -1,8 +1,8 @@
-import type { ReactNode } from 'react';
-import { compactLine, type Color } from '../lib/chess';
+import { useMemo, type ReactNode } from 'react';
+import { compactLine, posFromFen, type Color } from '../lib/chess';
 import { STRENGTH_LABEL, type MapLine } from '../lib/map';
 import { formatInterval } from '../lib/srs';
-import { MiniBoard } from './MiniBoard';
+import { Board } from './Board';
 
 const HOUR = 3_600_000;
 
@@ -20,13 +20,19 @@ export function lineStatus(line: MapLine, now = Date.now()): string {
  */
 export function LineCard({ eyebrow, title, line, color, actions, className = '' }: { eyebrow: ReactNode; title: ReactNode; line: MapLine; color: Color; actions?: ReactNode; className?: string }) {
   const end = line.path[line.path.length - 1];
+  const pos = useMemo(() => posFromFen(end.toKey), [end.toKey]);
   return (
     <div className={`line-card ${className}`}>
       <div className="map-eyebrow">{eyebrow}</div>
       <div className="map-pop-title">{title}</div>
       <div className="map-pop-moves">{compactLine(line.path.map((m) => m.san))}</div>
       <div className="map-pop-body">
-        <MiniBoard fen={end.toKey} orientation={color} size={148} />
+        {/* The app's own board, small and still: the position the line ends in, its last move marked. */}
+        {pos && (
+          <div className="line-card-board">
+            <Board pos={pos} orientation={color} lastMove={end.uci} coordinates={false} />
+          </div>
+        )}
         <dl className="map-pop-stats">
           <dt>Strength</dt>
           <dd>

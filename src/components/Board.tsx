@@ -24,13 +24,15 @@ interface BoardProps {
   flash?: 'good' | 'bad' | 'hint' | null;
   /** Square to mark (e.g. where you deviated). */
   markSquare?: string;
+  /** Rank and file letters along the edges (off for a small preview). */
+  coordinates?: boolean;
 }
 
 /**
  * Chessground board driven entirely by a chessops Position.
  * After every user move we re-apply the props, so a move the parent rejects snaps back.
  */
-export function Board({ pos, orientation, interactive = false, lastMove, arrows, onMove, flash, markSquare }: BoardProps) {
+export function Board({ pos, orientation, interactive = false, lastMove, arrows, onMove, flash, markSquare, coordinates = true }: BoardProps) {
   const el = useRef<HTMLDivElement>(null);
   const pendingShapes = useRef<DrawShape[] | null>(null);
   const api = useRef<Api | null>(null);
@@ -50,7 +52,7 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
     api.current = Chessground(node, {
       fen,
       orientation,
-      coordinates: true,
+      coordinates,
       animation: { enabled: true, duration: 180 },
       highlight: { lastMove: true, check: true },
       movable: {
