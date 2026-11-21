@@ -48,8 +48,12 @@ export interface PlanTotals {
   reviewing: number;
   /** Study, by topic. */
   topics: Record<StudyTopic, number>;
-  /** How many games were played (counted) and reviewed. */
+  /** How many games were played (of the counted speeds). */
   gamesPlayed: number;
+  /** How many of those you've reviewed ("Done reviewing" in the game review). */
+  gamesReviewed: number;
+  /** The ones still to review, newest first. */
+  toReview: string[];
 }
 
 /** Totals for activities and games between `from` and `to` (games of the given speeds count as play). */
@@ -68,14 +72,19 @@ export function planTotals(activities: readonly Activity[], games: readonly Stor
     }
   }
   let gamesPlayed = 0;
+  let gamesReviewed = 0;
+  const toReview: { id: string; at: number }[] = [];
   for (const g of games) {
     if (g.source === 'otb' || g.playedAt < from || g.playedAt >= to || !speeds.includes(g.timeClass)) continue;
     const ms = gameDurationMs(g);
     by.games += ms;
     playing += ms;
     gamesPlayed++;
+    if (g.reviewedAt) gamesReviewed++;
+    else toReview.push({ id: g.id, at: g.playedAt });
   }
-  return { by, total: by.tactics + by.games + by.study, playing, reviewing, topics, gamesPlayed };
+  toReview.sort((a, b) => b.at - a.at);
+  return { by, total: by.tactics + by.games + by.study, playing, reviewing, topics, gamesPlayed, gamesReviewed, toReview: toReview.map((x) => x.id) };
 }
 
 /** The third furthest behind its share of the target (or of what's been done, with no target). */

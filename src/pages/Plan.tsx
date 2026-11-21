@@ -78,12 +78,22 @@ function Balance({ totals, target, focus, period }: { totals: PlanTotals; target
       </div>
       {THIRDS.map((t) => {
         const done = totals.by[t];
+        const pct = (ms: number) => `${Math.min(100, third ? (100 * ms) / third : 0)}%`;
         return (
           <div key={t} className="plan-third">
             <span className="plan-third-name">{THIRD_LABEL[t]}</span>
-            <div className="plan-bar" title={`${fmtDuration(done)} of ${fmtDuration(third)}`}>
-              <div className={`plan-fill ${t}`} style={{ width: `${Math.min(100, third ? (100 * done) / third : 0)}%` }} />
-            </div>
+            {t === 'games' ? (
+              // Your games: playing, then reviewing — one third between them.
+              <div className="plan-bar split" title={`Playing ${fmtDuration(totals.playing)} · reviewing ${fmtDuration(totals.reviewing)} — ${fmtDuration(done)} of ${fmtDuration(third)}`}>
+                {/* Past the third, the two keep their proportions across the full bar. */}
+                <div className="plan-fill games" style={{ width: `${(100 * totals.playing) / Math.max(third, done, 1)}%` }} />
+                <div className="plan-fill review" style={{ width: `${(100 * totals.reviewing) / Math.max(third, done, 1)}%` }} />
+              </div>
+            ) : (
+              <div className="plan-bar" title={`${fmtDuration(done)} of ${fmtDuration(third)}`}>
+                <div className={`plan-fill ${t}`} style={{ width: pct(done) }} />
+              </div>
+            )}
             <span className="small nowrap">
               <b>{fmtDuration(done)}</b> <span className="muted">/ {fmtDuration(third)}</span>
             </span>
@@ -91,7 +101,10 @@ function Balance({ totals, target, focus, period }: { totals: PlanTotals; target
               {t === 'tactics' && 'puzzles here, and tactics you logged'}
               {t === 'games' && (
                 <>
-                  playing {fmtDuration(totals.playing)} ({totals.gamesPlayed} game{totals.gamesPlayed === 1 ? '' : 's'}) · reviewing {fmtDuration(totals.reviewing)}
+                  <span className="plan-key games" /> playing {fmtDuration(totals.playing)} · <span className="plan-key review" /> reviewing{' '}
+                  {fmtDuration(totals.reviewing)}
+                  {done > 0 && ` (${Math.round((100 * totals.reviewing) / done)}%)`}
+                  <ReviewedGames totals={totals} when={when} />
                 </>
               )}
               {t === 'study' &&
@@ -102,6 +115,12 @@ function Balance({ totals, target, focus, period }: { totals: PlanTotals; target
           </div>
         );
       })}
+      {totals.toReview.length >= UNREVIEWED_WARN && (
+        <div className="note warn-note">
+          ⚠ <b>{totals.toReview.length} games</b> {when} aren't reviewed yet. Review them before you play more — every game is a lesson, and
+          the quick review takes a few minutes.
+        </div>
+      )}
       {tooMuchOpenings(totals) && (
         <div className="note warn-note">
           ⚠ Openings took <b>{Math.round(openingsShare * 100)}%</b> of your training {when}. Studer keeps them to a third at most — most opening
@@ -114,14 +133,44 @@ function Balance({ totals, target, focus, period }: { totals: PlanTotals; target
             Furthest behind: <b>{THIRD_LABEL[next]}</b>
           </span>
           <span className="spacer" />
-          <NextAction third={next} focus={focus} />
+          <NextAction third={next} focus={focus} toReview={totals.toReview} />
         </div>
       )}
     </div>
   );
 }
 
-function NextAction({ third, focus }: { third: Third; focus: StudyTopic }) {
+/** Games not reviewed yet (this period) that bring up a warning. */
+const UNREVIEWED_WARN = 3;
+
+const reviewHref = (id: string) => href(`games/${encodeURIComponent(id)}`);
+
+/** How many of the period's games you've reviewed — the goal is all of them — and the next one to do. */
+function ReviewedGames({ totals, when }: { totals: PlanTotals; when: string }) {
+  const { gamesPlayed, gamesReviewed, toReview } = totals;
+  if (!gamesPlayed) return <div>No training games {when}.</div>;
+  return (
+    <div className="plan-reviewed">
+      {toReview.length ? (
+        <>
+          <b>
+            {gamesReviewed} of {gamesPlayed}
+          </b>{' '}
+          game{gamesPlayed === 1 ? '' : 's'} reviewed ·{' '}
+          <a href={reviewHref(toReview[0])} title="Your latest game that isn't reviewed yet">
+            review the latest →
+          </a>
+        </>
+      ) : (
+        <b className="good-text">
+          ✓ Every game reviewed ({gamesPlayed})
+        </b>
+      )}
+    </div>
+  );
+}
+
+function NextAction({ third, focus, toReview }: { third: Third; focus: StudyTopic; toReview: string[] }) {
   if (third === 'tactics')
     return (
       <a className="btn small primary" href={href('puzzles')}>
@@ -129,10 +178,12 @@ function NextAction({ third, focus }: { third: Third; focus: StudyTopic }) {
       </a>
     );
   if (third === 'games')
-    return (
-      <a className="btn small primary" href={href('games')}>
-        Review a game
+    return toReview.length ? (
+      <a className="btn small primary" href={reviewHref(toReview[0])}>
+        Review your latest game
       </a>
+    ) : (
+      <span className="muted small">Every game reviewed — play a training game, then review it</span>
     );
   return focus === 'openings' ? (
     <a className="btn small primary" href={href('repertoire')}>

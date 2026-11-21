@@ -1189,6 +1189,15 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
 .plan-fill.tactics, .plan-chip.tactics { background: #c98b2e; }
 .plan-fill.games, .plan-chip.games { background: #4a90d9; }
 .plan-fill.study, .plan-chip.study { background: #5fa346; }
+/* Your games: playing and reviewing side by side in one bar. */
+.plan-bar.split { display: flex; }
+.plan-bar.split .plan-fill { border-radius: 0; }
+.plan-bar.split .plan-fill:last-child { border-radius: 0 5px 5px 0; }
+.plan-fill.review { background: #9cc9f3; }
+.plan-key { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: baseline; }
+.plan-key.games { background: #4a90d9; }
+.plan-key.review { background: #9cc9f3; }
+.plan-reviewed { margin-top: 2px; color: var(--text); }
 .plan-chip { color: #fff; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
 .warn-note { border-color: var(--warn); }
 .plan-next { border-top: 1px solid var(--border-soft); padding-top: 10px; }

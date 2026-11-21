@@ -400,17 +400,27 @@ describe('the 1/3 plan', () => {
     const t = 1_000_000;
     const totals = planTotals(
       [act('tactics', 30, t), act('study', 60, t, { topic: 'openings' }), act('games', 10, t, { what: 'review' }), act('study', 20, t - 1e9, { topic: 'endgames' })],
-      [{ source: 'lichess', playedAt: t, timeClass: 'rapid', sans: [] } as unknown as StoredGame, { source: 'lichess', playedAt: t, timeClass: 'bullet', sans: [] } as unknown as StoredGame],
+      [
+        { id: 'r1', source: 'lichess', playedAt: t, timeClass: 'rapid', sans: [] } as unknown as StoredGame,
+        { id: 'b1', source: 'lichess', playedAt: t, timeClass: 'bullet', sans: [] } as unknown as StoredGame,
+      ],
       t - 1,
       t + 1,
       ['blitz', 'rapid'],
     );
     expect(totals.by).toEqual({ tactics: 30 * MIN, games: 30 * MIN, study: 60 * MIN });
     expect([totals.playing, totals.reviewing, totals.gamesPlayed]).toEqual([20 * MIN, 10 * MIN, 1]);
+    // The rapid game counts and isn't reviewed yet; the bullet one isn't training.
+    expect([totals.gamesReviewed, totals.toReview]).toEqual([0, ['r1']]);
     expect(totals.topics.openings).toBe(60 * MIN);
     // Openings: half of 2 hours — more than Studer's third.
     expect(tooMuchOpenings(totals)).toBe(true);
     // 7 hours a week: tactics (30 of 140 min) and games (30) are furthest behind — tactics first.
     expect(behind(totals, 420 * MIN)).toBe('tactics');
+  });
+  it('counts the games you reviewed, and lists the rest newest first', () => {
+    const g = (id: string, playedAt: number, reviewedAt?: number) => ({ id, source: 'lichess', playedAt, timeClass: 'blitz', sans: [], reviewedAt }) as unknown as StoredGame;
+    const totals = planTotals([], [g('a', 10, 50), g('b', 20), g('c', 30), g('otb', 25)].map((x, i) => (i === 3 ? { ...x, source: 'otb' } : x)), 0, 100, ['blitz']);
+    expect([totals.gamesPlayed, totals.gamesReviewed, totals.toReview]).toEqual([3, 1, ['c', 'b']]);
   });
 });
