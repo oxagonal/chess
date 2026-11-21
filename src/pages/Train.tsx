@@ -16,7 +16,7 @@ import { colorName, loadScopeGraph, scopeIdsFor, useChaptersAndSets, type Scope 
 import { coverageFor, learnedTodayCount, trainedCards } from '../db/training';
 import { EXTRA_BATCH } from '../components/SessionButtons';
 import { cardIdOf, cardsOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
-import { href, navigate } from '../router';
+import { href, navigate, scopeHref } from '../router';
 import { compactLine, formatLine, playUci, startPos } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
 import { asQuiz, moveOrders, orderCards, planLine, type PlannedStep } from '../lib/trainer';
@@ -26,7 +26,7 @@ import { formatInterval, isDue, isNew, Rating, type Grade } from '../lib/srs';
 import type { RepMove, ReviewCard } from '../lib/types';
 
 /** Where a session goes back to: the Map of what it trained ('all': the Map as you left it). */
-const mapHref = (rep: string) => href(rep === 'all' ? 'map' : `map/${rep}`);
+const mapHref = (rep: string) => scopeHref(rep === 'all' ? undefined : rep);
 
 /** review = due moves, learn = new moves, drill = extra practice of a chosen line / your weakest moves. */
 type SessionMode = 'review' | 'learn' | 'drill';

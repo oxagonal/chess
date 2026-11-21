@@ -12,7 +12,7 @@ import { isCoverageFresh } from '../services/coverage';
 import { LineCard } from '../components/LineCard';
 import { ChapterTree, useOpeningIndex } from '../components/ChapterTree';
 import type { RepGraph } from '../lib/graph';
-import { href, navigate } from '../router';
+import { href, navigate, scopeHref } from '../router';
 
 /** Known well: the next review is a week or more away. */
 const WELL: Strength[] = ['growing', 'solid'];
@@ -385,14 +385,13 @@ function ChapterStrips({
               {pct(ready)}
             </span>
           )}
-          {lines.length > 0 &&
-            (actions ? (
-              actions(chapter)
-            ) : (
-              <button className="small ghost" onClick={practice}>
-                {dueCount ? `Review ${dueCount}` : fresh ? 'Learn' : 'Drill'} ▸
-              </button>
-            ))}
+          {actions
+            ? actions(chapter)
+            : lines.length > 0 && (
+                <button className="small ghost" onClick={practice}>
+                  {dueCount ? `Review ${dueCount}` : fresh ? 'Learn' : 'Drill'} ▸
+                </button>
+              )}
         </div>
         {lines.length === 0 ? (
           <div className="muted small">No lines yet — add moves in the builder.</div>
@@ -424,7 +423,7 @@ function ChapterStrips({
                 role="listitem"
                 className="strip-seg str-uncovered"
                 style={{ flexGrow: uncoveredWeight }}
-                href={href(`map/${chapter.id}`)}
+                href={scopeHref(chapter.id)}
                 title={`Not covered: ${pct(uncovered)} of this chapter's games — ${uncoveredHint(gaps)}. Open the chapter's map for its gaps.`}
                 aria-label={`Not covered: ${pct(uncovered)} of this chapter's games`}
               />

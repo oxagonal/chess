@@ -1,11 +1,14 @@
 /**
- * The Map tab: everything about how ready a scope is (all of a color, a repertoire, or one chapter),
- * organized by the questions it answers, not by where the numbers come from —
+ * The Repertoire tab: your chapters and everything about how ready they are, for a scope (all of a
+ * color, a repertoire, or one chapter), organized by the questions it answers —
+ *   what's on today?  what's due and new, to train;
  *   how ready am I?   one bar: your lines by strength, the games they don't cover, rare sidelines;
  *   what next?        to-dos, each with one action: train what's due, fill the gaps, drill weak moves;
- *   where?            the chapters as strips of their lines;
+ *   where?            the chapters as strips of their lines — each with its training buttons and a
+ *                     ⋯ menu to edit, split, merge, import into, export, rename or delete it;
  *   details           how the coverage numbers come about, and your lines in a tree (on demand).
- * It took over the Coverage and Insights tabs (their old addresses lead here) and the Repertoire's map.
+ * Plus making chapters (new, imported) and your repertoires (sets of chapters). It took over the Map
+ * tab, and before it the Coverage, Insights and Train tabs (their old addresses lead here).
  */
 import { useState, type ReactNode } from 'react';
 import { PracticeCreditNote } from '../components/PracticeCreditNote';
@@ -25,7 +28,9 @@ import { oneIn } from '../lib/coverage';
 import { STRENGTH_LABEL, strengthOf } from '../lib/map';
 import { weakestMoves } from '../lib/insights';
 import type { Chapter, Collection } from '../lib/types';
-import { href, navigate } from '../router';
+import { href, navigate, openScope } from '../router';
+import { ChapterMenu, ChapterPanelView, RepertoireActions, RepertoireSets, type ChapterPanel } from './RepertoireHome';
+import { ImportWizard } from '../components/ImportWizard';
 import { ChapterSection, Readiness, runScopeOf, useMapData, type MapData } from './RepertoireMap';
 import { CoverageDetails, CoverageRunBar, scopeGaps, type ScopeGap } from './Coverage';
 import { TrainingDetails, useScopeInsights, type ScopeInsights } from './Insights';
@@ -50,30 +55,39 @@ function remember(key: string, value: string) {
   }
 }
 
-export function MapPage({ route }: PageProps) {
+export function RepertoireHub({ route }: PageProps) {
   const { chapters, collections } = useChaptersAndSets();
   const settings = useSettings();
+  const [wizard, setWizard] = useState(false);
   if (!chapters || !collections || !settings.loaded) return null;
-  if (!chapters.length) return <Empty>Create a chapter first — <a href={href('repertoire')}>Repertoire</a>.</Empty>;
   // The scope in the address, else the one you last looked at (on this device), else the first color.
   const valid = (id: string | null | undefined): id is string => !!id && !!scopeOf(id, chapters, collections, settings);
-  const asked = route.path[1];
-  const scopeId = valid(asked) ? asked : valid(remembered(SCOPE_KEY)) ? remembered(SCOPE_KEY)! : defaultScope(chapters)!;
-  if (asked === scopeId) remember(SCOPE_KEY, scopeId);
+  const asked = route.query.get('scope');
+  const scopeId = !chapters.length ? undefined : valid(asked) ? asked : valid(remembered(SCOPE_KEY)) ? remembered(SCOPE_KEY)! : defaultScope(chapters)!;
+  if (scopeId && asked === scopeId) remember(SCOPE_KEY, scopeId);
+  const color = (scopeId && scopeOf(scopeId, chapters, collections, settings)?.color) || 'white';
   return (
     <div className="col map-page" style={{ gap: 14 }}>
-      <h1 style={{ margin: 0 }}>Map</h1>
-      <MapTraining>
-        {(train) => (
-          <>
-            <TodayPanel train={train} />
-            <div className="row map-scope">
-              <ScopeSelect value={scopeId} onChange={(id) => navigate(`map/${id}`)} chapters={chapters} collections={collections} />
-            </div>
-            <MapView key={scopeId} scopeId={scopeId} chapters={chapters} collections={collections} train={train} />
-          </>
-        )}
-      </MapTraining>
+      <div className="row rep-head">
+        <h1 style={{ margin: 0 }}>Repertoire</h1>
+        <RepertoireActions color={color} onImport={() => setWizard(true)} />
+      </div>
+      {wizard && <ImportWizard chapters={chapters} onClose={() => setWizard(false)} />}
+      {!scopeId ? (
+        <Empty>No chapters yet — add one with New chapter, import a Lichess study, or open all White and start playing moves.</Empty>
+      ) : (
+        <MapTraining>
+          {(train) => (
+            <>
+              <TodayPanel train={train} />
+              <div className="row map-scope">
+                <ScopeSelect value={scopeId} onChange={(id) => openScope(id)} chapters={chapters} collections={collections} />
+              </div>
+              <MapView key={scopeId} scopeId={scopeId} chapters={chapters} collections={collections} train={train} />
+            </>
+          )}
+        </MapTraining>
+      )}
     </div>
   );
 }
@@ -155,6 +169,7 @@ function MapView({ scopeId, chapters, collections, train }: { scopeId: string; c
   const insights = useScopeInsights(scopeId);
   const counts = train.countsOf(scopeId);
   const [details, setDetails] = useState(() => remembered(DETAILS_KEY) === '1');
+  const [panel, setPanel] = useState<ChapterPanel>(null);
   const { scope, maps, graphs, names } = data;
   if (!scope || !maps || !graphs) return <div className="muted">Loading…</div>;
 
@@ -171,11 +186,57 @@ function MapView({ scopeId, chapters, collections, train }: { scopeId: string; c
     remember(DETAILS_KEY, details ? '0' : '1');
   };
 
+  const chapters_ = (
+    <>
+      <ChapterSection
+        data={data}
+        actions={(ch) => {
+          const c = train.countsOf(ch.id);
+          // A chapter with no moves yet only has its menu.
+          const has = !!graphs.get(ch.id)?.size;
+          return (
+            <span className="row map-row-actions">
+              {c && has && <SessionButtons compact rep={ch.id} due={c.due} fresh={Math.min(c.fresh, train.newLeft)} unlearned={c.fresh} />}
+              {has && (
+                <button
+                  className="small ghost"
+                  onClick={() => navigate('train', { rep: ch.id, mode: 'drill', at: START_KEY, t: String(Date.now()) })}
+                  title="Practice the whole chapter now, due or not — every move you play counts as reviewed"
+                >
+                  Drill ▸
+                </button>
+              )}
+              <ChapterMenu chapter={ch} onPanel={setPanel} />
+            </span>
+          );
+        }}
+        groupExtra={(ids) => {
+          const c = train.countsOf(scope.color, ids);
+          return (
+            c && (
+              <>
+                {c.due > 0 && <span className="badge due">{c.due} due</span>}
+                {c.fresh > 0 && <span className="badge new">{c.fresh} new</span>}
+              </>
+            )
+          );
+        }}
+      />
+      <ChapterPanelView panel={panel} onClose={() => setPanel(null)} />
+    </>
+  );
+  // Your repertoires: sets of this color's chapters.
+  const sets = <RepertoireSets color={scope.color} />;
+
   if (!data.allLines.length)
     return (
-      <Empty>
-        No lines here yet — add moves in the <a href={href(`repertoire/${scope.kind === 'repertoire' ? scope.color : scope.id}`)}>builder</a>.
-      </Empty>
+      <>
+        <Empty>
+          No lines here yet — add moves in the <a href={href(`repertoire/${scope.kind === 'repertoire' ? scope.color : scope.id}`)}>builder</a>.
+        </Empty>
+        {chapters_}
+        {sets}
+      </>
     );
 
   return (
@@ -193,35 +254,8 @@ function MapView({ scopeId, chapters, collections, train }: { scopeId: string; c
         <WeakCard scopeId={scopeId} insights={insights} />
       </div>
 
-      <ChapterSection
-        data={data}
-        actions={(ch) => {
-          const c = train.countsOf(ch.id);
-          return (
-            <span className="row map-row-actions">
-              {c && <SessionButtons compact rep={ch.id} due={c.due} fresh={Math.min(c.fresh, train.newLeft)} unlearned={c.fresh} />}
-              <button
-                className="small ghost"
-                onClick={() => navigate('train', { rep: ch.id, mode: 'drill', at: START_KEY, t: String(Date.now()) })}
-                title="Practice the whole chapter now, due or not — every move you play counts as reviewed"
-              >
-                Drill ▸
-              </button>
-            </span>
-          );
-        }}
-        groupExtra={(ids) => {
-          const c = train.countsOf(scope.color, ids);
-          return (
-            c && (
-              <>
-                {c.due > 0 && <span className="badge due">{c.due} due</span>}
-                {c.fresh > 0 && <span className="badge new">{c.fresh} new</span>}
-              </>
-            )
-          );
-        }}
-      />
+      {chapters_}
+      {sets}
 
       <button className="map-details-toggle ghost" aria-expanded={details} onClick={toggleDetails}>
         {details ? '▾' : '▸'} Details — how the coverage numbers come about, positions to know, your lines in a tree

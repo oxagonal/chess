@@ -19,7 +19,7 @@ import { Board } from '../components/Board';
 import { PhoneStudio } from '../components/PhoneStudio';
 import { EvalBar } from '../components/EvalBar';
 import { PositionMenuItems, PositionTools } from '../components/PositionTools';
-import { RepertoireHome } from './RepertoireHome';
+import { RepertoireHub } from './MapPage';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { InlineMoves } from '../components/InlineMoves';
 import { annotateProps } from '../components/NotePopover';
@@ -28,7 +28,7 @@ import { glyphClass, glyphName, moveGlyph, sanWithGlyphs } from '../lib/annotati
 import { MoveList, revealInBox, type SideLine } from '../components/MoveList';
 import { EnginePanel } from '../components/EnginePanel';
 import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
-import { href, navigate } from '../router';
+import { href, navigate, openScope, scopeHref } from '../router';
 import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
 import { compactLine, formatLine, moveNumberPrefix, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
 import { oneIn } from '../lib/coverage';
@@ -42,7 +42,7 @@ export function RepertoirePage({ route }: PageProps) {
   const id = route.path[1];
   // Keyed by chapter: switching chapters starts the builder afresh at the line it was opened with.
   if (id) return <Builder key={id} repId={id} initialLine={route.query.get('line') ?? ''} />;
-  return <RepertoireHome query={route.query} />;
+  return <RepertoireHub route={route} />;
 }
 
 /* --------------------------------------------------------------- builder */
@@ -531,7 +531,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               <button onClick={() => navigate('train', { rep: rep.id, mode: 'review' })}>
                 Review <span className="badge due">{dueCount}</span>
               </button>
-              <button onClick={() => navigate(`map/${rep.id}`)}>Map — gaps, weak moves</button>
+              <button onClick={() => openScope(rep.id)}>Map — gaps, weak moves</button>
             </>
           )}
           <button onClick={() => updateSettings({ builderNav: nav === 'inline' ? 'scoresheet' : 'inline' })}>
@@ -550,7 +550,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           <a className="btn small" href={href('train', { rep: rep.id, mode: 'review' })}>
             Review <span className="badge due">{dueCount}</span>
           </a>
-          <a className="btn small" href={href(`map/${rep.id}`)} title="How well you know this, its gaps and your weakest moves">
+          <a className="btn small" href={scopeHref(rep.id)} title="How well you know this, its gaps and your weakest moves (Repertoire tab)">
             Map
           </a>
           <a className="btn small" href={href('repertoire')}>

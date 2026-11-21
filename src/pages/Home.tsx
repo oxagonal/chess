@@ -10,7 +10,7 @@ import { analyzeGame, summarize } from '../lib/prep';
 import { isMature, isNew } from '../lib/srs';
 import { loadTrainCounts, type TrainCounts } from '../db/training';
 import { Stat } from '../components/ui';
-import { href, navigate } from '../router';
+import { href, navigate, scopeHref } from '../router';
 import { COLORS, colorName, useChaptersAndSets } from '../db/scopes';
 import { readyOf, useMapData, WeightedBar } from './RepertoireMap';
 import type { Color } from '../lib/chess';
@@ -49,8 +49,8 @@ export function HomePage() {
   const steps = [
     { done: !!(settings.lichessUsername || settings.chesscomUsername), text: <>Add your Lichess / Chess.com usernames and rating in <a href={href('settings')}>Settings</a></> },
     { done: reps.length > 0, text: <>Create a chapter and add lines — or import a Lichess study (<a href={href('repertoire')}>Repertoire</a>)</> },
-    { done: learned > 0, text: <>Learn your first moves (<a href={href('map')}>Map</a>)</> },
-    { done: (coverageCount ?? 0) > 0, text: <>Run Coverage on the <a href={href('map')}>Map</a> to find the positions you'll meet often enough to prepare</> },
+    { done: learned > 0, text: <>Learn your first moves (<a href={href('repertoire')}>Repertoire</a>)</> },
+    { done: (coverageCount ?? 0) > 0, text: <>Run Coverage on the <a href={href('repertoire')}>Repertoire</a> tab to find the positions you'll meet often enough to prepare</> },
     { done: (allGameCount ?? 0) > 0, text: <>Import your games to see where you forget your prep (<a href={href('games')}>Games</a>)</> },
   ];
   const allDone = steps.every((s) => s.done);
@@ -176,7 +176,7 @@ function ColorGlance({ color, chapters, collections, due }: { color: Color; chap
           {count} chapter{count === 1 ? '' : 's'} · {allLines.length} line{allLines.length === 1 ? '' : 's'}
         </span>
         <span className="spacer" />
-        <a className="btn small" href={href(`map/${color}`)}>
+        <a className="btn small" href={scopeHref(color)}>
           Map
         </a>
         {due > 0 && (
@@ -212,7 +212,7 @@ function ColorGlance({ color, chapters, collections, due }: { color: Color; chap
               >
                 {formatLine(gap.path)} · {oneIn(gap.prob)}
               </button>
-              <a className="small" href={href(`map/${color}`)}>
+              <a className="small" href={scopeHref(color)}>
                 all gaps →
               </a>
             </div>

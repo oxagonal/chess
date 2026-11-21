@@ -3,11 +3,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { loadDueCount } from './db/training';
 import { setDueBadge } from './services/appBadge';
 import { useNow } from './hooks';
-import { useRoute, href, type Route } from './router';
+import { useRoute, href, scopeHref, type Route } from './router';
 import { HomePage } from './pages/Home';
 import { RepertoirePage } from './pages/Repertoire';
 import { TrainPage } from './pages/Train';
-import { MapPage } from './pages/MapPage';
 import { PuzzlesPage } from './pages/Puzzles';
 import { GamesPage } from './pages/Games';
 import { SettingsPage } from './pages/Settings';
@@ -32,11 +31,11 @@ interface Tab {
  */
 const TABS: Tab[] = [
   { path: '', label: 'Home', page: HomePage },
+  // Your chapters, how ready they are and training them (it took over the Map tab); a chapter's builder.
   { path: 'repertoire', label: 'Repertoire', page: RepertoirePage },
-  { path: 'map', label: 'Map', page: MapPage },
   { path: 'puzzles', label: 'Puzzles', page: PuzzlesPage },
-  // Training sessions (#/train?mode=…) are started from the Map.
-  { path: 'train', label: 'Train', page: TrainPage, under: 'map' },
+  // Training sessions (#/train?mode=…) are started from the Repertoire tab.
+  { path: 'train', label: 'Train', page: TrainPage, under: 'repertoire' },
   { path: 'games', label: 'Games', page: GamesPage },
   { path: 'settings', label: 'Settings', page: SettingsPage },
 ];
@@ -49,21 +48,21 @@ const TABS: Tab[] = [
 const LAST_GAMES_KEY = 'chess-prep:lastGames';
 
 /**
- * Old addresses: Coverage and Insights were tabs of their own, and the map a view of the Repertoire —
- * they're all the Map tab now (bookmarks and links keep working).
+ * Old addresses: Coverage and Insights were tabs of their own, then the Map tab — which is the
+ * Repertoire tab now, with its scope in `?scope=` (bookmarks and links keep working).
  */
 function movedTo(route: Route): string | undefined {
   const [top, sub] = route.path;
-  if (top === 'coverage' || top === 'insights') return href(sub ? `map/${sub}` : 'map');
-  // The Train tab is part of the Map: only sessions stay at #/train.
+  if (top === 'map' || top === 'coverage' || top === 'insights') return scopeHref(sub);
+  // The Train tab is part of the Repertoire tab: only sessions stay at #/train.
   if (top === 'train' && !route.query.get('mode')) {
     const rep = route.query.get('rep');
-    return href(rep && rep !== 'all' ? `map/${rep}` : 'map');
+    return scopeHref(rep && rep !== 'all' ? rep : undefined);
   }
-  if (top === 'repertoire' && !sub && route.query.get('view') === 'map') {
+  if (top === 'repertoire' && !sub && !route.query.get('scope')) {
     const set = route.query.get('set');
     const color = route.query.get('color');
-    return href(set ? `map/set:${set}` : color ? `map/${color}` : 'map');
+    if (set || color) return scopeHref(set ? `set:${set}` : color!);
   }
   return undefined;
 }
@@ -101,9 +100,9 @@ export function App() {
   useEffect(() => {
     if (moved) window.location.replace(moved);
   }, [moved]);
-  const tab = TABS.find((t) => t.path === (moved ? 'map' : (route.path[0] ?? ''))) ?? TABS[0];
+  const tab = TABS.find((t) => t.path === (moved ? 'repertoire' : (route.path[0] ?? ''))) ?? TABS[0];
   const Page = tab.page;
-  // The tab lit in the bar (a session lights the Map, where it was started).
+  // The tab lit in the bar (a session lights the Repertoire tab, where it was started).
   const shownTab = (tab.under && TABS.find((t) => t.path === tab.under)) || tab;
   const lastGames = useLastGames(route);
   const tabHref = (t: Tab) => (t.path === 'games' && tab !== t && lastGames ? lastGames : href(t.path));
@@ -125,7 +124,7 @@ export function App() {
             <a key={t.path} href={tabHref(t)} className={t === shownTab ? 'active' : ''} aria-current={t === shownTab ? 'page' : undefined}>
               <span className="nav-icon">{NAV_ICONS[t.path]}</span>
               <span className="nav-label">{t.label}</span>
-              {t.path === 'map' && !!due && <span className="badge due">{due}</span>}
+              {t.path === 'repertoire' && !!due && <span className="badge due">{due}</span>}
             </a>
           ))}
         </nav>

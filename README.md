@@ -7,8 +7,8 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   several chapters is one card, learned once. A *repertoire* is a saved set of chapters (say an Exchange
   Caro-Kann and an Italian for one tournament) that you can train, measure and check — it says where its
   chapters give you different moves in the same position. Train all of a color, a repertoire or one chapter.
-- **Map** — the tab you train from and see where you stand, for all of a color, a repertoire or one chapter,
-  organized by the questions it answers. *Today*, across everything: what's due, what's new within your
+- **Repertoire tab** — all your opening stuff in one place: your chapters, training them and where you
+  stand, for all of a color, a repertoire or one chapter, organized by the questions it answers. *Today*, across everything: what's due, what's new within your
   daily limit, what you learned today, Review / Learn all of it, and "only train likely positions". *How ready am I?* One bar of all your games: your lines by how well you know their weakest move
   (not learned, missed last time, learning, growing, solid), the games your lines don't cover (they leave
   them while still more common than your coverage target), and the *rare sidelines* (opponent moves rarer
@@ -16,7 +16,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   even with every gap filled; games that reach your target depth count as your lines) — with the Coverage run's
   target and Run button under it. *What next?* To-dos with one action each: review what's due, prepare the
   gaps, drill your weakest moves. *Where?* Each chapter as a strip of its lines, as wide as they come up
-  (hover a line for its position and status, and practice it). *Details*, on demand: how the coverage
+  (hover a line for its position and status, and practice it), with its Review / Learn / Drill buttons and a
+  ⋯ menu to edit, split, merge, import into, export, rename or delete it; plus New chapter, Import, Open all
+  (a color's chapters as one tree in the builder) and your repertoires. *Details*, on demand: how the coverage
   numbers come about, the positions worth knowing cold, and your lines as a tree with accuracy, recall and
   slips in games. How well you know something is always the same strength bands.
 - **Split into chapters** — a chapter's ⋯ menu suggests chapters from the opening names of its lines (by
@@ -55,7 +57,7 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   played; saved with your settings, so they sync). In *My games* and *Players* each move shows when it was
   last played, and 🔍 lists the games behind a move or the position (any move order) on the Games tab.
 - **Spaced repetition** — every one of your moves is a card scheduled with [FSRS](https://github.com/open-spaced-repetition/ts-fsrs),
-  trained from the Map (everything, a color, a repertoire or a chapter's row: Review, Learn, Drill).
+  trained from the Repertoire tab (everything, a color, a repertoire or a chapter's row: Review, Learn, Drill).
   *Learn* shows new lines and then has you replay them from memory; *Review* plays each due position out
   from the starting position (opponent moves and moves that aren't due are played for you) and asks only
   for the due moves. A wrong move snaps back and you retry **right there** — the line never restarts. A
@@ -64,7 +66,7 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   Hard — so ones you dig for come back sooner. Easy (which FSRS rewards with a much longer interval) is kept for
   moves you play at once — in the first quarter of the time, 2 s at most — that are already in regular reviews
   and that you didn't miss last time; never right after a miss or while a move is still being learned.
-- **Coverage — "1 in N games"** (on the Map) — assuming you play your prep and opponents answer like players
+- **Coverage — "1 in N games"** (on the Repertoire tab) — assuming you play your prep and opponents answer like players
   at your rating, how often does each position appear? Finds the opponent moves you'll face at least once
   every N games that your repertoire doesn't answer (*gaps*), positions where it's your move with nothing
   prepared, and the positions worth knowing cold. A color's run measures each of its chapters too (another
@@ -75,7 +77,7 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   repertoires: where *you* left your prep ("forgot prep"), where the *opponent* did (gaps), or where the
   line simply ended. Forgotten moves can be sent straight back into review; opponent surprises open the
   builder at that position so you can prepare an answer.
-- **Weakest moves** (on the Map) — your learned moves ranked by strength band and, within one, by a blend
+- **Weakest moves** (on the Repertoire tab) — your learned moves ranked by strength band and, within one, by a blend
   of training accuracy, FSRS recall and difficulty, and slips in real games; *Drill* practices any line or
   your weakest moves on demand.
 

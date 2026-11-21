@@ -13,144 +13,101 @@ import {
   renameRepertoire,
   updateCollection,
 } from '../db/repertoire';
-import { COLORS, colorName, repertoireScopeId, scopeOf, useChaptersAndSets } from '../db/scopes';
-import { useSettings } from '../db/settings';
-import { isCoverageFresh } from '../services/coverage';
-import { oneIn } from '../lib/coverage';
-import { linePaths } from '../lib/map';
-import { useCards, useChapterGraphs, useCoverage } from '../hooks';
-import { byName, cardIdOf, chapterConflicts, chapterGap, chapterPosition, type ChapterConflict } from '../lib/chapters';
-import { compactLine, formatLine, type Color } from '../lib/chess';
+import { colorName, repertoireScopeId, useChaptersAndSets } from '../db/scopes';
+import { useCards, useChapterGraphs } from '../hooks';
+import { byName, cardIdOf, chapterConflicts, type ChapterConflict } from '../lib/chapters';
+import { formatLine, type Color } from '../lib/chess';
 import { isDue, isNew } from '../lib/srs';
-import type { Chapter, Collection, CoverageResult, ReviewCard } from '../lib/types';
+import type { Chapter, Collection, ReviewCard } from '../lib/types';
 import type { RepGraph } from '../lib/graph';
-import { ColorPill, Empty, MoreMenu } from '../components/ui';
+import { ColorPill, MoreMenu } from '../components/ui';
 import { download } from '../services/backup';
-import { href, navigate } from '../router';
+import { href, navigate, openScope } from '../router';
 import { SuggestChapters } from '../components/SuggestChapters';
-import { ImportWizard } from '../components/ImportWizard';
-import { ChapterTree, useOpeningIndex } from '../components/ChapterTree';
-import type { OpeningIndex } from '../lib/openingNames';
 
 /**
- * The Repertoire page: your chapters (one opening each, by color) and your repertoires (saved sets of
- * chapters, e.g. what you'll play at a tournament).
+ * Pieces of the Repertoire tab (pages/MapPage) for managing chapters and repertoires — the tab's own
+ * buttons, a chapter's ⋯ menu and the panels it opens, and your repertoires (saved sets of chapters,
+ * e.g. what you'll play at a tournament).
  */
-export function RepertoireHome({ query }: { query: URLSearchParams }) {
-  const { chapters, collections } = useChaptersAndSets();
-  const graphs = useChapterGraphs();
-  const cards = useCards();
-  const [importing, setImporting] = useState<string | null>(null);
-  const [suggesting, setSuggesting] = useState<string | null>(null);
-  const [merging, setMerging] = useState<string | null>(null);
-  const [wizard, setWizard] = useState(false);
-  const settings = useSettings();
-  const covWhite = useCoverage('white');
-  const covBlack = useCoverage('black');
-  const names = useOpeningIndex();
-  if (!chapters || !collections || !graphs || !cards) return null;
 
-  // Each color's coverage run, if it's up to date: it gives every chapter's biggest gap.
-  const freshCov = (color: Color): CoverageResult | undefined => {
-    const run = color === 'white' ? covWhite : covBlack;
-    const scope = settings.loaded ? scopeOf(color, chapters, collections, settings) : undefined;
-    return scope && run && isCoverageFresh(run, scope, settings) ? run : undefined;
-  };
-  const color: Color = query.get('color') === 'black' || (query.get('color') !== 'white' && !chapters.some((c) => c.color === 'white')) ? 'black' : 'white';
-  const tabs = (
-    <div className="row rep-head">
-      <h1 style={{ margin: 0 }}>Repertoire</h1>
+/** The tab's buttons: what chapters are, every chapter of a color in the builder, a new chapter, importing. */
+export function RepertoireActions({ color, onImport }: { color: Color; onImport: () => void }) {
+  return (
+    <>
       <HelpButton />
       <span className="spacer" />
       <a className="btn primary" href={href(`repertoire/${color}`)} title={`Every ${colorName(color)} chapter as one tree, in the studio — new moves go into the chapter they belong to`}>
         Open all {colorName(color)}
       </a>
       <NewChapterButton color={color} />
-      <button onClick={() => setWizard(true)} title="Import a Lichess study (yours too, private or unlisted) or a PGN">
+      <button onClick={onImport} title="Import a Lichess study (yours too, private or unlisted) or a PGN">
         Import
       </button>
-      <a className="btn" href={href(`map/${color}`)} title={`How well you know your ${colorName(color)} chapters, the gaps in them and your weakest moves`}>
-        Map
-      </a>
-    </div>
+    </>
   );
-  // Chapters are shown one color at a time.
-  const colorSwitch = (
-    <div className="segmented" role="group" aria-label="Color">
-      {COLORS.map((c) => (
-        <button key={c} className={`small ${c === color ? 'active' : ''}`} onClick={() => navigate('repertoire', { color: c })}>
-          {colorName(c)}
-        </button>
-      ))}
-    </div>
-  );
-  const shown = chapters.filter((c) => c.color === color);
+}
 
-  /** Card ids of your moves in these chapters (shared moves once). */
-  const cardIdsOf = (chapterIds: readonly string[]) => {
+/** A panel a chapter's ⋯ menu opens: splitting it, merging it, importing into it. */
+export type ChapterPanel = { kind: 'split' | 'merge' | 'import'; id: string } | null;
+
+/** A chapter's ⋯ menu. */
+export function ChapterMenu({ chapter: r, onPanel }: { chapter: Chapter; onPanel: (p: ChapterPanel) => void }) {
+  return (
+    <MoreMenu label="Chapter">
+      <button onClick={() => navigate(`repertoire/${r.id}`)}>Edit in the builder</button>
+      <button onClick={() => onPanel({ kind: 'split', id: r.id })}>Split into chapters…</button>
+      <button onClick={() => onPanel({ kind: 'merge', id: r.id })}>Merge into…</button>
+      <button onClick={() => onPanel({ kind: 'import', id: r.id })}>Import PGN or study…</button>
+      <button onClick={async () => download(`${r.name.replace(/[^\w-]+/g, '_')}.pgn`, await exportPgn(r.id), 'application/x-chess-pgn')}>Export PGN</button>
+      <button
+        onClick={() => {
+          const n = prompt('Rename chapter', r.name);
+          if (n?.trim()) void renameRepertoire(r.id, n.trim());
+        }}
+      >
+        Rename…
+      </button>
+      <button
+        className="danger"
+        onClick={() => {
+          if (confirm(`Delete “${r.name}”? Its lines go with it, and the training progress on moves no other chapter has.`)) void deleteRepertoire(r.id);
+        }}
+      >
+        Delete…
+      </button>
+    </MoreMenu>
+  );
+}
+
+/** The panel a chapter's menu opened, if its chapter is still there. */
+export function ChapterPanelView({ panel, onClose }: { panel: ChapterPanel; onClose: () => void }) {
+  const { chapters } = useChaptersAndSets();
+  const graphs = useChapterGraphs();
+  const chapter = panel && chapters?.find((c) => c.id === panel.id);
+  if (!panel || !chapter || !chapters) return null;
+  if (panel.kind === 'import') return <ImportPanel repId={chapter.id} onClose={onClose} />;
+  if (panel.kind === 'merge') return <MergePanel chapter={chapter} chapters={chapters} onClose={onClose} />;
+  const graph = graphs?.get(chapter.id);
+  return graph ? <SuggestChapters chapter={chapter} graph={graph} onClose={onClose} /> : null;
+}
+
+/** A color's repertoires (saved sets of its chapters), with their counts. */
+export function RepertoireSets({ color }: { color: Color }) {
+  const { chapters, collections } = useChaptersAndSets();
+  const graphs = useChapterGraphs();
+  const cards = useCards();
+  if (!chapters || !collections || !graphs || !cards) return null;
+  if (!chapters.some((c) => c.color === color)) return null;
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  /** Your moves in these chapters (shared moves once): how many, due, new. */
+  const countsOf = (chapterIds: readonly string[]) => {
     const ids = new Set<string>();
     for (const id of chapterIds) for (const m of graphs.get(id)?.byId.values() ?? []) if (m.mine) ids.add(cardIdOf(m));
-    return ids;
-  };
-  const byId = new Map(cards.map((c) => [c.id, c]));
-  const countsOf = (chapterIds: readonly string[]) => {
-    const rc = [...cardIdsOf(chapterIds)].map((id) => byId.get(id)).filter((c): c is ReviewCard => !!c);
+    const rc = [...ids].map((id) => byId.get(id)).filter((c): c is ReviewCard => !!c);
     return { total: rc.length, due: rc.filter((c) => isDue(c)).length, fresh: rc.filter(isNew).length };
   };
-
-  return (
-    <div className="col" style={{ gap: 16 }}>
-      {tabs}
-      {wizard && <ImportWizard chapters={chapters} onClose={() => setWizard(false)} />}
-
-      <div className="row">{colorSwitch}</div>
-      {shown.length === 0 && <Empty>No {colorName(color)} chapters yet — add one with New chapter, import a Lichess study, or open all {colorName(color)} and start playing moves.</Empty>}
-      {shown.length > 0 && (
-        <div className="col" style={{ gap: 8 }}>
-          <div className="row">
-            <h2 style={{ margin: 0 }}>{colorName(color)} chapters</h2>
-            <span className="spacer" />
-            {!freshCov(color) && (
-              <a className="small muted" href={href(`map/${color}`)}>
-                Run Coverage for {colorName(color)} (on the Map) to see each chapter's biggest gap →
-              </a>
-            )}
-          </div>
-          <ChapterTree
-            color={color}
-            chapters={chapters}
-            graphs={graphs}
-            storageKey="repertoire"
-            summary={(ids) => <Badges {...countsOf(ids)} />}
-            row={(ch, label) => (
-              <ChapterRow
-                chapter={ch}
-                label={label}
-                graph={graphs.get(ch.id)}
-                names={names}
-                coverage={freshCov(color)}
-                counts={countsOf([ch.id])}
-                onImport={() => setImporting(importing === ch.id ? null : ch.id)}
-                onSuggest={() => setSuggesting(suggesting === ch.id ? null : ch.id)}
-                onMerge={() => setMerging(merging === ch.id ? null : ch.id)}
-              />
-            )}
-          />
-        </div>
-      )}
-      {importing && <ImportPanel repId={importing} onClose={() => setImporting(null)} />}
-      {merging && chapters.some((c) => c.id === merging) && (
-        <MergePanel chapter={chapters.find((c) => c.id === merging)!} chapters={chapters} onClose={() => setMerging(null)} />
-      )}
-      {suggesting && graphs.get(suggesting) && chapters.some((c) => c.id === suggesting) && (
-        <SuggestChapters chapter={chapters.find((c) => c.id === suggesting)!} graph={graphs.get(suggesting)!} onClose={() => setSuggesting(null)} />
-      )}
-
-      {shown.length > 0 && (
-        <Repertoires color={color} chapters={chapters} collections={collections.filter((c) => c.color === color)} graphs={graphs} countsOf={countsOf} />
-      )}
-    </div>
-  );
+  return <Repertoires color={color} chapters={chapters} collections={collections.filter((c) => c.color === color)} graphs={graphs} countsOf={countsOf} />;
 }
 
 /** A small popover anchored to its button; closes on a click outside or Escape. */
@@ -248,113 +205,6 @@ function Counts({ total, due, fresh }: { total: number; due: number; fresh: numb
       </span>
       {due > 0 && <span className="badge due">{due} due</span>}
       {fresh > 0 && <span className="badge new">{fresh} new</span>}
-    </div>
-  );
-}
-
-/** Due / new badges for a group header. */
-function Badges({ due, fresh }: { total: number; due: number; fresh: number }) {
-  return (
-    <>
-      {due > 0 && <span className="badge due">{due} due</span>}
-      {fresh > 0 && <span className="badge new">{fresh} new</span>}
-    </>
-  );
-}
-
-function ChapterRow({
-  chapter: r,
-  label,
-  graph,
-  names,
-  coverage,
-  counts,
-  onImport,
-  onSuggest,
-  onMerge,
-}: {
-  chapter: Chapter;
-  label: string;
-  graph?: RepGraph;
-  names?: OpeningIndex;
-  /** Its color's coverage run, when up to date. */
-  coverage?: CoverageResult;
-  counts: { total: number; due: number; fresh: number };
-  onImport: () => void;
-  onSuggest: () => void;
-  onMerge: () => void;
-}) {
-  const lines = graph ? linePaths(graph).filter((l) => l.some((m) => m.mine)).length : 0;
-  const opening = graph ? chapterPosition(graph, names, r.name).moves.map((m) => m.san) : [];
-  const gap = graph && coverage ? chapterGap(graph, coverage, names, r.name) : undefined;
-  const target = coverage ? Math.round(1 / coverage.threshold) : 0;
-  const gapTitle = gap
-    ? `Biggest gap: ${compactLine(gap.sans)} — ${oneIn(gap.prob)} games${gap.inChapter !== undefined ? `, ${oneIn(gap.inChapter)} of games in this opening` : ''}. ` +
-      (gap.beyondTarget ? `Rarer than your target (1 in ${target}): you're prepared as deep as you asked.` : `Within your target (1 in ${target}): worth preparing.`)
-    : '';
-  return (
-    <div className="list-item chapter-row">
-      <div className="list-main">
-        <div className="list-head">
-          <a className="list-title" href={href(`repertoire/${r.id}`)} title={r.name}>
-            {label}
-          </a>
-          {opening.length > 0 && (
-            <a className="chapter-pos" href={href(`repertoire/${r.id}`, { line: opening.join(' ') })} title="The position that defines this chapter's opening">
-              {compactLine(opening)}
-            </a>
-          )}
-        </div>
-        <div className="list-meta">
-          <span title={`${counts.total} of your moves to know, across ${lines} line${lines === 1 ? '' : 's'}`}>
-            {counts.total} move{counts.total === 1 ? '' : 's'} · {lines} line{lines === 1 ? '' : 's'}
-          </span>
-          {counts.due > 0 && <span className="badge due">{counts.due} due</span>}
-          {counts.fresh > 0 && <span className="badge new">{counts.fresh} new</span>}
-          {gap && (
-            <a className={`gap-chip ${gap.beyondTarget ? 'good' : 'warn'}`} href={href(`repertoire/${r.id}`, { line: gap.sans.join(' ') })} title={gapTitle}>
-              gap <b>{oneIn(gap.prob)}</b>
-              {gap.inChapter !== undefined && (
-                <>
-                  {' · '}
-                  <b>{oneIn(gap.inChapter)}</b> in this opening
-                </>
-              )}
-            </a>
-          )}
-          {coverage && !gap && <span className="gap-chip good">no gaps found</span>}
-        </div>
-      </div>
-      <div className="list-buttons">
-        <a className="btn small" href={href(`repertoire/${r.id}`)}>
-          Edit
-        </a>
-        <a className="btn small" href={href('train', { rep: r.id, mode: 'review' })}>
-          Train
-        </a>
-        <MoreMenu>
-          <button onClick={onSuggest}>Split into chapters…</button>
-          <button onClick={onMerge}>Merge into…</button>
-          <button onClick={onImport}>Import PGN or study…</button>
-          <button onClick={async () => download(`${r.name.replace(/[^\w-]+/g, '_')}.pgn`, await exportPgn(r.id), 'application/x-chess-pgn')}>Export PGN</button>
-          <button
-            onClick={() => {
-              const n = prompt('Rename chapter', r.name);
-              if (n) renameRepertoire(r.id, n);
-            }}
-          >
-            Rename…
-          </button>
-          <button
-            className="danger"
-            onClick={() => {
-              if (confirm(`Delete “${r.name}”? Training progress on moves no other chapter has goes with it.`)) deleteRepertoire(r.id);
-            }}
-          >
-            Delete…
-          </button>
-        </MoreMenu>
-      </div>
     </div>
   );
 }
@@ -488,7 +338,7 @@ function Repertoires({
                     Edit
                   </button>
                   <MoreMenu>
-                    <button onClick={() => navigate(`map/${repertoireScopeId(set.id)}`)}>Map</button>
+                    <button onClick={() => openScope(repertoireScopeId(set.id))}>Map</button>
                     <button
                       className="danger"
                       onClick={() => {
