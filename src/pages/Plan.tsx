@@ -374,7 +374,6 @@ function PlanSettings() {
             {sp}
           </label>
         ))}
-        <span className="muted small">(Studer: a training game is never faster than 3+0; for classical goals play rapid)</span>
       </div>
     </div>
   );
