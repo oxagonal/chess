@@ -52,8 +52,10 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border-soft);
   position: sticky; top: 0; z-index: 20;
-  overflow-x: auto;
+  /* Sideways if the tabs don't fit a narrow window — never up and down (it's one row), and no scrollbar. */
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
 }
+.topbar::-webkit-scrollbar { display: none; }
 .brand { font-weight: 800; font-size: 18px; margin-right: 20px; white-space: nowrap; color: var(--text); letter-spacing: -0.02em; }
 .brand:hover { text-decoration: none; }
 .brand span { color: var(--accent); }
@@ -66,7 +68,7 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .nav a:hover { color: var(--text); background: var(--panel); text-decoration: none; }
 .nav a.active { color: var(--text); background: var(--panel2); }
 .nav a.active::after {
-  content: ''; position: absolute; left: 12px; right: 12px; bottom: -11px; height: 2px; border-radius: 2px; background: var(--accent);
+  content: ''; position: absolute; left: 12px; right: 12px; bottom: -8px; height: 2px; border-radius: 2px; background: var(--accent);
 }
 .nav .badge { margin-left: 0; }
 .nav-icon { display: none; }
