@@ -109,12 +109,13 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!replay || (e.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]')) return;
+      // Not with Ctrl / ⌘ / Alt: those are the browser's (Ctrl+F finds, Alt+← goes back).
+      if (!replay || e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement)?.closest('input, textarea, select, [contenteditable]')) return;
       if (e.key === 'ArrowLeft') nav.current.back();
       else if (e.key === 'ArrowRight') nav.current.forward();
       else if (e.key === 'Home') nav.current.start();
       else if (e.key === 'End') nav.current.end();
-      else if (e.key === 'f') setFlipped((f) => !f);
+      else if (e.key === 'x' || e.key === 'X') setFlipped((f) => !f);
       else return;
       e.preventDefault();
     };
@@ -295,7 +296,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
       <button onClick={() => goTo(last)} title="End (End)" aria-label="End">
         ⏭
       </button>
-      <button onClick={() => setFlipped(!flipped)} title="Flip board (f)" aria-label="Flip board">
+      <button onClick={() => setFlipped(!flipped)} title="Flip board (x)" aria-label="Flip board">
         ⇅
       </button>
     </>

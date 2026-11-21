@@ -74,7 +74,7 @@ export function OtbGameEditor({ editId, initialOpponent }: { editId?: string; in
   // ← / → step through the moves.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest('input, textarea, select')) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement)?.closest('input, textarea, select')) return;
       if (e.key === 'ArrowLeft') setCursor((c) => Math.max(0, c - 1));
       if (e.key === 'ArrowRight') setCursor((c) => Math.min(line.length - 1, c + 1));
     };

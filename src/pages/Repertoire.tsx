@@ -404,15 +404,15 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     revealInBox(lineBox.current?.querySelector('.mv.current'));
   }, [cursor, line.length, memory, phone]);
 
-  // keyboard navigation
+  // keyboard navigation (not with Ctrl / ⌘ / Alt: those are the browser's — Ctrl+F finds, Alt+← goes back)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest('input, textarea, select')) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement)?.closest('input, textarea, select')) return;
       if (e.key === 'ArrowLeft') setCursor((c) => Math.max(0, c - 1));
       else if (e.key === 'ArrowRight') forward();
       else if (e.key === 'Home') setCursor(0);
       else if (e.key === 'End') goTo(display.length);
-      else if (e.key === 'f') setFlipped((f) => !f);
+      else if (e.key === 'x' || e.key === 'X') setFlipped((f) => !f);
       else return;
       e.preventDefault();
     };
@@ -788,7 +788,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
       <button onClick={() => goTo(display.length)} title="End of the line (End)" aria-label="End of the line">
         ⏭
       </button>
-      <button onClick={() => setFlipped(!flipped)} title="Flip board (f)" aria-label="Flip board">
+      <button onClick={() => setFlipped(!flipped)} title="Flip board (x)" aria-label="Flip board">
         ⇅
       </button>
     </>
