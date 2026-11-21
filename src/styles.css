@@ -275,6 +275,8 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .block-dots { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .block-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--panel3); border: 1px solid var(--border-soft); }
 .block-dot.win { background: var(--good); border-color: var(--good); }
+.block-dot.win.soft { background: transparent; border: 2px solid var(--good); }
+.soft-text { color: var(--good); opacity: 0.75; }
 .block-dot.miss { background: var(--bad, #d9534f); border-color: var(--bad, #d9534f); }
 .block-dot.now { border: 2px solid var(--accent2); background: transparent; }
 .breather { border-left: 4px solid #c98b2e; }

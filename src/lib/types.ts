@@ -272,6 +272,8 @@ export interface PuzzleAttempt {
   angle: string;
   /** Solved without a wrong move or showing the solution. */
   win: boolean;
+  /** Solved by finding, on the spot, the answer to a reply of theirs you hadn't written (a soft pass). */
+  soft?: boolean;
   /** Time spent on it while the app was on screen. */
   ms: number;
   startedAt: number;

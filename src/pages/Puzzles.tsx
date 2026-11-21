@@ -74,6 +74,7 @@ export function PuzzlesPage() {
 interface BlockAttempt {
   puzzle: LichessPuzzle;
   win: boolean;
+  soft?: boolean;
   ms: number;
   rated: boolean;
   ratingDiff?: number;
@@ -331,7 +332,7 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
     if (!cur && queue.length && solving) begin(queue[0]);
   }, [cur, queue, begin, solving]);
 
-  const finish = async (c: Current, win: boolean) => {
+  const finish = async (c: Current, win: boolean, soft = false) => {
     const ms = clock.elapsed();
     const attempt: PuzzleAttempt = {
       id: `${c.puzzle.puzzle.id}|${c.startedAt}`,
@@ -340,10 +341,11 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
       themes: c.puzzle.puzzle.themes,
       angle,
       win,
+      ...(soft ? { soft: true } : {}),
       ms: Math.round(ms),
       startedAt: c.startedAt,
     };
-    if (currentBlock) setBlock({ ...currentBlock, attempts: [...currentBlock.attempts, { puzzle: c.puzzle, win, ms, rated: false }] });
+    if (currentBlock) setBlock({ ...currentBlock, attempts: [...currentBlock.attempts, { puzzle: c.puzzle, win, soft, ms, rated: false }] });
     await db.puzzleLog.put(attempt);
     if (!report) {
       setResult({ rated: false });
@@ -465,7 +467,7 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
         result={result}
         error={error}
         hideRating={blockActive(b)}
-        onResult={(win) => void finish(cur, win)}
+        onResult={(win, soft) => void finish(cur, win, soft)}
         onNext={next}
         nextLabel={lastOne ? 'End of the block →' : 'Next puzzle →'}
       />
@@ -483,7 +485,10 @@ function BlockProgress({ b, current }: { b: Block; current: boolean }) {
       </b>
       <span className="block-dots" aria-hidden>
         {Array.from({ length: Math.max(b.size, b.attempts.length) }, (_, i) => (
-          <span key={i} className={`block-dot ${i < b.attempts.length ? (b.attempts[i].win ? 'win' : 'miss') : i === b.attempts.length && current ? 'now' : ''}`} />
+          <span
+            key={i}
+            className={`block-dot ${i < b.attempts.length ? (b.attempts[i].win ? (b.attempts[i].soft ? 'win soft' : 'win') : 'miss') : i === b.attempts.length && current ? 'now' : ''}`}
+          />
         ))}
       </span>
     </div>
@@ -494,6 +499,7 @@ function BlockProgress({ b, current }: { b: Block; current: boolean }) {
 function BlockSummary({ b, onRetry, onAnother }: { b: Block; onRetry: () => void; onAnother: () => void }) {
   const n = b.attempts.length;
   const wins = b.attempts.filter((a) => a.win).length;
+  const soft = b.attempts.filter((a) => a.soft).length;
   const misses = blockMisses(b);
   const minutes = Math.max(1, Math.round(b.attempts.reduce((s, a) => s + a.ms, 0) / 60_000));
   const rated = b.attempts.filter((a) => a.rated && a.ratingDiff !== undefined);
@@ -502,7 +508,7 @@ function BlockSummary({ b, onRetry, onAnother }: { b: Block; onRetry: () => void
     <div className="panel col block-summary" style={{ gap: 12 }}>
       <h2 style={{ margin: 0 }}>{n >= b.size ? 'Block done' : `Block ended after ${n} puzzle${n === 1 ? '' : 's'}`}</h2>
       <div className="grid3">
-        <Stat value={`${wins} / ${n}`} label="Solved first time" />
+        <Stat value={`${wins} / ${n}`} label={soft ? `Solved (${soft} soft)` : 'Solved'} hint="Soft: you found the answer to a reply of theirs you hadn't written, when it came up" />
         <Stat value={`${minutes} min`} label="Time" />
         {rated.length > 0 ? (
           <Stat value={diff >= 0 ? `+${diff}` : String(diff)} label="Lichess puzzle rating" />
@@ -598,8 +604,14 @@ function History({ hideRating }: { hideRating: boolean }) {
               <tr key={a.id}>
                 <td className="small">{fmtDate(a.startedAt)}</td>
                 <td>
-                  <a href={`${LICHESS}/training/${a.puzzleId}`} target="_blank" rel="noreferrer" className={a.win ? 'good-text' : 'warn-text'} title="Open on Lichess">
-                    {a.win ? '✓' : '✗'}
+                  <a
+                    href={`${LICHESS}/training/${a.puzzleId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={a.win ? (a.soft ? 'soft-text' : 'good-text') : 'warn-text'}
+                    title={a.soft ? 'Solved — a soft pass: you answered a reply you hadn\u2019t written when it came up. Open on Lichess' : 'Open on Lichess'}
+                  >
+                    {a.win ? (a.soft ? '✓~' : '✓') : '✗'}
                   </a>
                 </td>
                 <td className="num">{a.rating}</td>

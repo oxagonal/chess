@@ -52,7 +52,8 @@ export function PuzzleSolver({
   report: boolean;
   result?: { ratingDiff?: number; rated: boolean };
   error?: string;
-  onResult: (win: boolean) => void;
+  /** The result: solved or not — `soft` when solved by finding a reply you hadn't written, on the spot. */
+  onResult: (win: boolean, soft?: boolean) => void;
   onNext: () => void;
   /** During a block: your rating change waits for the end of it (play for learning, not rating). */
   hideRating?: boolean;
@@ -74,7 +75,11 @@ export function PuzzleSolver({
     setCursor(id);
     setView(id);
   };
-  const [phase, setPhase] = useState<'solve' | 'done'>('solve');
+  // Writing (or playing), then — when your lines missed one of their replies — Lichess's line played
+  // through to it, for you to answer on the spot; then the study.
+  const [phase, setPhase] = useState<'solve' | 'replay' | 'done'>('solve');
+  /** The replay has reached the reply you didn't write: your move. */
+  const [replayReady, setReplayReady] = useState(false);
   const [only, setOnly] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [flash, setFlash] = useState<'good' | 'bad' | null>(null);
@@ -141,11 +146,11 @@ export function PuzzleSolver({
     setSolutionIds(ids);
     bump();
   };
-  const finish = (win: boolean) => {
+  const finish = (win: boolean, soft = false) => {
     setPhase('done');
     setWon(win);
     if (!win && !solutionIds.length) addSolution();
-    onResult(win);
+    onResult(win, soft);
   };
 
   /* ---- writing ---- */
@@ -153,47 +158,104 @@ export function PuzzleSolver({
   const writtenMain = tree.mainline(startId).filter((n) => n.tags.includes('mine'));
   const check = () => {
     const g = gradeWritten(tree, startId, solution);
-    addSolution();
-    if (g.win && g.recapture) {
-      const at = tree.get(g.recapture.nodeId);
-      const reply = playUci(at.pos, g.recapture.reply);
-      const answer = reply && playUci(reply.pos, g.recapture.answer);
-      setFeedback({
-        kind: 'good',
-        text: (
-          <>
-            ✓ Right — you didn't write {moveNumberPrefix(at.ply, true)}
-            {reply?.san}, but {moveNumberPrefix(at.ply + 1, true)}
-            {answer?.san}, simply taking it, is obvious — so it counts.
-          </>
-        ),
-      });
-      flashFor('good');
-    } else if (g.win) {
+    if (g.win) {
+      addSolution();
       setFeedback({ kind: 'good', text: <>✓ Right — your lines have the solution, their best defence included.</> });
       flashFor('good');
-    } else if (g.wrongAt) {
-      const at = tree.get(g.wrongAt.nodeId);
-      const exp = playUci(at.pos, g.wrongAt.expected);
-      const where = at.id === startId ? 'At the start' : `After ${moveNumberPrefix(at.ply - 1, true)}${at.san}`;
-      const wrongChild = tree.children(at.id).find((k) => k.tags.includes('mine') && !k.tags.includes('solution'));
-      setWrong(wrongChild?.id);
+      return finish(true);
+    }
+    if (!g.wrongAt) return;
+    // A reply of theirs you didn't write: play Lichess's line through to it, and you answer it here.
+    if (!g.wrongAt.yours) return replayTo(g.wrongAt.nodeId);
+    addSolution();
+    const at = tree.get(g.wrongAt.nodeId);
+    const exp = playUci(at.pos, g.wrongAt.expected);
+    const where = at.id === startId ? 'At the start' : `After ${moveNumberPrefix(at.ply - 1, true)}${at.san}`;
+    const wrongChild = tree.children(at.id).find((k) => k.tags.includes('mine') && !k.tags.includes('solution'));
+    setWrong(wrongChild?.id);
+    setFeedback({
+      kind: 'bad',
+      text: (
+        <>
+          ✗ {where} the solution is <b>{exp?.san}</b>.
+        </>
+      ),
+    });
+    setCursor(at.id);
+    flashFor('bad');
+    finish(false);
+  };
+
+  /* ---- Lichess's line, through to the reply you didn't write ---- */
+  const replayTo = (missedAt: string) => {
+    setPhase('replay');
+    setReplayReady(false);
+    setFeedback({ kind: 'info', text: <>Lichess's line…</> });
+    const steps: string[] = [];
+    let id = startId;
+    for (const uci of solution) {
+      const before = id;
+      const next = tree.add(id, uci, 'solution');
+      if (!next) break;
+      steps.push(next);
+      id = next;
+      if (before === missedAt) break;
+    }
+    bump();
+    setCursor(startId);
+    setView(startId);
+    steps.forEach((step, i) => later(() => go(step), 500 * (i + 1)));
+    const reply = tree.get(id);
+    later(() => {
+      setTip(id);
+      setReplayReady(true);
       setFeedback({
-        kind: 'bad',
-        text: g.wrongAt.yours ? (
+        kind: 'hint',
+        text: (
           <>
-            ✗ {where} the solution is <b>{exp?.san}</b>.
-          </>
-        ) : (
-          <>
-            ✗ {where} you didn't consider <b>{exp?.san}</b> — their best defence.
+            You didn't write {moveNumberPrefix(reply.ply - 1, true)}
+            <b>{reply.san}</b>. What do you play? Find it here and it still counts — a soft pass.
           </>
         ),
       });
-      setCursor(at.id);
+    }, 500 * steps.length + 300);
+  };
+  const replayMove = (uci: string) => {
+    const step = node.ply - tree.get(startId).ply;
+    const verdict = judgeMove(node.pos, solution, step, uci);
+    if (verdict === 'wrong') {
+      const exp = playUci(node.pos, solution[step]);
+      addSolution();
+      setFeedback({
+        kind: 'bad',
+        text: (
+          <>
+            ✗ Here the solution is <b>{exp?.san}</b> — that reply needed answering.
+          </>
+        ),
+      });
       flashFor('bad');
+      return finish(false);
     }
-    finish(g.win);
+    const id = tree.add(cursor, uci, 'solution')!;
+    go(id);
+    setTip(id);
+    bump();
+    flashFor('good');
+    if (verdict === 'solved') {
+      setFeedback({ kind: 'good', text: <>✓ Solved — you hadn't written their reply, but you found the answer here, so it counts (a soft pass).</> });
+      return finish(true, true);
+    }
+    setFeedback({ kind: 'good', text: '✓ Right — keep going.' });
+    setReplayReady(false);
+    later(() => {
+      const reply = tree.add(id, solution[step + 1], 'solution');
+      if (!reply) return;
+      go(reply);
+      setTip(reply);
+      bump();
+      setReplayReady(true);
+    }, 400);
   };
 
   /* ---- writing without moving the pieces ---- */
@@ -323,6 +385,7 @@ export function PuzzleSolver({
       }
       return;
     }
+    if (phase === 'replay') return replayMove(uci);
     if (mode === 'play') return playMove(uci);
     const id = tree.add(cursor, uci, 'mine');
     if (id) {
@@ -331,7 +394,12 @@ export function PuzzleSolver({
     }
   };
   const interactive =
-    phase === 'done' || (mode === 'write' ? tree.isUnder(cursor, startId) : cursor === tip && node.pos.turn === you && cursor !== built.beforeId);
+    phase === 'done' ||
+    (phase === 'replay'
+      ? replayReady && cursor === tip && node.pos.turn === you
+      : mode === 'write'
+        ? tree.isUnder(cursor, startId)
+        : cursor === tip && node.pos.turn === you && cursor !== built.beforeId);
 
   /* ---- moving around ---- */
   const back = () => node.parent && go(node.parent);

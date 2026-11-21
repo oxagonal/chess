@@ -104,9 +104,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   with what you enter after it as arrows from there, and one answer to many replies ("any king move, then Qxa8")
   is two clicks: "same answer to every king move / every other reply". Before you can check it every reply
   on your main line needs another one considered (or "only one sensible reply", unless it's their only legal
-  move) — then it's checked against Lichess's solution (any mate counts, as on Lichess, and a reply you
-  didn't write is let off when the solution simply ends by taking the piece they just moved without giving
-  material back: a recapture like 29…Qxd8 30.Rxd8, or a piece that blocks a check). Afterwards the puzzle is a small study: the game from move 1 with the players'
+  move) — then it's checked against Lichess's solution (any mate counts, as on Lichess). If your lines missed one of their replies, Lichess's line is played through to it
+  and you answer it on the board: find the rest and it's a soft pass (counted as solved, marked ✓~), a wrong
+  move and it's a miss. Afterwards the puzzle is a small study: the game from move 1 with the players'
   names, titles and ratings, step back and forth, play any move, Stockfish with clickable lines. Unchecking
   "Write the solution first" gives the usual move-by-move solving. Puzzles come in blocks whose size you pick
   before you start (10 by default), against tilt: your rating stays hidden until the block ends; after a miss
