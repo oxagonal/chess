@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { gradeWritten, MoveTree, unconsidered } from '../lib/moveTree';
 import { describe, expect, it } from 'vitest';
 import { judgeMove, openingAngle, puzzleStart, type LichessPuzzle } from '../lib/puzzle';
-import { fenOf, playUci } from '../lib/chess';
+import { fenOf, playUci, posFromFen } from '../lib/chess';
 
 // The daily puzzle of 2026-11-20, as /api/puzzle/daily sent it (its fen and lastMove are what the
 // batch endpoint leaves out — the start must be worked out from the game's moves).
@@ -99,6 +99,17 @@ describe('writing a puzzle solution', () => {
     // A branch, or "only one sensible reply", settles it.
     expect(unconsidered(write([['e2e4', 'e7e5', 'g1f3'], ['e2e4', 'c7c5']]), tree.root, new Set())).toEqual([]);
     expect(unconsidered(tree, tree.root, new Set([afterE4]))).toEqual([]);
+  });
+  it("doesn't ask for other replies when theirs is the only legal move", () => {
+    // Rh1+: the king on f6 covers g7, so Kg8 is Black's only move. After Rg1+ (pinning nothing), two.
+    const tree = new MoveTree(posFromFen('7k/8/5K2/8/8/8/8/6R1 w - - 0 1')!);
+    let id: string | undefined = tree.root;
+    for (const uci of ['g1h1', 'h8g8', 'h1g1']) id = id && tree.add(id, uci, 'mine');
+    expect(unconsidered(tree, tree.root, new Set())).toEqual([]);
+    const two = new MoveTree(posFromFen('7k/8/8/8/8/8/8/K5R1 w - - 0 1')!);
+    let j: string | undefined = two.root;
+    for (const uci of ['g1h1', 'h8g8']) j = j && two.add(j, uci, 'mine');
+    expect(unconsidered(two, two.root, new Set())).toEqual([`${two.root} g1h1`]);
   });
   it('is right when your lines contain the solution, their best defence included', () => {
     expect(gradeWritten(write([['e2e4', 'e7e5', 'g1f3'], ['e2e4', 'c7c5', 'g1f3']]), 'root', solution)).toEqual({ win: true });
