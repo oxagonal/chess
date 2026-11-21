@@ -758,8 +758,11 @@ function Session({ setup }: { setup: SessionSetup }) {
     </div>
   );
   // Lichess analysis and the FEN to copy (e.g. into Chessable) — only once the line is over and waits
-  // for Continue, so they can't give a move away.
-  const tools = holdAtEnd && <PositionTools pos={pos} ply={pathSoFar.length} orientation={rep?.color ?? 'white'} />;
+  // for Continue, so they can't give a move away. Of the position on the board: stepping back through
+  // the line (◀) shows that position's FEN, not the line's end.
+  const tools = holdAtEnd && (
+    <PositionTools pos={viewed?.pos ?? pos} ply={view ?? pathSoFar.length} orientation={rep?.color ?? 'white'} />
+  );
   const note = noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" prompt compact={phone} />;
   const lineLabel = <h3 style={{ margin: 0 }}>{line?.phase === 'show' ? 'New line' : 'Line'}</h3>;
   const orderBadge = line?.order && (
