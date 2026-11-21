@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { gradeWritten, MoveTree, unconsidered } from '../lib/moveTree';
+import { gradeWritten, MoveTree, sameAnswer, unconsidered } from '../lib/moveTree';
 import { describe, expect, it } from 'vitest';
 import { judgeMove, openingAngle, puzzleStart, type LichessPuzzle } from '../lib/puzzle';
 import { fenOf, playUci, posFromFen } from '../lib/chess';
@@ -99,6 +99,28 @@ describe('writing a puzzle solution', () => {
     // A branch, or "only one sensible reply", settles it.
     expect(unconsidered(write([['e2e4', 'e7e5', 'g1f3'], ['e2e4', 'c7c5']]), tree.root, new Set())).toEqual([]);
     expect(unconsidered(tree, tree.root, new Set([afterE4]))).toEqual([]);
+  });
+  it('writes the same answer against their other moves: the same piece, or everything', () => {
+    // You (Black) check with Qb7+; the rook on a7 can take the queen. You answer Kh2 with Qxa7.
+    const write2 = () => {
+      const tree = new MoveTree(posFromFen('1q4k1/R7/8/8/8/8/6K1/8 b - - 0 1')!);
+      const qb7 = tree.add(tree.root, 'b8b7', 'mine')!;
+      const kh2 = tree.add(qb7, 'g2h2', 'mine')!;
+      return { tree, answer: tree.add(kh2, 'b7a7', 'mine')! };
+    };
+    const a = write2();
+    const king = sameAnswer(a.tree, a.answer, 'piece');
+    // The king's other moves out of check: f1, g1, f2, g3, h3 (f3 and h1 stay on the diagonal).
+    expect(king.added.map((id) => a.tree.get(id).san).sort()).toEqual(['Kf1', 'Kf2', 'Kg1', 'Kg3', 'Kh3']);
+    expect(king.skipped).toEqual([]);
+    expect(a.tree.children(king.added[0])[0].san).toBe('Qxa7');
+    // Everything: Rxb7 takes the queen, so Qxa7 isn't possible there — left for you to think about.
+    const b = write2();
+    const all = sameAnswer(b.tree, b.answer, 'all');
+    expect(all.added.length).toBe(5);
+    expect(all.skipped).toEqual(['Rxb7']);
+    // Their turn now has several replies considered.
+    expect(unconsidered(b.tree, b.tree.root, new Set())).toEqual([]);
   });
   it("doesn't ask for other replies when theirs is the only legal move", () => {
     // Rh1+: the king on f6 covers g7, so Kg8 is Black's only move. After Rg1+ (pinning nothing), two.

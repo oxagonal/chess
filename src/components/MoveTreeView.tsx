@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { moveNumberPrefix } from '../lib/chess';
 import type { MoveTree, TreeNode } from '../lib/moveTree';
 import { revealInBox } from './MoveList';
@@ -22,6 +22,8 @@ export function MoveTreeView({
   wrong?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  // Long groups of replies with the same answer show their first few until opened.
+  const [opened, setOpened] = useState<Set<string>>(() => new Set());
   useEffect(() => revealInBox(box.current?.querySelector('.mt-move.current')), [cursor]);
 
   const cls = (n: TreeNode) =>
@@ -44,13 +46,57 @@ export function MoveTreeView({
       const [main, ...alts] = kids;
       out.push(move(main, num));
       num = false;
+      // Replies answered the same way, with nothing after (e.g. any king move, then Qxa8), share one
+      // variation: (48.Kh2 · Kf2 · Kg1 Qxa8).
+      const order: TreeNode[][] = [];
+      const byAnswer = new Map<string, TreeNode[]>();
       for (const a of alts) {
-        out.push(
-          <span key={`v${a.id}`} className="mt-var">
-            ({move(a, true)}
-            {line(a.id, false)})
-          </span>,
-        );
+        const next = tree.children(a.id);
+        const key = next.length === 1 && !next[0].children.length ? next[0].san : undefined;
+        const group = key ? byAnswer.get(key) : undefined;
+        if (group) group.push(a);
+        else {
+          const g = [a];
+          if (key) byAnswer.set(key, g);
+          order.push(g);
+        }
+      }
+      for (const g of order) {
+        if (g.length === 1) {
+          const [a] = g;
+          out.push(
+            <span key={`v${a.id}`} className="mt-var">
+              ({move(a, true)}
+              {line(a.id, false)})
+            </span>,
+          );
+        } else {
+          const answers = g.map((a) => tree.children(a.id)[0]);
+          // The answer shown is the one after the reply you're on (or the first).
+          const at = answers.find((x) => x.id === cursor) ?? answers[g.findIndex((a) => a.id === cursor)] ?? answers[0];
+          const inside = g.some((a) => a.id === cursor) || answers.some((x) => x.id === cursor);
+          const short = g.length > GROUP_SHOWN + 2 && !opened.has(g[0].id) && !inside;
+          const shown = short ? g.slice(0, GROUP_SHOWN) : g;
+          out.push(
+            <span key={`v${g[0].id}`} className="mt-var">
+              (
+              {shown.map((a, i) => (
+                <span key={a.id} className="mt-step">
+                  {i === 0 ? <span className="mt-num">{moveNumberPrefix(a.ply - 1, true)}</span> : <span className="mt-sep">·</span>}
+                  <button className={`mt-move ${cls(a)} ${a.id === cursor ? 'current' : ''}`} onClick={() => onSelect(a.id)}>
+                    {a.san}
+                  </button>
+                </span>
+              ))}
+              {short && (
+                <button className="mt-more" onClick={() => setOpened(new Set(opened).add(g[0].id))} title="Show them all">
+                  +{g.length - GROUP_SHOWN} more
+                </button>
+              )}
+              {move(at, false)})
+            </span>,
+          );
+        }
         num = true;
       }
       id = main.id;
@@ -63,3 +109,6 @@ export function MoveTreeView({
     </div>
   );
 }
+
+/** Replies shown in a long same-answer group before "+N more". */
+const GROUP_SHOWN = 6;

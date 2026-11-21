@@ -5,9 +5,10 @@ import { MaterialBalance } from './MaterialBalance';
 import { MoveTreeView } from './MoveTreeView';
 import { isPromotion, legalDests, moveNumberPrefix, opposite, playUci, type Color } from '../lib/chess';
 import { updateSettings, useSettings } from '../db/settings';
-import { gradeWritten, MoveTree, unconsidered } from '../lib/moveTree';
+import { gradeWritten, MoveTree, sameAnswer, unconsidered } from '../lib/moveTree';
 import { judgeMove, type LichessPuzzle } from '../lib/puzzle';
 import { tokenizeMoveText } from '../lib/pgn';
+import { parseSquare } from 'chessops/util';
 
 const LICHESS = 'https://lichess.org';
 
@@ -74,17 +75,17 @@ export function PuzzleSolver({
   const [tip, setTip] = useState(startId);
   const failed = useRef(false);
   // Writing: the board stays on the puzzle's position. A square you picked, a promotion to choose,
-  // a word about a move that isn't legal, what you're typing, and a peek (which makes it a miss).
+  // a word about a move that isn't legal, and what you're typing.
   const settings = useSettings();
   const [picked, setPicked] = useState<string>();
   const [promoAsk, setPromoAsk] = useState<{ from: string; to: string }>();
   const [notice, setNotice] = useState<string>();
+  const [info, setInfo] = useState<string>();
   const [typed, setTyped] = useState('');
-  const [peeking, setPeeking] = useState(false);
-  const peeked = useRef(false);
   useEffect(() => {
     setPicked(undefined);
     setPromoAsk(undefined);
+    setInfo(undefined);
   }, [cursor]);
   // After a miss, the next puzzle waits until you've been through the solution, move by move.
   const [won, setWon] = useState<boolean>();
@@ -145,9 +146,7 @@ export function PuzzleSolver({
   const check = () => {
     const g = gradeWritten(tree, startId, solution);
     addSolution();
-    if (g.win && peeked.current) {
-      setFeedback({ kind: 'hint', text: <>Right — but you peeked, so it counts as missed. Next time, all in your head.</> });
-    } else if (g.win) {
+    if (g.win) {
       setFeedback({ kind: 'good', text: <>✓ Right — your lines have the solution, their best defence included.</> });
       flashFor('good');
     } else if (g.wrongAt) {
@@ -171,7 +170,7 @@ export function PuzzleSolver({
       setCursor(at.id);
       flashFor('bad');
     }
-    finish(g.win && !peeked.current);
+    finish(g.win);
   };
 
   /* ---- writing without moving the pieces ---- */
@@ -184,17 +183,27 @@ export function PuzzleSolver({
     }
   };
   const sideName = (c: Color) => (c === 'white' ? 'White' : 'Black');
+  /** A move from one square to another, as things stand in your line (false: not legal there). */
+  const tryMove = (from: string, to: string): boolean => {
+    const pos = node.pos;
+    if (!legalDests(pos).get(from)?.includes(to)) return false;
+    setPicked(undefined);
+    if (isPromotion(pos, from, to)) setPromoAsk({ from, to });
+    else write(from + to);
+    return true;
+  };
+  /** Dragged on the board (like drawing an arrow): that move. */
+  const drag = (from: string, to: string) => {
+    setNotice(undefined);
+    if (!tryMove(from, to)) setNotice(`${from}–${to} isn't legal as things stand in your line (${sideName(node.pos.turn)} to play).`);
+  };
   /** A tap on a square: pick a piece (as it stands in your line), then where it goes. */
   const tap = (sq: string) => {
     setNotice(undefined);
     const pos = node.pos;
     const dests = legalDests(pos);
     if (picked && sq === picked) return setPicked(undefined);
-    if (picked && dests.get(picked)?.includes(sq)) {
-      setPicked(undefined);
-      if (isPromotion(pos, picked, sq)) return setPromoAsk({ from: picked, to: sq });
-      return write(picked + sq);
-    }
+    if (picked && tryMove(picked, sq)) return;
     if (dests.has(sq)) return setPicked(sq);
     setNotice(
       picked
@@ -227,7 +236,22 @@ export function PuzzleSolver({
       same.color = color;
     } else lineLabels.push({ square, text: String(i + 1), color });
   });
-  const shown = blind && !peeking ? tree.get(startId) : node;
+  const shown = blind ? tree.get(startId) : node;
+
+  // "Same answer to…": at your answer to one of their moves, write it against their other moves too.
+  const theirMove = blind && node.tags.includes('mine') && node.pos.turn !== you && node.parent ? tree.get(node.parent) : undefined;
+  const answerable = !!theirMove?.parent && tree.isUnder(theirMove.parent, startId);
+  const movedPiece = theirMove && answerable ? tree.get(theirMove.parent!).pos.board.get(parseSquare(theirMove.uci.slice(0, 2))!)?.role : undefined;
+  const writeSameAnswer = (scope: 'piece' | 'all') => {
+    const { added, skipped } = sameAnswer(tree, cursor, scope);
+    bump();
+    setNotice(undefined);
+    const what = scope === 'piece' ? `${movedPiece} move${added.length === 1 ? '' : 's'}` : `repl${added.length === 1 ? 'y' : 'ies'}`;
+    setInfo(
+      `${node.san} against ${added.length ? `${added.length} more ${what}` : `no other ${scope === 'piece' ? `${movedPiece} moves` : 'replies'}`}` +
+        (skipped.length ? `. Not possible after ${skipped.join(', ')} — think about ${skipped.length === 1 ? 'that one' : 'those'}.` : '.'),
+    );
+  };
   const giveUp = () => {
     addSolution();
     setFeedback({ kind: 'hint', text: 'The solution is in green — step through it, try other moves, ask Stockfish.' });
@@ -340,10 +364,11 @@ export function PuzzleSolver({
           lastMove={shown.uci || undefined}
           onMove={onMove}
           flash={flash}
-          arrows={blind && !peeking && settings.puzzleArrows ? lineArrows : undefined}
-          squareLabels={blind && !peeking && settings.puzzleArrows ? lineLabels : undefined}
+          arrows={blind && settings.puzzleArrows ? lineArrows : undefined}
+          squareLabels={blind && settings.puzzleArrows ? lineLabels : undefined}
           circles={blind && picked ? [{ square: picked, brush: 'yellow' }] : undefined}
-          onSquareClick={blind && !peeking ? tap : undefined}
+          onSquareClick={blind ? tap : undefined}
+          onSquareDrag={blind ? drag : undefined}
         />
         {strip(you)}
         <div className="row puzzle-nav">
@@ -426,26 +451,23 @@ export function PuzzleSolver({
                     <input type="checkbox" checked={settings.puzzleArrows} onChange={(e) => void updateSettings({ puzzleArrows: e.target.checked })} />
                     Arrows
                   </label>
-                  <span className="spacer" />
-                  <button
-                    className={`small ghost ${peeking ? 'primary' : ''}`}
-                    title="Shows the position your line has reached while you hold it — the puzzle then counts as missed"
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      peeked.current = true;
-                      setPeeking(true);
-                    }}
-                    onPointerUp={() => setPeeking(false)}
-                    onPointerLeave={() => setPeeking(false)}
-                    onPointerCancel={() => setPeeking(false)}
-                    onContextMenu={(e) => e.preventDefault()}
-                  >
-                    👁 Hold to peek
+                </div>
+              )}
+              {theirMove && answerable && (
+                <div className="row same-answer">
+                  <span className="small muted">Same answer ({node.san}) to</span>
+                  {movedPiece && (
+                    <button className="small" onClick={() => writeSameAnswer('piece')} title={`Write ${node.san} against every other ${movedPiece} move too`}>
+                      every {movedPiece} move
+                    </button>
+                  )}
+                  <button className="small" onClick={() => writeSameAnswer('all')} title={`Write ${node.san} against every other legal reply too`}>
+                    every other reply
                   </button>
                 </div>
               )}
               {notice && <div className="small warn-text">{notice}</div>}
-              {peeked.current && <div className="muted small">You peeked: this puzzle counts as missed.</div>}
+              {info && !notice && <div className="small muted">{info}</div>}
               {onOpen && (
                 <div className="note small">
                   What else could they play here? Enter it — or{' '}

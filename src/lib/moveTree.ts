@@ -4,6 +4,7 @@
  * one tree, each move tagged by where it came from. Pure (mutable, cheap to copy by reference).
  */
 import type { Chess } from 'chessops/chess';
+import { makeSquare, squareRank } from 'chessops/util';
 import { keyOf, playSan, playUci, startPos } from './chess';
 import { judgeMove } from './puzzle';
 
@@ -126,6 +127,42 @@ export function legalMoveCount(pos: Chess): number {
   let n = 0;
   for (const dests of pos.allDests().values()) n += dests.size();
   return n;
+}
+
+/**
+ * "Same answer to…": your answer to one of their moves, written against their other moves too — every
+ * other move of the piece they moved (`piece`, e.g. any king move), or every other legal reply (`all`).
+ * Each reply your answer is still legal after gets it as a branch (the reply's node id is returned);
+ * the replies it isn't legal after are returned by name: those need a thought of their own.
+ */
+export function sameAnswer(tree: MoveTree, answerId: string, scope: 'piece' | 'all'): { added: string[]; skipped: string[] } {
+  const answer = tree.get(answerId);
+  const theirs = answer.parent ? tree.get(answer.parent) : undefined;
+  const at = theirs?.parent ? tree.get(theirs.parent) : undefined;
+  const added: string[] = [];
+  const skipped: string[] = [];
+  if (!theirs || !at) return { added, skipped };
+  const done = new Set(at.children);
+  for (const [from, dests] of at.pos.allDests()) {
+    if (scope === 'piece' && makeSquare(from) !== theirs.uci.slice(0, 2)) continue;
+    const pawn = at.pos.board.get(from)?.role === 'pawn';
+    for (const to of dests) {
+      const promo = pawn && (squareRank(to) === 0 || squareRank(to) === 7) ? 'q' : '';
+      const reply = playUci(at.pos, makeSquare(from) + makeSquare(to) + promo);
+      if (!reply) continue;
+      const replyId = `${at.id} ${reply.uci}`;
+      if (done.has(replyId)) continue; // already written (castling shows up twice)
+      done.add(replyId);
+      if (!playUci(reply.pos, answer.uci)) {
+        skipped.push(reply.san);
+        continue;
+      }
+      const id = tree.add(at.id, reply.uci, 'mine')!;
+      tree.add(id, answer.uci, 'mine');
+      added.push(id);
+    }
+  }
+  return { added, skipped };
 }
 
 export interface WrittenGrade {

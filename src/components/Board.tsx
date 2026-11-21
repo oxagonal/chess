@@ -54,13 +54,15 @@ interface BoardProps {
    * (writing a puzzle's solution while the board stays still). The board itself takes no moves then.
    */
   onSquareClick?: (square: string) => void;
+  /** With onSquareClick: a mouse drag (left or right button, like drawing an arrow) from one square to another. */
+  onSquareDrag?: (from: string, to: string) => void;
 }
 
 /**
  * Chessground board driven entirely by a chessops Position.
  * After every user move we re-apply the props, so a move the parent rejects snaps back.
  */
-export function Board({ pos, orientation, interactive = false, lastMove, arrows, onMove, flash, markSquare, coordinates = true, circles, squareLabels, onSquareClick }: BoardProps) {
+export function Board({ pos, orientation, interactive = false, lastMove, arrows, onMove, flash, markSquare, coordinates = true, circles, squareLabels, onSquareClick, onSquareDrag }: BoardProps) {
   const el = useRef<HTMLDivElement>(null);
   const pendingShapes = useRef<DrawShape[] | null>(null);
   const api = useRef<Api | null>(null);
@@ -70,6 +72,9 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
   posRef.current = pos;
   const [tick, setTick] = useState(0);
   const [promo, setPromo] = useState<{ orig: string; dest: string } | null>(null);
+  // Square input: where a mouse drag started, and the arrow it draws so far.
+  const dragFrom = useRef<{ square: string; button: number } | null>(null);
+  const [dragArrow, setDragArrow] = useState<{ from: string; to: string } | null>(null);
 
   const fen = useMemo(() => fenOf(pos), [pos]);
   const turn = pos.turn;
@@ -140,7 +145,7 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
   }, [fen, orientation, turn, interactive, dests, lastMove, tick, pos]);
 
   // Arrows are compared by content so re-renders with a fresh array don't touch the board.
-  const shapesKey = JSON.stringify([arrows ?? [], markSquare ?? null, circles ?? []]);
+  const shapesKey = JSON.stringify([arrows ?? [], markSquare ?? null, circles ?? [], dragArrow]);
   useEffect(() => {
     const cg = api.current;
     if (!cg) return;
@@ -150,6 +155,7 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
     });
     if (markSquare) shapes.push({ orig: markSquare as Key, brush: 'red' });
     for (const c of circles ?? []) shapes.push({ orig: c.square as Key, brush: c.brush ?? 'green' });
+    if (dragArrow) shapes.push({ orig: dragArrow.from as Key, dest: dragArrow.to as Key, brush: 'paleGreen' });
     if (!el.current?.clientWidth) {
       pendingShapes.current = shapes;
       return;
@@ -187,18 +193,44 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
       </div>
     );
   })();
-  // Tapping squares: which square, from where the tap landed on the board.
+  // Square input: which square a pointer is over. A tap passes its square on; a mouse drag (either
+  // button — the right one draws arrows elsewhere) passes from and to.
+  const squareAt = (e: { clientX: number; clientY: number; currentTarget: Element }) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const fx = Math.floor(((e.clientX - r.left) / r.width) * 8);
+    const fy = Math.floor(((e.clientY - r.top) / r.height) * 8);
+    if (fx < 0 || fx > 7 || fy < 0 || fy > 7) return undefined;
+    const file = orientation === 'white' ? fx : 7 - fx;
+    const rank = orientation === 'white' ? 8 - fy : fy + 1;
+    return `${'abcdefgh'[file]}${rank}`;
+  };
   const squareInput = onSquareClick && (
     <div
       className="square-input"
-      onClick={(e) => {
-        const r = e.currentTarget.getBoundingClientRect();
-        const fx = Math.floor(((e.clientX - r.left) / r.width) * 8);
-        const fy = Math.floor(((e.clientY - r.top) / r.height) * 8);
-        if (fx < 0 || fx > 7 || fy < 0 || fy > 7) return;
-        const file = orientation === 'white' ? fx : 7 - fx;
-        const rank = orientation === 'white' ? 8 - fy : fy + 1;
-        onSquareClick(`${'abcdefgh'[file]}${rank}`);
+      onPointerDown={(e) => {
+        const square = squareAt(e);
+        if (!square || (e.button !== 0 && e.button !== 2)) return;
+        dragFrom.current = { square, button: e.button };
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        const from = dragFrom.current;
+        if (!from || e.pointerType !== 'mouse') return;
+        const to = squareAt(e);
+        setDragArrow(to && to !== from.square ? { from: from.square, to } : null);
+      }}
+      onPointerUp={(e) => {
+        const from = dragFrom.current;
+        dragFrom.current = null;
+        setDragArrow(null);
+        const to = squareAt(e);
+        if (!from || !to) return;
+        if (to !== from.square) onSquareDrag?.(from.square, to);
+        else if (from.button === 0) onSquareClick(to);
+      }}
+      onPointerCancel={() => {
+        dragFrom.current = null;
+        setDragArrow(null);
       }}
       onContextMenu={(e) => e.preventDefault()}
     />
