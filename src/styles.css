@@ -541,6 +541,7 @@ table.data tr.current-row td { background: var(--panel2); }
 .cp-item { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; background: transparent; border: none; border-radius: 6px; padding: 5px 8px; min-height: 0; }
 .cp-item:hover { background: var(--panel3); }
 .cp-item.current { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.enters-title { font-size: 16px; font-weight: 700; }
 .cp-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cp-line { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 /* Phones: the chapter's name, then its opening under it — neither cut short by the other. */

@@ -4,13 +4,13 @@ import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { addEdges, chapterForNewLine, deleteMove, deleteUnionMove, setMoveAnnotation, setNoTrain, splitOff } from '../db/repertoire';
 import { loadOpeningIndex, nameParts } from '../lib/openingNames';
-import { chapterGap, chapterOfMoveId, chapterPosition, sourcesOf, trainable } from '../lib/chapters';
+import { chapterGap, chapterOfMoveId, chapterPosition, chapterTerritory, entersOtherChapter, sourcesOf, trainable } from '../lib/chapters';
 import { useOpeningIndex } from '../components/ChapterTree';
 import { ChaptersPanel, ChapterSwitcher } from '../components/ChaptersPanel';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
-import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepGraph } from '../hooks';
+import { PHONE_QUERY, useCards, useChapterGraphs, useCoverage, useMediaQuery, useRepGraph } from '../hooks';
 import { byName, cardIdOf, cardsOf } from '../lib/chapters';
-import { colorName, useScopeGraph } from '../db/scopes';
+import { colorName, useChaptersAndSets, useScopeGraph } from '../db/scopes';
 import type { StudioPanelDef } from '../components/Studio';
 // The studio (dockview) loads only when the desktop builder opens it — phones never download it.
 const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
@@ -70,6 +70,9 @@ function lineFromSans(sans: string[]): LineMove[] {
 
 const toEdges = (l: LineMove[]) => l.map((m) => ({ fromKey: m.fromKey, toKey: m.key, san: m.san, uci: m.uci }));
 
+/** Another chapter's own part of the tree (chapterTerritory), with the chapter and its graph. */
+type Territory = { chapter: Repertoire; graph: RepGraph; key: string; moves: RepMove[]; keys: Set<string> };
+
 /**
  * The repertoire builder. `onDone`: opened from a training session (Edit line) — shows "Continue
  * training" instead of the links that would leave the session.
@@ -90,8 +93,36 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   /** Browsing a color: when two chapters fit a new line equally well, you pick (undefined: cancelled). */
   const [asking, setAsking] = useState<{ ids: string[]; resolve: (id?: string) => void } | null>(null);
   const askChapter = (ids: string[]) => new Promise<string | undefined>((resolve) => setAsking({ ids, resolve }));
-  /** Save a line (from the start): into this chapter, or — browsing a color — the chapter it belongs in. */
+  /** A line about to go into another chapter's own part (see territories): where it goes instead. */
+  const [entering, setEntering] = useState<{ san: string; key: string; other: Territory; resolve: (choice: 'there' | 'here' | 'cancel') => void } | null>(null);
+  /** Chapters you said to add into this one anyway (this visit): not asked about again. */
+  const addHereAnyway = useRef(new Set<string>());
+  const territoriesRef = useRef<Territory[]>([]);
+  /**
+   * Save a line (from the start): into this chapter, or — browsing a color — the chapter it belongs in.
+   * In a chapter, a line going into another chapter's own part of the tree (a transposition, or the
+   * wrong chapter) asks first: carry on there, add it here too, or not at all.
+   */
   const saveLine = async (path: LineMove[], opts?: { known?: boolean }) => {
+    if (!colorMode && graph) {
+      const others = territoriesRef.current.filter((t) => !addHereAnyway.current.has(t.chapter.id));
+      const hit = entersOtherChapter(path, (fromKey, san) => !!graph.edge(fromKey, san), others);
+      if (hit) {
+        const at = path[hit.index];
+        const choice = await new Promise<'there' | 'here' | 'cancel'>((resolve) => setEntering({ san: at.san, key: at.key, other: hit.other, resolve }));
+        setEntering(null);
+        if (choice === 'cancel') return { added: 0, mineAdded: 0 };
+        if (choice === 'there') {
+          // The rest of the line goes on in that chapter, from the same position.
+          const rest = path.slice(hit.index + 1);
+          if (rest.length) await addEdges(hit.other.chapter.id, toEdges(rest), opts);
+          const theirs = (hit.other.graph.pathTo(at.key) ?? []).map((m) => m.san);
+          navigate(`repertoire/${hit.other.chapter.id}`, { line: [...theirs, ...rest.map((m) => m.san)].join(' ') });
+          return { added: 0, mineAdded: 0 };
+        }
+        addHereAnyway.current.add(hit.other.chapter.id);
+      }
+    }
     const target = colorMode ? await chapterForNewLine(repId as Color, path.map((m) => m.san), askChapter) : repId;
     if (!target) return { added: 0, mineAdded: 0 };
     return addEdges(target, toEdges(path), opts);
@@ -114,6 +145,22 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // How often this position comes up if the chapter's opening came up every game: the figure above
   // divided by how often the opening's position (e.g. 1.e4 d6 for a Pirc chapter) comes up.
   const openingNames = useOpeningIndex();
+  // Your other chapters of this color, each with its own part of the tree (chapterTerritory): a line
+  // added here that goes into one of them is caught (saveLine), and being there says so.
+  const chapterGraphs = useChapterGraphs();
+  const { chapters: allChapters } = useChaptersAndSets();
+  const territories = useMemo<Territory[]>(() => {
+    if (colorMode || !rep || !chapterGraphs || !allChapters || !openingNames) return [];
+    return allChapters
+      .filter((c) => c.color === rep.color && c.id !== rep.id)
+      .flatMap((c) => {
+        const g = chapterGraphs.get(c.id);
+        const t = g && chapterTerritory(g, openingNames, c.name);
+        return g && t ? [{ chapter: c, graph: g, ...t }] : [];
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colorMode, rep?.id, rep?.color, chapterGraphs, allChapters, openingNames]);
+  territoriesRef.current = territories;
   const chapterOpening = useMemo(() => (graph && rep && !colorMode ? chapterPosition(graph, openingNames, rep.name) : undefined), [graph, openingNames, rep, colorMode]);
   const openingPath = (chapterOpening?.moves ?? []).map((m) => ({ fromKey: m.fromKey, san: m.san, key: m.toKey }));
   const openingReach = useLineReach(openingPath, rep?.color, colorGraph, settings, freshCoverage);
@@ -612,6 +659,15 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           onDelete={noteTarget.moveId ? () => void removeMove(noteTarget.moveId!, noteTarget.san) : undefined}
         />
       )}
+      {entering && rep && (
+        <EntersChapter
+          san={entering.san}
+          other={entering.other}
+          theirs={(entering.other.graph.pathTo(entering.key) ?? []).map((m) => m.san)}
+          here={rep.name}
+          onChoose={(c) => entering.resolve(c)}
+        />
+      )}
       {asking && (
         <ChooseChapter
           ids={asking.ids}
@@ -728,6 +784,19 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               {myTurn ? 'No move prepared here yet — play one on the board or press + on a move below.' : 'End of line — press + on the replies you expect.'}
             </div>
           )}
+          {territories
+            .filter((t) => t.keys.has(key))
+            .map((t) => (
+              <div key={t.chapter.id} className="note" style={{ marginBottom: 6 }}>
+                ↪ This position is part of your “{t.chapter.name}” chapter — its lines from here are there.{' '}
+                <button
+                  className="linklike"
+                  onClick={() => navigate(`repertoire/${t.chapter.id}`, { line: (t.graph.pathTo(key) ?? []).map((m) => m.san).join(' ') })}
+                >
+                  Open it there
+                </button>
+              </div>
+            ))}
           {myTurn && myMovesHere.length > 1 && (
             <div className="note" style={{ marginBottom: 6 }}>
               You have {myMovesHere.length} prepared moves here. That's fine (all are trained), but most players keep one.
@@ -1074,6 +1143,58 @@ function CoverageBox({
   );
 }
 
+/**
+ * A move you're adding goes into another chapter's own part of the tree: carry on there (the rest of
+ * the line goes with it), add it to this chapter as well, or not at all.
+ */
+function EntersChapter({
+  san,
+  other,
+  theirs,
+  here,
+  onChoose,
+}: {
+  san: string;
+  other: Territory;
+  /** That chapter's own way to the position. */
+  theirs: string[];
+  here: string;
+  onChoose: (choice: 'there' | 'here' | 'cancel') => void;
+}) {
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onChoose('cancel');
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onChoose]);
+  return (
+    <div className="modal-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onChoose('cancel')}>
+      <div className="panel col choose-chapter" role="dialog" aria-label={`${san} goes into ${other.chapter.name}`} style={{ gap: 10 }}>
+        {/* Not an h3: those are capitalized, and d3 mustn't read as D3. */}
+        <div className="enters-title">
+          {san} goes into “{other.chapter.name}”
+        </div>
+        <div className="muted small">
+          The position after it belongs to your “{other.chapter.name}” chapter, which has its lines from there (it gets there by{' '}
+          <span className="mono">{formatLine(theirs)}</span>). Keep it in one place?
+        </div>
+        <button className="primary" onClick={() => onChoose('there')}>
+          Continue in “{other.chapter.name}”
+        </button>
+        <button onClick={() => onChoose('here')} title="Fine for a transposition you want in both — a move in two chapters is still trained once">
+          Add it to “{here}” too
+        </button>
+        <div className="row">
+          <span className="muted small">Adding it here too won't ask again about “{other.chapter.name}” until you leave this chapter.</span>
+          <span className="spacer" />
+          <button className="small ghost" onClick={() => onChoose('cancel')}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** `id`: the chapter move to read; `sources`: every chapter move it stands for (all get the change). */
 /** Two chapters fit a new line equally well: which one it goes in. */
 function ChooseChapter({ ids, onPick }: { ids: string[]; onPick: (id?: string) => void }) {
@@ -1210,8 +1331,8 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
 
   if (!open)
     return (
-      <button className="small ghost split-off-toggle" onClick={() => setOpen(true)}>
-        ✂ Split off from here…
+      <button className="small ghost split-off-toggle" onClick={() => setOpen(true)} title="Move this move and everything after it to another chapter (or a new one)">
+        ✂ Move to another chapter…
       </button>
     );
   const go = async () => {
@@ -1226,18 +1347,18 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
   };
   return (
     <div className="split-off col" style={{ gap: 6 }}>
-      <div className="anno-label">Split off from {move.san}</div>
-      <select value={into} onChange={(e) => setInto(e.target.value)} aria-label="Into">
-        <option value="new">Into a new chapter</option>
+      <div className="anno-label">Move {move.san} and everything after it</div>
+      <select value={into} onChange={(e) => setInto(e.target.value)} aria-label="To">
+        <option value="new">to a new chapter</option>
         {[...(others ?? [])].sort(byName).map((c) => (
           <option key={c.id} value={c.id}>
-            Into “{c.name}”
+            to “{c.name}”
           </option>
         ))}
       </select>
       {into === 'new' && <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New chapter's name" onKeyDown={(e) => e.stopPropagation()} />}
       <label className="check small">
-        <input type="checkbox" checked={keepCopy} onChange={(e) => setKeepCopy(e.target.checked)} /> Keep it in “{chapter?.name}” too
+        <input type="checkbox" checked={keepCopy} onChange={(e) => setKeepCopy(e.target.checked)} /> Keep a copy in “{chapter?.name}”
       </label>
       {error && <div className="error small">{error}</div>}
       <div className="row">
@@ -1246,7 +1367,7 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
         </button>
         <span className="spacer" />
         <button className="small primary" onClick={go} disabled={into === 'new' && !name.trim()}>
-          Split off
+          {keepCopy ? 'Copy' : 'Move'}
         </button>
       </div>
     </div>

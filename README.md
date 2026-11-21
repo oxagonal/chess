@@ -27,7 +27,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   by position, transpositions too) — is shown on a board, with explorer stats, to keep one, some or all.
 - **Repertoire builder** — build White and Black repertoires move by move on the board, with the Lichess
   opening explorer (at *your* rating), the masters database and your own games alongside. Positions are
-  merged by FEN, so transpositions are handled automatically. A live **coverage score** shows, for the
+  merged by FEN, so transpositions are handled automatically — and when a line you add to one chapter goes
+  into another chapter's own part of the tree (a transposition, or simply the wrong chapter), the builder
+  asks whether to carry on in that chapter instead, and says so while you're on such a position. A live **coverage score** shows, for the
   position you're on (the start position or any move you click), the share of games reaching it that stay
   inside your prep until positions get rarer than 1 in N games — with a score per reply, recalculated as
   you edit. Import PGN (with variations and comments),

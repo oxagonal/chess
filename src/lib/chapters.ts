@@ -71,6 +71,46 @@ export function chapterOfMoveId(moveId: string): string {
 }
 
 /**
+ * A chapter's own part of the tree: its opening's position (chapterPosition — 1.e4 c5 2.Nf3 d6 3.d4
+ * cxd4 4.Nxd4 Nf6 5.Nc3 a6 for a Najdorf) and every position after it in the chapter, as opposed to
+ * the moves it shares with other chapters on the way there. Undefined for a chapter whose opening is
+ * the start position (it has no part of its own).
+ */
+export function chapterTerritory(graph: RepGraph, names: OpeningIndex | undefined, chapterName?: string): { key: string; moves: RepMove[]; keys: Set<string> } | undefined {
+  const { key, moves } = chapterPosition(graph, names, chapterName);
+  if (key === graph.root || !graph.has(key)) return undefined;
+  const keys = new Set<string>([key]);
+  const stack = [key];
+  while (stack.length) {
+    for (const m of graph.childrenOf(stack.pop()!)) {
+      if (keys.has(m.toKey)) continue;
+      keys.add(m.toKey);
+      stack.push(m.toKey);
+    }
+  }
+  return { key, moves, keys };
+}
+
+/**
+ * Where saving a line (`path`, from the start) into a chapter would go into another chapter's own part
+ * of the tree (see chapterTerritory): the first move the chapter doesn't have yet (`has`) that leads
+ * from outside that part into it — a transposition, or a line carried on in the wrong chapter.
+ */
+export function entersOtherChapter<T extends { keys: ReadonlySet<string> }>(
+  path: readonly { fromKey: string; key: string; san: string }[],
+  has: (fromKey: string, san: string) => boolean,
+  others: readonly T[],
+): { index: number; other: T } | undefined {
+  for (let i = 0; i < path.length; i++) {
+    const m = path[i];
+    if (has(m.fromKey, m.san)) continue;
+    const other = others.find((o) => o.keys.has(m.key) && !o.keys.has(m.fromKey));
+    if (other) return { index: i, other };
+  }
+  return undefined;
+}
+
+/**
  * Which chapter a line belongs in: the chapter of the deepest move of `sans` that a union graph has
  * (e.g. where a coverage gap or a game's deviation should be answered). Undefined if none.
  */

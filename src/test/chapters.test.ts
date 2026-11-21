@@ -384,3 +384,26 @@ describe('moving to chapters', () => {
     expect(JSON.parse(await exportBackup()).version).toBe(2);
   });
 });
+
+describe('a line going into another chapter', () => {
+  const names = buildOpeningIndex(openings as [string, string, string][]);
+  /** A line as the builder would save it: each move with the position before and after it. */
+  const path = (line: string) => movesFromLines('x', 'white', [line]).map((m) => ({ fromKey: m.fromKey, key: m.toKey, san: m.san }));
+
+  it("is caught where it goes into the other chapter's own part, not on the moves chapters share", async () => {
+    const { chapterTerritory, entersOtherChapter } = await import('../lib/chapters');
+    const pianissimo = new RepGraph('white', movesFromLines('p', 'white', ['e4 e5 Nf3 Nc6 Bc4 Bc5 d3 Nf6 c3']));
+    const t = chapterTerritory(pianissimo, names, 'Italian Game: Giuoco Pianissimo')!;
+    // Its own part starts at 4.d3 (the Giuoco Piano before it is shared with other Italians).
+    expect(t.moves.map((m) => m.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'd3']);
+    const others = [{ id: 'p', ...t }];
+    const nothing = () => false;
+    // A Center Attack line shares the Giuoco Piano only: nothing to warn about.
+    expect(entersOtherChapter(path('e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4'), nothing, others)).toBeUndefined();
+    // A Bishop's Opening line that transposes into it with 4.d3 — caught at that move.
+    const hit = entersOtherChapter(path('e4 e5 Bc4 Nc6 Nf3 Bc5 d3 Nf6'), nothing, others)!;
+    expect([hit.index, hit.other.id]).toEqual([6, 'p']);
+    // Moves the chapter already has aren't new: no warning for them.
+    expect(entersOtherChapter(path('e4 e5 Bc4 Nc6 Nf3 Bc5 d3'), () => true, others)).toBeUndefined();
+  });
+});
