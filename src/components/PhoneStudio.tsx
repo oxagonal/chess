@@ -183,7 +183,7 @@ export function PhoneStudio({
         <div className="ps-tabs" role="tablist">
           {tabs.map((t) => (
             <button key={t.id} role="tab" aria-selected={t === active} className={t === active ? 'active' : ''} onClick={() => choose(t.id)}>
-              {t.label}
+              <span className="ps-label">{t.label}</span>
               {t.mark}
             </button>
           ))}

@@ -31,7 +31,7 @@ import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
 import { href, navigate, openScope, scopeHref } from '../router';
 import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
 import { compactLine, formatLine, moveNumberPrefix, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
-import { oneIn } from '../lib/coverage';
+import { oneIn, oneInShort } from '../lib/coverage';
 import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
 import type { AppSettings } from '../db/settings';
 import { type CoverageResult, type PositionStats, type RepMove, type Repertoire } from '../lib/types';
@@ -742,6 +742,11 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
       error={live.error}
     />
   );
+  const reachMark = !reach.error && (reach.prob !== undefined || reach.loading) && (
+    <span className="ps-reach" style={{ opacity: reach.loading ? 0.5 : 1 }} title="How often games reach this position">
+      {reach.prob === undefined ? '…' : reach.prob === 0 ? 'never' : `1 in ${oneInShort(reach.prob)}`}
+    </span>
+  );
   // Lichess analysis and the FEN to copy (e.g. into Chessable) — not while playing from memory.
   const positionTools = <PositionTools pos={pos} ply={cursor} orientation={orientation} />;
   const board = (
@@ -878,7 +883,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
                 { id: 'moves', label: 'Moves', content: movesPanel },
                 { id: 'explorer', label: 'Explorer', content: explorer },
                 // (Chapters: the switcher on the chapter's name, at the top.)
-                { id: 'coverage', label: 'Coverage', content: coverageBox },
+                // How often games reach this position, on the tab itself: no need to open it to see.
+                { id: 'coverage', label: 'Coverage', mark: reachMark, content: coverageBox },
               ]
         }
         controls={
