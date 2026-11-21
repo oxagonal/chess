@@ -175,12 +175,13 @@ export function matchChapter(incoming: RepGraph, candidates: readonly { id: stri
 
 /**
  * The opening a catch-all chapter is for, from its name: "Italian Game: Other lines" → "Italian Game",
- * "Sicilian Defense: Najdorf Variation, Other lines" → "Sicilian Defense: Najdorf Variation", plain
+ * "Sicilian Defense: Najdorf Variation, Other lines" → "Sicilian Defense: Najdorf Variation" (older
+ * names with a dash too: "Sicilian Defense — other lines"), plain
  * "Other lines" → "" (the whole color). Undefined for any other chapter. A catch-all takes the new
  * lines of its opening that no other chapter has (see routeLine).
  */
 export function catchAllOf(name: string): string | undefined {
-  const m = /^(.*?)[\s:,]*\bother lines$/i.exec(name.trim());
+  const m = /^(.*?)[\s:,—–-]*\bother lines$/i.exec(name.trim());
   return m ? m[1].trim() : undefined;
 }
 

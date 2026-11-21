@@ -256,6 +256,7 @@ describe('which chapter a line belongs in', () => {
     expect(catchAllOf('Italian Game: Other lines')).toBe('Italian Game');
     expect(catchAllOf('Sicilian Defense: Najdorf Variation, other lines')).toBe('Sicilian Defense: Najdorf Variation');
     expect(catchAllOf('Other lines')).toBe('');
+    expect(catchAllOf('Sicilian Defense — other lines')).toBe('Sicilian Defense');
     expect(catchAllOf('Italian Game')).toBeUndefined();
     expect(catchAllOf('Brother lines')).toBeUndefined();
   });

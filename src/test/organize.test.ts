@@ -31,6 +31,17 @@ describe('organizing chapters', () => {
     expect(catalan.chapters.map((c) => c.info.short).sort()).toEqual(['Closed', 'Open Defense']);
   });
 
+  it("puts an opening's catch-all in its folder, last, however mixed its lines are", () => {
+    const { chapters, graphs } = make([
+      { name: 'Fried Liver', color: 'white', lines: ['e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Nxd5 Nxf7'] },
+      { name: 'Giuoco Pianissimo', color: 'white', lines: ['e4 e5 Nf3 Nc6 Bc4 Bc5 d3 Nf6 c3'] },
+      // 3...Be7 is the Hungarian Defense, 3...h6 and 3...g6 other names: no one family has most of it.
+      { name: 'Italian Game: Other Lines', color: 'white', lines: ['e4 e5 Nf3 Nc6 Bc4 Be7 d4', 'e4 e5 Nf3 Nc6 Bc4 h6 d4', 'e4 e5 Nf3 Nc6 Bc4 g6 d4', 'e4 e5 Nf3 Nc6 Bc4 Nd4 Nxd4'] },
+    ]);
+    const italian = organize(chapters, graphs, names, 'white')[0].families.find((f) => f.family === 'Italian Game')!;
+    expect(italian.chapters.map((c) => c.info.short)).toEqual(['Giuoco Pianissimo', 'Fried Liver', 'Other Lines']);
+  });
+
   it('groups Black by what you meet, and a mixed chapter as several openings', () => {
     const { chapters, graphs } = make([
       { name: 'Four Knights', color: 'black', lines: ['e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nc6 Nc3 Nf6'] },

@@ -8,6 +8,7 @@ import type { RepGraph } from './graph';
 import type { Chapter } from './types';
 import { linePaths } from './map';
 import { nameParts, type OpeningIndex } from './openingNames';
+import { catchAllOf } from './chapters';
 
 export const SEVERAL_OPENINGS = 'Several openings';
 export const SEVERAL_FIRST = 'Several first moves';
@@ -37,7 +38,7 @@ export function chapterInfo(chapter: Chapter, graph: RepGraph, names: OpeningInd
   // Inside its family's group: "Sicilian Defense: Four Knights Variation" → "Four Knights Variation",
   // "Sicilian Defense — other lines" → "Other lines".
   const short = (family: string) => {
-    for (const sep of [': ', ' — ']) {
+    for (const sep of [': ', ', ', ' — ']) {
       if (chapter.name.startsWith(family + sep) && chapter.name.length > family.length + sep.length) {
         const rest = chapter.name.slice(family.length + sep.length);
         return rest[0].toUpperCase() + rest.slice(1);
@@ -56,6 +57,14 @@ export function chapterInfo(chapter: Chapter, graph: RepGraph, names: OpeningInd
     }
     return { family: 'Other', eco: '~' };
   });
+  // A catch-all ("Italian Game: Other lines") goes with the opening it's named for, however mixed its
+  // lines are — that's what it's for (3...Be7, say, is the Hungarian Defense, not the Italian).
+  const own = catchAllOf(chapter.name);
+  if (own) {
+    const family = nameParts(own).family;
+    const eco = named.filter((n) => n.family === family).reduce((a, n) => (n.eco < a ? n.eco : a), '~');
+    return { firstMove, family, eco, short: short(family) };
+  }
   const fam = majority(named.map((n) => n.family))!;
   if (fam.share < MAJORITY) return { firstMove, family: SEVERAL_OPENINGS, eco: '~', short: chapter.name };
   const eco = named.filter((n) => n.family === fam.value).reduce((a, n) => (n.eco < a ? n.eco : a), '~');
@@ -102,10 +111,10 @@ export function organize(chapters: readonly Chapter[], graphs: ReadonlyMap<strin
       families: [...fams.values()]
         .map((f) => ({
           ...f,
-          // ECO order, with an opening's catch-all ("… — other lines") last.
+          // ECO order, with an opening's catch-all ("…: Other lines") last.
           chapters: f.chapters.sort(
             (a, b) =>
-              Number(/ — other lines$/.test(a.chapter.name)) - Number(/ — other lines$/.test(b.chapter.name)) ||
+              Number(catchAllOf(a.chapter.name) !== undefined) - Number(catchAllOf(b.chapter.name) !== undefined) ||
               (a.info.eco < b.info.eco ? -1 : a.info.eco > b.info.eco ? 1 : a.chapter.name.localeCompare(b.chapter.name)),
           ),
         }))
