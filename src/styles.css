@@ -528,8 +528,8 @@ table.data tr.current-row td { background: var(--panel2); }
 .line-card { display: flex; flex-direction: column; gap: 6px; }
 .session-cards .line-card.missed { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
 /* A move kept in a chapter but not trained (an example of what not to play, or too deep to review). */
-.ml-move.no-train, .ml-side .mv.no-train, .iv-move.no-train { color: var(--bad) !important; text-decoration: line-through; text-decoration-thickness: 1.5px; }
-.ml-move.current.no-train, .iv-move.current.no-train { color: #fff !important; }
+.ml-move.no-train, .ml-side .mv.no-train, .iv-move.no-train { opacity: 0.42; }
+.ml-move.current.no-train, .iv-move.current.no-train { opacity: 0.7; }
 .no-train-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }
 /* Splitting a line off by hand (in the builder's right-click menu). */
 .split-off-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }

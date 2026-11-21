@@ -130,6 +130,13 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const allCards = useCards();
   // The cards you train here: moves marked not to train (and what only they lead to) don't count.
   const cards = useMemo(() => (graph && allCards ? cardsOf(new RepGraph(graph.color, trainable(graph.color, [...graph.byId.values()])), allCards) : undefined), [graph, allCards]);
+  // Moves left out of training: those marked not to train and the lines after them (what only they lead to).
+  const untrained = useMemo(() => {
+    const all = graph ? [...graph.byId.values()] : [];
+    if (!graph || !all.some((m) => m.noTrain)) return new Set<string>();
+    const kept = new Set(trainable(graph.color, all).map((m) => m.id));
+    return new Set(all.filter((m) => !kept.has(m.id)).map((m) => m.id));
+  }, [graph]);
   // Coverage is of all this color's chapters together: an Italian chapter isn't "missing" 1...c5 if
   // your Sicilian chapter answers it. The run is kept live as you edit.
   const { scope: colorScope, graph: colorGraph } = useScopeGraph(rep?.color);
@@ -430,11 +437,18 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const annotate = (m: RepMove | undefined, ply: number) =>
     m && !zen ? annotateProps((x, y) => setNoteTarget({ id: sourcesOf(m)[0], sources: sourcesOf(m), moveId: m.id, san: m.san, ply, x, y })) : {};
   // A saved move as written in the notation: its symbols after it, colored like Lichess.
-  // (A move marked not to train is struck through, in red.)
+  // (A move left out of training — and the line after it — is greyed out, symbols' colors and all.)
   const shown = (m: RepMove) => ({
     san: sanWithGlyphs(m.san, m.glyphs),
-    className: `${glyphClass(moveGlyph(m))} ${m.noTrain ? 'no-train' : ''}`,
-    title: [m.noTrain ? 'Not trained' : '', ...(m.glyphs ?? []).map(glyphName), m.comment ?? ''].filter(Boolean).join(' · ') || undefined,
+    className: `${glyphClass(moveGlyph(m))} ${untrained.has(m.id) ? 'no-train' : ''}`,
+    title:
+      [
+        m.noTrain ? 'Not trained, nor the line after it' : untrained.has(m.id) ? 'Not trained: it comes after a move you don’t train' : '',
+        ...(m.glyphs ?? []).map(glyphName),
+        m.comment ?? '',
+      ]
+        .filter(Boolean)
+        .join(' · ') || undefined,
   });
   // Back to the default studio layout (the Studio forgets the saved one).
   const resetLayout = () => setLayoutVersion((v) => v + 1);
@@ -695,6 +709,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               setCursor(path.length);
             }}
             menuFor={annotate}
+            untrained={untrained}
           />
         )}
       </div>
@@ -1306,13 +1321,17 @@ function RepAnnotationMenu({ target, onClose, onDelete }: { target: RepAnnotatio
           {move.mine && (
             <button
               className="small ghost no-train-toggle"
-              title={move.noTrain ? 'Train this move again (your progress on it is kept)' : "Keep it in the chapter but leave it — and what only it leads to — out of training"}
+              title={
+                move.noTrain
+                  ? 'Train this move and the line after it again (your progress is kept)'
+                  : 'Keep it in the chapter, for reference, but leave it and the line after it (what only it leads to) out of training'
+              }
               onClick={() => {
                 void setNoTrain(move, !move.noTrain);
                 onClose();
               }}
             >
-              {move.noTrain ? '↺ Train this move again' : '⊘ Don\'t train this move'}
+              {move.noTrain ? '↺ Train this move again' : '⊘ Don\'t train this move or the line after it'}
             </button>
           )}
           <SplitOffForm move={move} onDone={onClose} />

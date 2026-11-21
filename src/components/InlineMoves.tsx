@@ -26,6 +26,7 @@ export function InlineMoves({
   order,
   onSelect,
   menuFor,
+  untrained,
 }: {
   graph: RepGraph;
   /** The line you're on, from the starting position. */
@@ -38,6 +39,8 @@ export function InlineMoves({
   onSelect: (path: LineStep[]) => void;
   /** Right-click / long-press handlers for a saved move (to annotate it); `ply` = its place from the start. */
   menuFor: (m: RepMove, ply: number) => Record<string, unknown>;
+  /** Moves left out of training (greyed out): ones marked not to train and the lines after them. */
+  untrained?: ReadonlySet<string>;
 }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -58,7 +61,7 @@ export function InlineMoves({
       <span key={key()} className="iv-tok">
         {prefix && <span className="num">{prefix}</span>}
         <span
-          className={`iv-move ${cls} ${glyphClass(moveGlyph(edge))} ${edge?.noTrain ? 'no-train' : ''}`}
+          className={`iv-move ${cls} ${glyphClass(moveGlyph(edge))} ${edge && (edge.noTrain || untrained?.has(edge.id)) ? 'no-train' : ''}`}
           title={edge?.glyphs?.map(glyphName).join(' · ') || undefined}
           onClick={onClick}
           {...(edge ? menuFor(edge, ply) : {})}
