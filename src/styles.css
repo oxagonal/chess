@@ -340,6 +340,10 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 
 .explorer table td { padding: 6px 8px; }
 .explorer table td:first-child { white-space: nowrap; }
+/* The figures sit next to their move (as on Lichess), not at the far end of a column as wide as its
+   heading — short counts like 4 or 84 were left a long way from the move. Headings padded like the cells. */
+.explorer table th { padding: 6px 8px; letter-spacing: .04em; }
+.explorer table th.num, .explorer table td.num { text-align: left; font-variant-numeric: tabular-nums; }
 .btn.disabled { background: var(--panel); border-color: var(--border-soft); color: var(--faint); pointer-events: none; }
 .explorer tr.inrep td { background: rgba(116, 185, 90, 0.06); }
 .explorer tr.inrep td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
