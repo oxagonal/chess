@@ -319,6 +319,9 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .engine-line-eval.white { background: #e8e6e1; color: #161512; }
 .engine-line-eval.black { background: #0c0b0a; color: #e8e6e1; box-shadow: inset 0 0 0 1px var(--border-soft); }
 .engine-line-moves { overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+/* Each move in a line: click to go to the position after it. */
+.engine-move { border-radius: 3px; padding: 0 1px; }
+.engine-move:hover { color: var(--text); background: var(--panel3); text-decoration: underline; text-underline-offset: 2px; }
 .switch { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--muted); }
 /* Notes inline in a line of moves, like PGN comments; the current move's note is an editable box. */
 .mv-note { color: var(--muted); font-style: italic; font-size: 13px; padding: 2px 4px; cursor: pointer; white-space: pre-wrap; }

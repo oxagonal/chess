@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { updateSettings, useSettings, type AppSettings } from '../db/settings';
-import { formatLine, playUci, posFromFen } from '../lib/chess';
+import { moveNumberPrefix, playUci, posFromFen } from '../lib/chess';
 import { analysePosition, formatEval, winChance, type AnalysisStatus, type EngineLine } from '../services/engine';
 import { PHONE_QUERY, useMediaQuery } from '../hooks';
 
@@ -16,7 +16,8 @@ const KEYS = {
 
 /**
  * The Stockfish box, like Lichess's or Chess.com's: the evaluation of the board's position and the
- * engine's best lines (click one to play its first move). ⚙ sets depth, number of lines and on/off —
+ * engine's best lines (click a line to play its first move, or a move in it to play the line up to
+ * there). ⚙ sets depth, number of lines and on/off —
  * kept apart on phones and computers. `top`: the phone's strip above the board, like Chess.com's —
  * a switch, a bar with the evaluation, and the lines under it. Generic — the builder and game review
  * both use it.
@@ -25,12 +26,15 @@ export function EnginePanel({
   fenKey,
   ply,
   onPlay,
+  onJump,
   top: atTop = false,
 }: {
   fenKey: string;
   /** Plies played so far (for move numbers). */
   ply: number;
   onPlay?: (san: string) => void;
+  /** A move further along a line was clicked: play the line's moves up to and including it. */
+  onJump?: (sans: string[]) => void;
   top?: boolean;
 }) {
   const settings = useSettings();
@@ -137,7 +141,33 @@ export function EnginePanel({
         return (
           <button key={i} className="engine-line" onClick={() => sans[0] && onPlay?.(sans[0])} title={onPlay && sans[0] ? `Play ${sans[0]}` : undefined}>
             <span className={`engine-line-eval ${(l.eval.mate ?? l.eval.cp ?? 0) < 0 ? 'black' : 'white'}`}>{formatEval(l.eval)}</span>
-            <span className="engine-line-moves">{formatLine(sans, ply) || '\u00a0'}</span>
+            <span className="engine-line-moves">
+              {sans.length
+                ? sans.map((san, j) => {
+                    const prefix = moveNumberPrefix(ply + j, j === 0);
+                    const go = j === 0 ? onPlay && (() => onPlay(san)) : onJump && (() => onJump(sans.slice(0, j + 1)));
+                    return (
+                      <span key={j}>
+                        {j > 0 && ' '}
+                        {prefix && `${prefix} `}
+                        <span
+                          className={go ? 'engine-move' : undefined}
+                          title={go ? `Go to ${moveNumberPrefix(ply + j, true)} ${san}` : undefined}
+                          onClick={
+                            go &&
+                            ((e) => {
+                              e.stopPropagation();
+                              go();
+                            })
+                          }
+                        >
+                          {san}
+                        </span>
+                      </span>
+                    );
+                  })
+                : '\u00a0'}
+            </span>
           </button>
         );
       })}

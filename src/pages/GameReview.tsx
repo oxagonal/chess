@@ -152,37 +152,66 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
   const plyHere = inLine ? selLine.from + at : cur;
 
   /**
-   * A move made on the board (or picked from Stockfish / the explorer). The game's own move steps
-   * forward; a move a side line already has follows it; at a line's end the line goes on; anything
-   * else becomes a new side line (sharing the moves before it) — nothing is ever thrown away.
+   * A move made on the board (or picked from Stockfish / the explorer), or several (a move further along
+   * a Stockfish line). The game's own moves step forward; moves a side line already has follow it; at a
+   * line's end the line goes on; anything else becomes a new side line (sharing the moves before it) —
+   * nothing is ever thrown away.
    */
+  const playLine = (moves: string[]) => {
+    // One move at a time, exactly as if each were played on the board.
+    let ls = lines;
+    let place = { cur, sel: inLine ? { id: selLine.id, at } : null };
+    let p = pos;
+    for (const m of moves) {
+      const r = playSan(p, m);
+      if (!r) break;
+      p = r.pos;
+      const san = r.san;
+      const line = place.sel && place.sel.at > 0 ? ls.find((l) => l.id === place.sel!.id) : undefined;
+      const at = line ? place.sel!.at : 0;
+      let from: number;
+      let prefix: string[];
+      if (!line) {
+        if (replay.sans[place.cur] === san) {
+          place = { cur: place.cur + 1, sel: null };
+          continue;
+        }
+        from = place.cur;
+        prefix = [];
+      } else {
+        if (line.sans[at] === san) {
+          place = { ...place, sel: { id: line.id, at: at + 1 } };
+          continue;
+        }
+        if (at === line.sans.length) {
+          ls = ls.map((l) => (l.id === line.id ? { ...l, sans: [...l.sans, san] } : l));
+          place = { ...place, sel: { id: line.id, at: at + 1 } };
+          continue;
+        }
+        from = line.from;
+        prefix = line.sans.slice(0, at);
+      }
+      const want = [...prefix, san];
+      const existing = ls.find((l) => l.from === from && want.every((x, k) => l.sans[k] === x));
+      if (existing) {
+        place = { cur: from, sel: { id: existing.id, at: want.length } };
+        continue;
+      }
+      // The shared moves keep their annotations in the new line.
+      const notes = line ? Object.fromEntries(Object.entries(line.notes ?? {}).filter(([k]) => Number(k) < prefix.length)) : {};
+      const added: SavedLine = { id: uid(), from, sans: want, ...(Object.keys(notes).length ? { notes } : {}) };
+      ls = [...ls, added];
+      place = { cur: from, sel: { id: added.id, at: want.length } };
+    }
+    if (ls !== lines) writeLines(ls);
+    if (place.sel) {
+      setCursor(place.cur);
+      setSel(place.sel);
+    } else goTo(place.cur);
+  };
   const play = (move: { uci?: string; san?: string }) => {
     const played = move.uci ? playUci(pos, move.uci) : move.san ? playSan(pos, move.san) : undefined;
-    if (!played) return;
-    let from: number;
-    let prefix: string[];
-    if (!inLine) {
-      if (replay.sans[cur] === played.san) return goTo(cur + 1);
-      from = cur;
-      prefix = [];
-    } else {
-      if (selLine.sans[at] === played.san) return setSel({ id: selLine.id, at: at + 1 });
-      if (at === selLine.sans.length) {
-        writeLines(lines.map((l) => (l.id === selLine.id ? { ...l, sans: [...l.sans, played.san] } : l)));
-        return setSel({ id: selLine.id, at: at + 1 });
-      }
-      from = selLine.from;
-      prefix = selLine.sans.slice(0, at);
-    }
-    const want = [...prefix, played.san];
-    setCursor(from);
-    const existing = lines.find((l) => l.from === from && want.every((san, k) => l.sans[k] === san));
-    if (existing) return setSel({ id: existing.id, at: want.length });
-    // The shared moves keep their annotations in the new line.
-    const notes = inLine ? Object.fromEntries(Object.entries(selLine.notes ?? {}).filter(([k]) => Number(k) < prefix.length)) : {};
-    const added: SavedLine = { id: uid(), from, sans: want, ...(Object.keys(notes).length ? { notes } : {}) };
-    writeLines([...lines, added]);
-    setSel({ id: added.id, at: want.length });
+    if (played) playLine([played.san]);
   };
   nav.current = {
     back: () => (inLine ? setSel({ id: selLine.id, at: at - 1 }) : goTo(cur - 1)),
@@ -485,7 +514,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
       prepPly={devPly}
     />
   );
-  const engine = <EnginePanel fenKey={key} ply={plyHere} onPlay={(san) => play({ san })} />;
+  const engine = <EnginePanel fenKey={key} ply={plyHere} onPlay={(san) => play({ san })} onJump={playLine} />;
   // The explorer shows what's played here; picking a move plays it like a move on the board.
   const explorer = <ExplorerPanel fenKey={key} color={game.userColor} onPlay={(san) => play({ san })} />;
   const menuLine = menu?.lineId ? lines.find((l) => l.id === menu.lineId) : undefined;
@@ -586,7 +615,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
           // (the computer review's evaluation of a game position until Stockfish has one)
           evalBar={<EvalBar fenKey={key} orientation={orientation} fallback={inLine ? undefined : (review?.evals[cur] ?? undefined)} />}
           // Stockfish at the top, like Chess.com
-          engine={<EnginePanel top fenKey={key} ply={plyHere} onPlay={(san) => play({ san })} />}
+          engine={<EnginePanel top fenKey={key} ply={plyHere} onPlay={(san) => play({ san })} onJump={playLine} />}
           tabs={[
             { id: 'moves', label: 'Moves', content: movesPanel },
             { id: 'review', label: 'Review', content: reviewPanel },

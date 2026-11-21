@@ -220,6 +220,27 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     }
   };
 
+  /**
+   * Several moves at once (a move further along a Stockfish line): the board goes to the position after
+   * them. Not added to the chapter even with auto-add on — it's a look ahead, and Add line keeps it.
+   */
+  const playMoves = (sans: string[]) => {
+    let p = pos;
+    let from = key;
+    const items: LineMove[] = [];
+    for (const san of sans) {
+      const r = playSan(p, san);
+      if (!r) break;
+      items.push({ san: r.san, uci: r.uci, fromKey: from, key: r.key });
+      p = r.pos;
+      from = r.key;
+    }
+    if (!items.length) return;
+    // The line already carries on this way: just step along it (keeping what comes after).
+    if (!items.every((m, i) => line[cursor + i]?.san === m.san)) setLine([...line.slice(0, cursor), ...items]);
+    setCursor(cursor + items.length);
+  };
+
   /* ---- Play from memory: it plays popular opponent moves, you answer, your moves save as known ---- */
   const [memory, setMemory] = useState<{ startKey: string; startPath: MemoryStep[]; startProb: number } | null>(null);
   // Replies most common first once coverage knows how often they're played.
@@ -680,7 +701,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     </div>
   );
 
-  const engine = <EnginePanel fenKey={key} ply={cursor} onPlay={(san) => play(san)} />;
+  const engine = <EnginePanel fenKey={key} ply={cursor} onPlay={(san) => play(san)} onJump={playMoves} />;
   const coverageBox = (
     <CoverageBox
       reach={reach}
@@ -824,7 +845,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
         board={board}
         evalBar={!zen && <EvalBar fenKey={key} orientation={orientation} />}
         // Stockfish at the top, like Chess.com (not while playing from memory)
-        engine={!zen && <EnginePanel top fenKey={key} ply={cursor} onPlay={(san) => play(san)} />}
+        engine={!zen && <EnginePanel top fenKey={key} ply={cursor} onPlay={(san) => play(san)} onJump={playMoves} />}
         tabs={
           zen
             ? [{ id: 'memory', label: 'Play from memory', content: <>{memoryPanel}{movesPanel}</> }]
