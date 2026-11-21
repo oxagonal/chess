@@ -22,7 +22,10 @@ import { lineTarget } from '../db/repertoire';
 import { defaultScope, ScopeSelect } from '../components/ScopeSelect';
 import { Empty } from '../components/ui';
 import { useNow } from '../hooks';
-import { chapterPosition } from '../lib/chapters';
+import { chapterPosition, sourcesOf } from '../lib/chapters';
+import { lineEnds, needsPlan } from '../lib/plans';
+import { setPlanStill } from '../db/repertoire';
+import { usePlans } from '../components/PlanBox';
 import { formatLine, START_KEY } from '../lib/chess';
 import { DEEPER, oneIn } from '../lib/coverage';
 import { STRENGTH_LABEL, strengthOf } from '../lib/map';
@@ -256,6 +259,7 @@ function MapView({ scopeId, chapters, collections, train }: { scopeId: string; c
         <TrainCard scope={scope} counts={counts} newLeft={train.newLeft} />
         <GapsCard data={data} gaps={gaps} onOpen={openLine} />
         <WeakCard scopeId={scopeId} insights={insights} />
+        <PlansCard scope={scope} insights={insights} probs={data.gapRun?.probs} onOpen={openLine} />
       </div>
 
       {chapters_}
@@ -364,6 +368,77 @@ function GapsCard({ data, gaps, onOpen }: { data: MapData; gaps: ScopeGap[]; onO
           {gaps.length > FEW && (
             <button className="linklike small" onClick={() => setAll(!all)}>
               {all ? 'Show fewer' : `Show all ${gaps.length}`}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Your line ends without a plan — none on the line, or only one more than 5 moves back — likeliest
+ * first: each opens the line's end in the builder to write one, or says the earlier one still applies.
+ */
+function PlansCard({ scope, insights, probs, onOpen }: { scope: Scope; insights?: ScopeInsights; probs?: Record<string, number>; onOpen: (sans: string[]) => void }) {
+  const plans = usePlans(scope.color);
+  const [all, setAll] = useState(false);
+  if (!insights || !plans)
+    return (
+      <div className="panel col todo-card">
+        <h3>Plans</h3>
+        <p className="muted small">…</p>
+      </div>
+    );
+  const ends = lineEnds(insights.graph, plans);
+  const reach = (k: string) => probs?.[k] ?? 0;
+  const want = ends.filter(needsPlan).sort((a, b) => reach(b.path[b.path.length - 1].toKey) - reach(a.path[a.path.length - 1].toKey) || a.path.length - b.path.length);
+  const shown = all ? want : want.slice(0, FEW);
+  return (
+    <div className="panel col todo-card" id="map-plans">
+      <h3>
+        Plans <span className="muted">({want.length})</span>
+      </h3>
+      {!ends.length ? (
+        <p className="muted small">No line ends yet.</p>
+      ) : !want.length ? (
+        <p className="muted small">Every line end has a plan — {ends.length} of them (a plan within 5 moves before the end counts).</p>
+      ) : (
+        <>
+          <p className="muted small">
+            {ends.length - want.length} of {ends.length} line ends have a plan — what you're aiming for once the moves run out. A plan within 5 moves
+            before the end counts; likeliest lines first.
+          </p>
+          <ul className="todo-list">
+            {shown.map((e) => {
+              const end = e.path[e.path.length - 1];
+              const p = reach(end.toKey);
+              return (
+                <li key={end.id}>
+                  <span className="todo-what">
+                    <span className="mono small">{formatLine(e.path.map((m) => m.san))}</span>
+                    <span className="muted small">
+                      {e.status === 'far' ? `nearest plan ${Math.ceil(e.back! / 2)} moves back` : 'no plan'}
+                      {p ? ` · ${oneIn(p)}` : ''}
+                    </span>
+                  </span>
+                  <span className="row" style={{ gap: 4, flexWrap: 'nowrap' }}>
+                    {e.status === 'far' && (
+                      <button className="small" title={`The plan further back: ${e.plan!.text}`} onClick={() => void setPlanStill(sourcesOf(end), true)}>
+                        Still applies
+                      </button>
+                    )}
+                    <button className="small primary" onClick={() => onOpen(e.path.map((m) => m.san))}>
+                      Write
+                    </button>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {want.length > FEW && (
+            <button className="linklike small" onClick={() => setAll(!all)}>
+              {all ? 'Show fewer' : `Show all ${want.length}`}
             </button>
           )}
         </>

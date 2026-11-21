@@ -149,8 +149,8 @@ export async function mergeChapter(fromId: string, intoId: string) {
     for (const [i, c] of copies.entries()) {
       const ex = have[i];
       if (!ex) add.push(c);
-      else if ((c.comment && !ex.comment) || (c.glyphs?.length && !ex.glyphs?.length))
-        await db.moves.update(ex.id, { comment: ex.comment || c.comment, glyphs: ex.glyphs?.length ? ex.glyphs : c.glyphs });
+      else if ((c.comment && !ex.comment) || (c.glyphs?.length && !ex.glyphs?.length) || (c.plan && !ex.plan))
+        await db.moves.update(ex.id, { comment: ex.comment || c.comment, glyphs: ex.glyphs?.length ? ex.glyphs : c.glyphs, plan: ex.plan || c.plan });
     }
     await db.moves.bulkAdd(add);
     await db.moves.where('repId').equals(fromId).delete();
@@ -306,8 +306,8 @@ export async function addEdges(repId: string, edges: ImportedEdge[], opts: { kno
       const m = candidates[i];
       const ex = existing[i];
       if (ex) {
-        if ((m.comment && !ex.comment) || (m.glyphs?.length && !ex.glyphs?.length))
-          await db.moves.update(ex.id, { comment: ex.comment || m.comment, glyphs: ex.glyphs?.length ? ex.glyphs : m.glyphs });
+        if ((m.comment && !ex.comment) || (m.glyphs?.length && !ex.glyphs?.length) || (m.plan && !ex.plan))
+          await db.moves.update(ex.id, { comment: ex.comment || m.comment, glyphs: ex.glyphs?.length ? ex.glyphs : m.glyphs, plan: ex.plan || m.plan });
         continue;
       }
       if (seen.has(m.id)) continue;
@@ -362,6 +362,19 @@ export async function deleteMove(repId: string, id: string): Promise<number> {
 
 export async function setMoveComment(id: string, comment: string) {
   await db.moves.update(id, { comment: comment.trim() || undefined });
+}
+
+/** A move's plan (for the position after it); empty clears it. Writing one settles "still applies". */
+export async function setMovePlan(id: string, plan: string) {
+  const text = plan.trim();
+  await db.moves.update(id, text ? { plan: text, planStill: undefined } : { plan: undefined });
+}
+
+/** At a line's end: the plan further back still applies here (or, `false`, no longer). */
+export async function setPlanStill(ids: readonly string[], still: boolean) {
+  await db.transaction('rw', db.moves, async () => {
+    for (const id of ids) await db.moves.update(id, { planStill: still || undefined });
+  });
 }
 
 /** Save a move's symbols and comment together (the right-click annotation menu). */

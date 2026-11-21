@@ -69,6 +69,14 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   Badges: ⚡ on a reply after which only one or two of your moves hold (a sharp line), and ↻ on your usual
   move — what you answer their last move with elsewhere (…Bg4 → h3), else a move you play in several
   other positions — when it's about as good as the best here.
+- **Plans at line ends** — what you're aiming for once the moves run out (pawn breaks, where the pieces go,
+  the typical tactic). At the end of a line the builder asks for one under the moves (with the master games
+  from there, for ideas); a plan written earlier on the line covers the ends within 5 moves of it, and one
+  further back can be confirmed with "Still applies". Moves with a plan get a ◆. The Repertoire tab lists
+  the line ends still without a plan, likeliest first. Training: Learn shows where a new line is going up
+  front, and at a line's end you say the plan to yourself before "Show the plan" (the line waits for
+  Continue; ⚙ Recall plans turns it off) — or write one if it has none. Plans are found by position, so
+  transposed lines share them, and go into PGN exports as "[Plan] …" comments (and come back on import).
 - **Spaced repetition** — every one of your moves is a card scheduled with [FSRS](https://github.com/open-spaced-repetition/ts-fsrs),
   trained from the Repertoire tab (everything, a color, a repertoire or a chapter's row: Review, Learn, Drill).
   *Learn* shows new lines and then has you replay them from memory; *Review* plays each due position out

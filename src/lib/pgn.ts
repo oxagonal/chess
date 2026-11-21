@@ -13,7 +13,12 @@ export interface ImportedEdge {
   comment?: string;
   /** Annotation symbols, from the move's $n codes. */
   glyphs?: string[];
+  /** The plan from the position after it: a comment written "[Plan] …". */
+  plan?: string;
 }
+
+/** How a plan is written in a PGN comment. */
+const PLAN_TAG = /^\s*\[Plan\]\s*/i;
 
 export interface PgnImportResult {
   edges: ImportedEdge[];
@@ -66,7 +71,11 @@ export function pgnToEdges(pgn: string, knownKeys: Set<string> = new Set([START_
           continue;
         }
         const id = `${key}|${played.san}`;
-        const comment = cleanComment(child.data.comments);
+        // A "[Plan] …" comment is the plan; the rest is the move's note.
+        const raw = child.data.comments ?? [];
+        const isPlan = (c: string) => PLAN_TAG.test(parseComment(c).text);
+        const comment = cleanComment(raw.filter((c) => !isPlan(c)));
+        const plan = cleanComment(raw.filter(isPlan).map((c) => parseComment(c).text.replace(PLAN_TAG, '')));
         const glyphs = glyphsFromNags(child.data.nags);
         const existing = edges.get(id);
         if (existing) {
@@ -74,8 +83,9 @@ export function pgnToEdges(pgn: string, knownKeys: Set<string> = new Set([START_
             existing.comment = existing.comment ? `${existing.comment} ${comment}` : comment;
           }
           if (glyphs.length && !existing.glyphs?.length) existing.glyphs = glyphs;
+          if (plan && !existing.plan) existing.plan = plan;
         } else {
-          edges.set(id, { fromKey: key, toKey: played.key, san: played.san, uci: played.uci, comment, ...(glyphs.length ? { glyphs } : {}) });
+          edges.set(id, { fromKey: key, toKey: played.key, san: played.san, uci: played.uci, comment, ...(glyphs.length ? { glyphs } : {}), ...(plan ? { plan } : {}) });
         }
         walk(child, played.pos, played.key, depth + 1);
       }
@@ -110,6 +120,7 @@ export function graphToPgn(graph: RepGraph, headers: Record<string, string> = {}
     for (const m of kids) {
       const comments: string[] = [];
       if (m.comment) comments.push(m.comment);
+      if (m.plan?.trim()) comments.push(`[Plan] ${m.plan.trim()}`);
       if (expanded.has(m.toKey) && graph.childrenOf(m.toKey).length) comments.push('Transposes to a line given elsewhere.');
       const nags = nagsOf(m.glyphs);
       const node = new ChildNode<PgnNodeData>({ san: m.san, comments: comments.length ? comments : undefined, ...(nags.length ? { nags } : {}) });

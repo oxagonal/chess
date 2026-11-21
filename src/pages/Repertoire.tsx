@@ -22,6 +22,7 @@ import { PositionMenuItems, PositionTools } from '../components/PositionTools';
 import { RepertoireHub } from './MapPage';
 import { ExplorerPanel } from '../components/ExplorerPanel';
 import { InlineMoves } from '../components/InlineMoves';
+import { PlanBox } from '../components/PlanBox';
 import { annotateProps } from '../components/NotePopover';
 import { AnnotationMenu, type AnnotationTarget } from '../components/AnnotationMenu';
 import { glyphClass, glyphName, moveGlyph, sanWithGlyphs } from '../lib/annotations';
@@ -445,11 +446,12 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // (A move left out of training — and the line after it — is greyed out, symbols' colors and all.)
   const shown = (m: RepMove) => ({
     san: sanWithGlyphs(m.san, m.glyphs),
-    className: `${glyphClass(moveGlyph(m))} ${untrained.has(m.id) ? 'no-train' : ''} ${m.deeper ? 'deeper' : ''}`,
+    className: `${glyphClass(moveGlyph(m))} ${untrained.has(m.id) ? 'no-train' : ''} ${m.deeper ? 'deeper' : ''} ${m.plan?.trim() ? 'has-plan' : ''}`,
     title:
       [
         m.noTrain ? 'Not trained, nor the line after it' : untrained.has(m.id) ? 'Not trained: it comes after a move you don’t train' : '',
         m.deeper ? `Sharp line: prepared ${DEEPER}× deeper than your coverage goal from here` : '',
+        m.plan?.trim() ? `Plan: ${m.plan.trim()}` : '',
         ...(m.glyphs ?? []).map(glyphName),
         m.comment ?? '',
       ]
@@ -622,6 +624,20 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     </div>
   );
 
+  // The plan for where you are: the line's moves so far, as saved (none once you've left the repertoire).
+  const planPath = (() => {
+    const out: RepMove[] = [];
+    for (const m of display.slice(0, cursor)) {
+      const e = graph.edge(m.fromKey, m.san);
+      if (!e) return undefined;
+      out.push(e);
+    }
+    return out.length ? out : undefined;
+  })();
+  const planEnd = planPath?.[planPath.length - 1];
+  const untrainedHere = !!planEnd && untrained.has(planEnd.id);
+  // A line's end: your move, with nothing trained after it.
+  const lineEndHere = !!planEnd && planEnd.mine && !graph.childrenOf(planEnd.toKey).some((m) => !untrained.has(m.id));
   const movesPanel = (
     <div className="panel moves-panel">
       <div className="row moves-head">
@@ -718,6 +734,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
             untrained={untrained}
           />
         )}
+        {!zen && rep && planPath && !untrainedHere && <PlanBox color={rep.color} path={planPath} lineEnd={lineEndHere} fenKey={key} />}
       </div>
       {noteTarget && (
         <RepAnnotationMenu

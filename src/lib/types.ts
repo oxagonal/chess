@@ -44,6 +44,13 @@ export interface RepMove {
    * stricter (1 in 800 becomes 1 in 8,000), for lines where not knowing a rare move loses at once.
    */
   deeper?: boolean;
+  /**
+   * The plan from the position after this move: what you're aiming for once the moves run out (pawn
+   * breaks, where the pieces go, typical tactics). Written at a line's end, or where lines share it.
+   */
+  plan?: string;
+  /** At a line's end: the plan further back on the line still applies here (no plan of its own needed). */
+  planStill?: boolean;
   createdAt: number;
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;
@@ -174,6 +181,17 @@ export interface PositionStats {
   opening?: { eco: string; name: string };
   /** When the position was last reached (explorers built from games). */
   lastPlayed?: number;
+  /** Masters: the best-known games through the position (fetched with them since plans). */
+  topGames?: TopGame[];
+}
+
+/** A master game through a position (Lichess masters database). */
+export interface TopGame {
+  id: string;
+  white: { name: string; rating?: number };
+  black: { name: string; rating?: number };
+  winner?: 'white' | 'black';
+  year?: number;
 }
 
 export function moveGames(m: MoveStat): number {

@@ -53,6 +53,8 @@ export function unionGraph(color: Color, moves: readonly RepMove[], scopeId: str
     u.sources.push(m.id);
     if (m.comment && !u.comment?.split('\n').includes(m.comment)) u.comment = u.comment ? `${u.comment}\n${m.comment}` : m.comment;
     if (!u.glyphs?.length && m.glyphs?.length) u.glyphs = m.glyphs;
+    if (!u.plan?.trim() && m.plan?.trim()) u.plan = m.plan;
+    if (m.planStill) u.planStill = true;
     u.createdAt = Math.min(u.createdAt, m.createdAt);
   }
   return new RepGraph(color, [...by.values()]);

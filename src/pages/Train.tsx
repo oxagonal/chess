@@ -5,6 +5,9 @@ import { db } from '../db/db';
 import { getSettings, updateSettings, useSettings, type AppSettings } from '../db/settings';
 import { gradeAnswer } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
+import { afterMove, MasterGames, PlanNote, useAllPlans } from '../components/PlanBox';
+import { setPlanStill } from '../db/repertoire';
+import { planAhead, planCover, type PlanRef } from '../lib/plans';
 import { AnswerTimerInput } from '../components/AnswerTimerInput';
 import { Board, type Arrow } from '../components/Board';
 import { PositionTools } from '../components/PositionTools';
@@ -393,8 +396,27 @@ function Session({ setup }: { setup: SessionSetup }) {
   // (Missed positions again go straight on when you get them right.)
   // A review line that taught you new moves isn't over: their replay comes next.
   const teaching = !!line && line.phase === 'quiz' && !line.repeat && !line.newMoves && line.steps.some((s) => s.kind === 'show');
+  // Plans: at the line's end (its last pass — not before the replay of new moves, not missed
+  // positions), its plan to recall, or a box to write one when it's a line end without any.
+  const plans = useAllPlans();
+  const [planShown, setPlanShown] = useState(false);
+  useEffect(() => setPlanShown(false), [line]);
+  const linePath = line ? line.steps.map((st) => st.move) : [];
+  const lineGraph = line ? graphsRef.current.get(line.repId) : undefined;
+  const atLineEnd = !!line && line.phase === 'quiz' && idx >= line.steps.length && !line.repeat && !teaching;
+  const cover = plans && linePath.length ? planCover(linePath, plans) : undefined;
+  const endMove = linePath[linePath.length - 1];
+  const isLineEnd = !!endMove && endMove.mine && !!lineGraph && lineGraph.childrenOf(endMove.toKey).length === 0;
+  const planAtEnd = atLineEnd && cover && (cover.plan || isLineEnd) ? cover : undefined;
+  // Recalling a plan waits for Continue, even with Auto-advance.
+  const planHold = !!planAtEnd?.plan && live.trainRecallPlans;
   const holdAtEnd =
-    !!line && line.phase === 'quiz' && idx >= line.steps.length && (teaching ? !!noteMove : (!live.trainAutoNext && !line.repeat) || !!noteMove);
+    !!line &&
+    line.phase === 'quiz' &&
+    idx >= line.steps.length &&
+    ((teaching ? !!noteMove : (!live.trainAutoNext && !line.repeat) || !!noteMove) || planHold);
+  // Learn: where a new line is going, up front.
+  const planUpFront = line?.phase === 'show' && plans && lineGraph ? planAhead(lineGraph, linePath, plans) : undefined;
   // The lines you played (with the moves you missed), for the cards at the end of the session.
   const playedRef = useRef(new Map<string, { scopeId: string; path: RepMove[]; missed: Set<string> }>());
   const missedRef = useRef(new Set<string>());
@@ -744,6 +766,13 @@ function Session({ setup }: { setup: SessionSetup }) {
           once); with this on, again until you get all of them right in a row.
         </span>
       </label>
+      <label className="check">
+        <input type="checkbox" checked={live.trainRecallPlans} onChange={(e) => updateSettings({ trainRecallPlans: e.target.checked })} />
+        <span>
+          <b>Recall plans</b> — at the end of a line with a plan, say what you're aiming for before it's shown (the line waits for
+          Continue). Off: the plan is just shown.
+        </span>
+      </label>
       <label className="answer-timer">
         <AnswerTimerInput />
         <span>
@@ -795,6 +824,55 @@ function Session({ setup }: { setup: SessionSetup }) {
     <PositionTools pos={viewed?.pos ?? pos} ply={view ?? pathSoFar.length} orientation={rep?.color ?? 'white'} />
   );
   const note = noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" prompt compact={phone} />;
+  // The plan at the line's end: recall it, then see it (with where it was written) — or, at a line end
+  // without one, write it.
+  const planWhere = (p: PlanRef) => {
+    const i = linePath.findIndex((m) => m.toKey === p.move.toKey);
+    return i >= 0 ? afterMove(linePath[i], i) : 'from a transposed line';
+  };
+  const planPanel = planAtEnd && endMove && (planAtEnd.plan || holdAtEnd) && (
+    <div className="train-plan">
+      {planAtEnd.plan ? (
+        live.trainRecallPlans && !planShown ? (
+          <>
+            <div>
+              <b>What's the plan here?</b> <span className="muted small">Put it in words — then check.</span>
+            </div>
+            <button className="small primary" onClick={() => setPlanShown(true)}>
+              Show the plan
+            </button>
+          </>
+        ) : (
+          <>
+            <div>
+              <b>Plan</b>{' '}
+              <span className="muted small">
+                {planWhere(planAtEnd.plan)}
+                {planAtEnd.status === 'far' ? ` — ${Math.ceil(planAtEnd.back! / 2)} moves back` : ''}
+              </span>
+            </div>
+            <div className="plan-text">{planAtEnd.plan.text}</div>
+            {planAtEnd.status === 'far' && isLineEnd && (
+              <div className="row" style={{ gap: 6 }}>
+                <button className="small" onClick={() => void setPlanStill(sourcesOf(endMove), true)} title="Counts as this line's plan">
+                  Still applies
+                </button>
+                <span className="muted small">or write one for this line with Edit line</span>
+              </div>
+            )}
+          </>
+        )
+      ) : (
+        <>
+          <div>
+            <b>No plan for this line yet</b> <span className="muted small">— what are you aiming for once the moves run out?</span>
+          </div>
+          <PlanNote id={sourcesOf(endMove)[0]} placeholder="Pawn breaks, where the pieces go, what to attack…" rows={2} />
+        </>
+      )}
+      {holdAtEnd && (planShown || !planAtEnd.plan || !live.trainRecallPlans) && <MasterGames fenKey={endMove.toKey} max={3} />}
+    </div>
+  );
   const lineLabel = <h3 style={{ margin: 0 }}>{line?.phase === 'show' ? 'New line' : line?.newMoves ? 'New moves, from memory' : 'Line'}</h3>;
   const orderBadge = line?.order && (
     <span
@@ -812,6 +890,11 @@ function Session({ setup }: { setup: SessionSetup }) {
   ));
   const feedbackBox = (
     <div className={`feedback ${waiting && !feedback ? '' : feedback?.kind ?? ''}`}>
+      {planUpFront && (
+        <div className="train-plan ahead small">
+          <span className="muted">Where this line is going:</span> {planUpFront.text}
+        </div>
+      )}
       {waiting && (line?.phase === 'show' || step?.kind === 'show') && (
         <div>
           <b>{line?.phase === 'quiz' ? `New move — you haven't learned this one yet. Play ${step!.move.san}` : `Play ${step!.move.san}`}</b>
@@ -832,6 +915,7 @@ function Session({ setup }: { setup: SessionSetup }) {
           Line finished. {noteMove ? 'Write or edit the note under the board, or edit' : 'Edit'} the line in the builder, then press Continue.
         </div>
       )}
+      {planPanel}
       {/* On phones a missed move's note lives here, inside the feedback, instead of under the board. */}
       {phone && note}
     </div>

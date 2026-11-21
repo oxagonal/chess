@@ -4,7 +4,7 @@
  */
 import { db } from '../db/db';
 import { playUci, posFromFen } from '../lib/chess';
-import type { MoveStat, PositionStats } from '../lib/types';
+import type { MoveStat, PositionStats, TopGame } from '../lib/types';
 import { getSettings } from '../db/settings';
 import { LichessLoginRequired } from './lichessAuth';
 
@@ -93,6 +93,7 @@ interface RawResponse {
   black: number;
   moves: RawMove[];
   opening?: { eco: string; name: string } | null;
+  topGames?: { id: string; white: { name: string; rating?: number }; black: { name: string; rating?: number }; winner?: 'white' | 'black' | null; year?: number }[];
 }
 
 function normalize(key: string, raw: RawResponse): PositionStats {
@@ -115,6 +116,17 @@ function normalize(key: string, raw: RawResponse): PositionStats {
     black: raw.black,
     moves,
     opening: raw.opening ?? undefined,
+    ...(raw.topGames
+      ? {
+          topGames: raw.topGames.map((g) => ({
+            id: g.id,
+            white: { name: g.white.name, rating: g.white.rating },
+            black: { name: g.black.name, rating: g.black.rating },
+            winner: g.winner ?? undefined,
+            year: g.year,
+          })),
+        }
+      : {}),
   };
 }
 
@@ -123,12 +135,15 @@ export async function getCachedExplorer(p: ExplorerParams, key: string): Promise
   return row && Date.now() - row.fetchedAt < MAX_AGE ? row.data : undefined;
 }
 
-export async function fetchExplorer(p: ExplorerParams, key: string, signal?: AbortSignal, priority: Priority = 'high'): Promise<PositionStats> {
-  const cached = await getCachedExplorer(p, key);
+/**
+ * `fresh`: skip the cache (e.g. a masters position cached before its top games were fetched with it).
+ */
+export async function fetchExplorer(p: ExplorerParams, key: string, signal?: AbortSignal, priority: Priority = 'high', fresh = false): Promise<PositionStats> {
+  const cached = fresh ? undefined : await getCachedExplorer(p, key);
   if (cached) return cached;
   return enqueue(async () => {
     // Another caller may have filled the cache while we waited in the queue.
-    const again = await getCachedExplorer(p, key);
+    const again = fresh ? undefined : await getCachedExplorer(p, key);
     if (again) return again;
     // Since 2026 the explorer refuses anonymous requests; any Lichess token (no scopes) works.
     const { lichessToken } = await getSettings();
@@ -137,7 +152,7 @@ export async function fetchExplorer(p: ExplorerParams, key: string, signal?: Abo
     const fen = `${key} 0 1`;
     const url =
       p.db === 'masters'
-        ? `https://explorer.lichess.org/masters?${new URLSearchParams({ fen, moves: '40', topGames: '0' })}`
+        ? `https://explorer.lichess.org/masters?${new URLSearchParams({ fen, moves: '40', topGames: '8' })}`
         : `https://explorer.lichess.org/lichess?${new URLSearchParams({
             variant: 'standard',
             fen,
@@ -197,4 +212,12 @@ export async function clearExplorerCache() {
 
 export async function explorerCacheSize(): Promise<number> {
   return db.explorerCache.count();
+}
+
+/** The best-known master games through a position (for plans: how strong players went on from here). */
+export async function masterGames(key: string, signal?: AbortSignal): Promise<TopGame[]> {
+  const masters: ExplorerParams = { db: 'masters', speeds: [], ratings: [] };
+  let data = await fetchExplorer(masters, key, signal);
+  if (data.topGames === undefined) data = await fetchExplorer(masters, key, signal, 'high', true);
+  return data.topGames ?? [];
 }

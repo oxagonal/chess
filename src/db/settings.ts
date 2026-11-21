@@ -79,6 +79,8 @@ export interface AppSettings {
   puzzleBlock: number;
   /** Puzzles, writing the solution: show your line as numbered arrows on the still board. */
   puzzleArrows: boolean;
+  /** Training: at a line's end, recall its plan before it's shown (and wait for Continue). */
+  trainRecallPlans: boolean;
   /** Builder: save every move played on the board straight into the repertoire. */
   builderAutoAdd: boolean;
   /** Show Stockfish evaluations next to each move in the builder. */
@@ -169,6 +171,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   twoFingerDraw: true,
   puzzleBlock: 10,
   puzzleArrows: true,
+  trainRecallPlans: true,
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,

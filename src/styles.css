@@ -295,6 +295,22 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .mt-sep { color: var(--faint); margin: 0 3px 0 0; }
 .mt-more { border: none; background: none; padding: 0 4px; margin-right: 3px; color: var(--accent2); font-size: 0.9em; cursor: pointer; }
 .same-answer { gap: 6px; align-items: center; flex-wrap: wrap; }
+/* Plans: the builder's box under the moves, the marker on a move with a plan. */
+.plan-box { border-top: 1px solid var(--border-soft); margin-top: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.plan-box.wants { background: rgba(214, 160, 60, 0.07); }
+.plan-head { display: flex; gap: 8px; align-items: baseline; }
+.plan-note { display: flex; flex-direction: column; gap: 4px; }
+.plan-note textarea { width: 100%; box-sizing: border-box; font-size: 13px; line-height: 1.4; resize: vertical; }
+.plan-note .badge, .plan-note .muted { align-self: flex-end; }
+.plan-add { align-self: flex-start; margin: 6px 10px; }
+.master-games ul { margin: 4px 0 0; padding-left: 18px; }
+.master-games li { margin: 2px 0; }
+.has-plan::after { content: '◆'; font-size: 0.55em; vertical-align: super; margin-left: 2px; color: var(--accent2); }
+.current.has-plan::after { color: #fff; }
+.train-plan { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: rgba(90, 158, 227, 0.08); border-left: 3px solid var(--accent2); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.train-plan.ahead { margin: 0 0 8px; }
+.train-plan .plan-text { white-space: pre-wrap; }
+.train-plan .plan-note { align-self: stretch; }
 .promo-overlay { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 10; }
 /* On the promotion square: a column of four squares toward the middle of the board. */
 .promo-column.cg-wrap { position: absolute; width: 12.5%; height: 50%; display: flex; flex-direction: column; }
