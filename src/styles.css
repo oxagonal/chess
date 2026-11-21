@@ -1172,3 +1172,30 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
 .engine-top .engine-lines .engine-line { min-height: 0; padding: 1px 2px; font-size: 12px; line-height: 1.5; }
 .engine-top .engine-line-eval { min-width: 40px; font-size: 11px; }
 .engine-top .engine-options { margin: 2px 0; }
+
+/* ------------------------------------------------------------- Plan tab */
+.plan-total { font-size: 22px; }
+.plan-third { display: grid; grid-template-columns: 110px 1fr auto; grid-template-areas: 'name bar amount' '. detail detail'; gap: 3px 12px; align-items: center; }
+.plan-third-name { grid-area: name; font-weight: 650; }
+.plan-bar { grid-area: bar; height: 10px; background: var(--panel3); border-radius: 5px; overflow: hidden; }
+.plan-third > .nowrap { grid-area: amount; }
+.plan-third-detail { grid-area: detail; }
+.plan-fill { height: 100%; border-radius: 5px; }
+.plan-fill.tactics, .plan-chip.tactics { background: #c98b2e; }
+.plan-fill.games, .plan-chip.games { background: #4a90d9; }
+.plan-fill.study, .plan-chip.study { background: #5fa346; }
+.plan-chip { color: #fff; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.warn-note { border-color: var(--warn); }
+.plan-next { border-top: 1px solid var(--border-soft); padding-top: 10px; }
+.plan-slots, .plan-recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.plan-slots li, .plan-recent li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border-soft); flex-wrap: wrap; }
+.plan-slots li:first-child, .plan-recent li:first-child { border-top: none; }
+.plan-slots li.today .plan-slot-when { color: var(--accent); }
+.plan-slots li.done { opacity: 0.75; }
+.plan-slot-when { font-weight: 650; min-width: 84px; font-variant-numeric: tabular-nums; }
+.plan-slot-task { color: var(--muted); }
+.plan-form { gap: 8px; flex-wrap: wrap; align-items: center; }
+.plan-task { flex: 1 1 220px; min-width: 0; }
+@media (max-width: 700px) {
+  .plan-third { grid-template-columns: 84px 1fr auto; }
+}

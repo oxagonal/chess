@@ -8,7 +8,7 @@ import { catchAllName, catchAllOf, chapterGap, chapterOfMoveId, chapterPosition,
 import { useOpeningIndex } from '../components/ChapterTree';
 import { ChaptersPanel, ChapterSwitcher } from '../components/ChaptersPanel';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
-import { PHONE_QUERY, useCards, useChapterGraphs, useCoverage, useMediaQuery, useRepGraph } from '../hooks';
+import { PHONE_QUERY, useActivityClock, useCards, useChapterGraphs, useCoverage, useMediaQuery, useRepGraph } from '../hooks';
 import { byName, cardIdOf, cardsOf } from '../lib/chapters';
 import { colorName, useChaptersAndSets, useScopeGraph } from '../db/scopes';
 import type { StudioPanelDef } from '../components/Studio';
@@ -79,6 +79,8 @@ type Territory = { chapter: Repertoire; graph: RepGraph; key: string; moves: Rep
  * training" instead of the links that would leave the session.
  */
 export function Builder({ repId, initialLine, onDone }: { repId: string; initialLine: string; onDone?: () => void }) {
+  // Building your repertoire: the study third (the Plan tab) — not when opened from a training session, which counts already.
+  useActivityClock(onDone ? undefined : { third: 'study', topic: 'openings', what: 'builder' });
   // `repId` is a chapter — or 'white' / 'black': all of that color's chapters as one tree, like a
   // repertoire from before chapters. Then new moves are filed in the chapter the line continues (or
   // a new chapter named after its opening), and deletes and notes apply to every chapter with the move.

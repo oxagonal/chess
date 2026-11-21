@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ActivityClock, type ActivitySpec } from './services/activity';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
 import { RepGraph } from './lib/graph';
@@ -173,4 +174,22 @@ export function useNow(intervalMs = 30_000) {
     return () => clearInterval(t);
   }, [intervalMs]);
   return now;
+}
+
+/**
+ * Record the time spent here (services/activity) while the component is mounted — one activity per
+ * visit; returns this visit's active time so far (ms), updated every few seconds. Undefined: nothing.
+ */
+export function useActivityClock(spec: ActivitySpec | undefined): number {
+  const [ms, setMs] = useState(0);
+  const key = spec ? `${spec.third}|${spec.topic ?? ''}|${spec.what}|${spec.refId ?? ''}` : '';
+  useEffect(() => {
+    if (!spec) return;
+    setMs(0);
+    const clock = new ActivityClock(spec, setMs);
+    clock.begin();
+    return () => clock.end();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return ms;
 }

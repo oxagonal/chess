@@ -35,6 +35,13 @@ export const NAV_ICONS: Record<string, ReactNode> = {
       <path d="M9 4.5v13M15 6.5v13" />
     </Icon>
   ),
+  plan: (
+    <Icon>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+      <path d="M3.5 9.5h17M8 3v4M16 3v4" />
+      <path d="M8 14h3M8 17h6" />
+    </Icon>
+  ),
   puzzles: (
     <Icon>
       <path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z" />

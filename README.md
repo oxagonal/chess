@@ -21,6 +21,12 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   (a color's chapters as one tree in the builder) and your repertoires. *Details*, on demand: how the coverage
   numbers come about, the positions worth knowing cold, and your lines as a tree with accuracy, recall and
   slips in games. How well you know something is always the same strength bands.
+- **Plan tab: the 1/3 rule** (Noël Studer) — training time split evenly between tactics, your games (playing
+  and reviewing them) and study (one topic at a time; openings at most a third — a warning says when they take
+  more). Time is recorded as you use the app (training, the builder, game review, puzzles — only while it's on
+  screen and you're using it), games you play count from their clocks (the speeds you choose), and time away
+  from the app is logged by hand. This week, last week or 30 days against your weekly hours, what's furthest
+  behind with a button to it, and your week's plan: slots with a day, time, third and the exact task.
 - **Split into chapters** — a chapter's ⋯ menu suggests chapters from the opening names of its lines (by
   position, so transposed move orders land together); rename, merge or leave out suggestions first.
 - **Import wizard** — Repertoire → *Import a Lichess study or PGN*: study chapters become chapters (or go into

@@ -7,7 +7,7 @@ import { lineTarget, markForgotten } from '../db/repertoire';
 import { sourcesOf } from '../lib/chapters';
 import { saveAnnotation, saveLines } from '../db/annotations';
 import { uid } from '../db/db';
-import { PHONE_QUERY, useAllGraphs, useMediaQuery } from '../hooks';
+import { PHONE_QUERY, useActivityClock, useAllGraphs, useMediaQuery } from '../hooks';
 import { analyzeGame, PREP_LABEL, type PrepResult } from '../lib/prep';
 import type { RepGraph } from '../lib/graph';
 import { keyOf, opposite, playSan, playUci, startPos } from '../lib/chess';
@@ -65,6 +65,8 @@ function sourceName(source: GameSource): string {
 export function GameReview({ id, initialPly }: { id: string; initialPly?: number }) {
   const game = useLiveQuery(() => db.games.get(id), [id]);
   const graphs = useAllGraphs();
+  // Reviewing your games: the games third (the Plan tab), per game — for its review timer too.
+  useActivityClock({ third: 'games', what: 'review', refId: id });
   const stacked = useMediaQuery('(max-width: 900px)');
   const phone = useMediaQuery(PHONE_QUERY);
   // Coming back to a game (e.g. from the builder) finds it where you left it.

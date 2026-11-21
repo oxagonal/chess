@@ -9,6 +9,7 @@ import { RepertoirePage } from './pages/Repertoire';
 import { TrainPage } from './pages/Train';
 import { PuzzlesPage } from './pages/Puzzles';
 import { GamesPage } from './pages/Games';
+import { PlanPage } from './pages/Plan';
 import { SettingsPage } from './pages/Settings';
 import { SyncIndicator } from './components/SyncPanel';
 import { NAV_ICONS } from './components/icons';
@@ -37,6 +38,8 @@ const TABS: Tab[] = [
   // Training sessions (#/train?mode=…) are started from the Repertoire tab.
   { path: 'train', label: 'Train', page: TrainPage, under: 'repertoire' },
   { path: 'games', label: 'Games', page: GamesPage },
+  // Your training time against the 1/3 rule, and your week's plan.
+  { path: 'plan', label: 'Plan', page: PlanPage },
   { path: 'settings', label: 'Settings', page: SettingsPage },
 ];
 

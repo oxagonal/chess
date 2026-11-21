@@ -6,6 +6,7 @@ import { graphToPgn, pgnToEdges, tokenizeMoveText } from '../lib/pgn';
 import { newMovesQuiz, planLine, orderCards } from '../lib/trainer';
 import { isSharp, movesThatHold } from '../lib/sharp';
 import { tiltCheck } from '../lib/tilt';
+import { behind, gameDurationMs, planTotals, tooMuchOpenings, weekStart } from '../lib/plan';
 import type { StoredGame } from '../lib/types';
 import { newCard, grade, isDue, Rating, State } from '../lib/srs';
 
@@ -378,5 +379,38 @@ describe('tilt', () => {
   it('a long session is a reason too', () => {
     const games = Array.from({ length: 10 }, (_, i) => game(5 + i * 10, i % 2));
     expect(tiltCheck(games, now)!.reasons).toEqual(['10 games in this session']);
+  });
+});
+
+describe('the 1/3 plan', () => {
+  const MIN = 60_000;
+  const act = (third: 'tactics' | 'games' | 'study', mins: number, start: number, extra: object = {}) => ({ id: `${third}${start}`, third, what: 'x', start, ms: mins * MIN, ...extra });
+  it('weeks start on Monday', () => {
+    const wed = new Date(2026, 10, 18, 15, 0).getTime(); // a Wednesday
+    expect(new Date(weekStart(wed)).getDay()).toBe(1);
+    expect(weekStart(wed)).toBe(new Date(2026, 10, 16).getTime());
+  });
+  it('counts a game from its clocks: the time each side used', () => {
+    // 3+0: each side spends 10 s a move for 4 moves.
+    const clocks = [180, 180, 170, 170, 160, 160, 150, 150];
+    expect(gameDurationMs({ clocks, sans: clocks.map(() => 'x'), timeClass: 'blitz' })).toBe((60 + 8) * 1000);
+    expect(gameDurationMs({ sans: [], timeClass: 'rapid' })).toBe(20 * MIN);
+  });
+  it('adds up the thirds, playing and reviewing, and study by topic — only games of the chosen speeds', () => {
+    const t = 1_000_000;
+    const totals = planTotals(
+      [act('tactics', 30, t), act('study', 60, t, { topic: 'openings' }), act('games', 10, t, { what: 'review' }), act('study', 20, t - 1e9, { topic: 'endgames' })],
+      [{ source: 'lichess', playedAt: t, timeClass: 'rapid', sans: [] } as unknown as StoredGame, { source: 'lichess', playedAt: t, timeClass: 'bullet', sans: [] } as unknown as StoredGame],
+      t - 1,
+      t + 1,
+      ['blitz', 'rapid'],
+    );
+    expect(totals.by).toEqual({ tactics: 30 * MIN, games: 30 * MIN, study: 60 * MIN });
+    expect([totals.playing, totals.reviewing, totals.gamesPlayed]).toEqual([20 * MIN, 10 * MIN, 1]);
+    expect(totals.topics.openings).toBe(60 * MIN);
+    // Openings: half of 2 hours — more than Studer's third.
+    expect(tooMuchOpenings(totals)).toBe(true);
+    // 7 hours a week: tactics (30 of 140 min) and games (30) are furthest behind — tactics first.
+    expect(behind(totals, 420 * MIN)).toBe('tactics');
   });
 });

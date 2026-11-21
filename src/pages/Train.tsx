@@ -9,7 +9,7 @@ import { AnswerTimerInput } from '../components/AnswerTimerInput';
 import { Board, type Arrow } from '../components/Board';
 import { PositionTools } from '../components/PositionTools';
 import { Empty, ProgressBar, Stat } from '../components/ui';
-import { PHONE_QUERY, useCards, useMediaQuery, startOfToday } from '../hooks';
+import { PHONE_QUERY, useActivityClock, useCards, useMediaQuery, startOfToday } from '../hooks';
 import { LineCard } from '../components/LineCard';
 import { mapLine } from '../lib/map';
 import { colorName, loadScopeGraph, scopeIdsFor, useChaptersAndSets, type Scope } from '../db/scopes';
@@ -226,6 +226,8 @@ function playedForYou(step: PlannedStep): boolean {
 
 function Session({ setup }: { setup: SessionSetup }) {
   const { mode, reps, queue, settings } = setup;
+  // Opening training: the study third (the Plan tab).
+  useActivityClock({ third: 'study', topic: 'openings', what: `train-${mode}` });
   // Graphs are refreshed after you edit a line mid-session (Edit line), so keep them in a ref.
   const graphsRef = useRef(setup.graphs);
   const [editing, setEditing] = useState<{ repId: string; chapterId: string; line: string } | null>(null);

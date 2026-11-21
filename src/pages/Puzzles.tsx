@@ -15,7 +15,7 @@ import { Board } from '../components/Board';
 import { useOpeningIndex } from '../components/ChapterTree';
 import { ConnectLichessButton } from '../components/LichessConnect';
 import { Stat, TableWrap, fmtDate } from '../components/ui';
-import { startOfToday, useChapterGraphs } from '../hooks';
+import { startOfToday, useActivityClock, useChapterGraphs } from '../hooks';
 import { chapterPosition } from '../lib/chapters';
 import { opposite, playUci, type Color } from '../lib/chess';
 import { MaterialBalance } from '../components/MaterialBalance';
@@ -35,6 +35,8 @@ const DIFFICULTY_LABEL: Record<PuzzleDifficulty, string> = {
 };
 
 export function PuzzlesPage() {
+  // Tactics: a third of your training (the Plan tab).
+  useActivityClock({ third: 'tactics', what: 'puzzles' });
   const settings = useSettings();
   const [glicko, setGlicko] = useState<Glicko>();
   if (!settings.loaded) return null;
