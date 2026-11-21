@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { TiltNote } from '../components/TiltNote';
 import { PracticeCreditNote } from '../components/PracticeCreditNote';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -58,6 +59,7 @@ export function HomePage() {
   return (
     <div className="col" style={{ gap: 16 }}>
       <PracticeCreditNote />
+      <TiltNote />
       <div className="hero">
         <div className="row">
           <div>

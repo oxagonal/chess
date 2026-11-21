@@ -5,6 +5,8 @@ import { movesFromLines } from '../lib/lines';
 import { graphToPgn, pgnToEdges, tokenizeMoveText } from '../lib/pgn';
 import { newMovesQuiz, planLine, orderCards } from '../lib/trainer';
 import { isSharp, movesThatHold } from '../lib/sharp';
+import { tiltCheck } from '../lib/tilt';
+import type { StoredGame } from '../lib/types';
 import { newCard, grade, isDue, Rating, State } from '../lib/srs';
 
 describe('chess helpers', () => {
@@ -352,5 +354,29 @@ describe('sharp positions', () => {
   it('is more lenient once the position is decided, and counts mates as best', () => {
     expect(movesThatHold(at(520, 480, 470), 'white', 30)).toBe(3);
     expect(movesThatHold([{ eval: { mate: 2 } }, { eval: { cp: 300 } }, { eval: { cp: 290 } }], 'white', 30)).toBe(1);
+  });
+});
+
+describe('tilt', () => {
+  const now = Date.UTC(2026, 10, 21, 20, 0);
+  const game = (minAgo: number, score: number, termination = 'resign', source = 'lichess') =>
+    ({ id: `g${minAgo}`, source, playedAt: now - minAgo * 60_000, userScore: score, termination }) as unknown as StoredGame;
+  it('flags a losing streak and a loss on time in the session you are playing', () => {
+    const t = tiltCheck([game(5, 0, 'outoftime'), game(15, 0), game(25, 0), game(35, 1)], now)!;
+    expect(t.reasons).toEqual(['3 losses in a row', 'you just lost on time']);
+    expect(t.session.map((g) => g.id)).toEqual(['g5', 'g15', 'g25', 'g35']);
+  });
+  it('only looks at this session, and only while you are still playing', () => {
+    // Two losses now; earlier losses were an hour before (another session).
+    expect(tiltCheck([game(5, 0), game(15, 0), game(80, 0), game(90, 0)], now)).toBeUndefined();
+    // Last game two hours ago: you've stopped already.
+    expect(tiltCheck([game(120, 0), game(130, 0), game(140, 0)], now)).toBeUndefined();
+    // Chess.com's word for a loss on time, and over-the-board games don't count.
+    expect(tiltCheck([game(5, 0, 'timeout', 'chesscom')], now)!.reasons).toEqual(['you just lost on time']);
+    expect(tiltCheck([game(5, 0, 'timeout', 'otb')], now)).toBeUndefined();
+  });
+  it('a long session is a reason too', () => {
+    const games = Array.from({ length: 10 }, (_, i) => game(5 + i * 10, i % 2));
+    expect(tiltCheck(games, now)!.reasons).toEqual(['10 games in this session']);
   });
 });

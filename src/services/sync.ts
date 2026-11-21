@@ -90,3 +90,24 @@ export async function deleteAllGames() {
   const keys = (await db.kv.toArray()).filter((r) => r.key.startsWith('sync:')).map((r) => r.key);
   await db.kv.bulkDelete(keys);
 }
+
+/** How often Home looks for games you've just played (for the tilt check). */
+const RECENT_EVERY = 10 * 60_000;
+let checking: Promise<void> | undefined;
+
+/**
+ * Quietly fetch games you've played since the last import, for accounts you've imported from before
+ * (a first import is yours to start, on the Games tab) — at most every RECENT_EVERY.
+ */
+export function checkRecentGames(): Promise<void> {
+  checking ??= (async () => {
+    const s = await getSettings();
+    for (const source of ['lichess', 'chesscom'] as const) {
+      const user = (source === 'lichess' ? s.lichessUsername : s.chesscomUsername).trim();
+      const last = await lastSync(source, user);
+      if (!user || !last || Date.now() - last < RECENT_EVERY) continue;
+      await syncSource(source).catch(() => undefined);
+    }
+  })().finally(() => (checking = undefined));
+  return checking;
+}

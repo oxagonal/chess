@@ -468,6 +468,8 @@ button.chip:hover:not(:disabled) { background: var(--border); }
 table.data tr.current-row td { background: var(--panel2); }
 .session-buttons-compact, .map-row-actions { gap: 4px; flex-wrap: nowrap; }
 .today > .row { gap: 8px 12px; }
+.tilt-note { align-items: flex-start; gap: 10px; background: var(--panel2); border-color: var(--warn); }
+.tilt-icon { font-size: 18px; line-height: 1.2; }
 .practice-credit { align-items: flex-start; gap: 8px; background: var(--panel2); border-color: var(--accent-strong); }
 .today > .practice-credit { margin: -4px -4px 4px; }
 .map-scope select { font-weight: 650; max-width: 100%; min-width: 0; }
