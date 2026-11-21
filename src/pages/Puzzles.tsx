@@ -7,20 +7,18 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import type { Chess } from 'chessops/chess';
 import { db } from '../db/db';
 import { updateSettings, useSettings } from '../db/settings';
 import { useChaptersAndSets } from '../db/scopes';
-import { Board } from '../components/Board';
 import { useOpeningIndex } from '../components/ChapterTree';
 import { ConnectLichessButton } from '../components/LichessConnect';
 import { Stat, TableWrap, fmtDate } from '../components/ui';
 import { startOfToday, useActivityClock, useChapterGraphs } from '../hooks';
 import { chapterPosition } from '../lib/chapters';
-import { opposite, playUci, type Color } from '../lib/chess';
-import { MaterialBalance } from '../components/MaterialBalance';
+import type { Color } from '../lib/chess';
+import { PuzzleSolver } from '../components/PuzzleSolver';
 import { nameParts } from '../lib/openingNames';
-import { judgeMove, openingAngle, PUZZLE_DIFFICULTIES, PUZZLE_THEMES, puzzleStart, type LichessPuzzle, type PuzzleDifficulty, type PuzzleStart } from '../lib/puzzle';
+import { openingAngle, PUZZLE_DIFFICULTIES, PUZZLE_THEMES, puzzleStart, type LichessPuzzle, type PuzzleDifficulty } from '../lib/puzzle';
 import type { PuzzleAttempt } from '../lib/types';
 import { startLichessLogin } from '../services/lichessAuth';
 import { fetchPuzzles, hasScope, reportPuzzles, type Glicko } from '../services/puzzles';
@@ -154,6 +152,10 @@ function PuzzlePicker({ canWrite }: { canWrite: boolean }) {
           ))}
         </select>
       </label>
+      <label className="check" title="Write your whole solution first — your moves, their replies, and their other sensible replies as branches — before anything is checked">
+        <input type="checkbox" checked={settings.puzzleWrite} onChange={(e) => updateSettings({ puzzleWrite: e.target.checked })} />
+        <span className="small">Write the solution first (with branches)</span>
+      </label>
       <label className="check" title={canWrite ? undefined : 'Connect Lichess (with puzzle permissions) first'}>
         <input type="checkbox" disabled={!canWrite} checked={canWrite && settings.puzzleRated} onChange={(e) => updateSettings({ puzzleRated: e.target.checked })} />
         <span className="small">Count toward my Lichess puzzle rating</span>
@@ -185,20 +187,11 @@ function useVisibleClock() {
   return { reset, elapsed };
 }
 
+/** The puzzle being worked on, and when it started. */
 interface Current {
   puzzle: LichessPuzzle;
-  start: PuzzleStart;
-  pos: Chess;
-  lastMove?: string;
-  /** Index in the solution of the move you're to find (even: yours). */
-  step: number;
-  /** A wrong move was played, or the solution shown: the puzzle counts as lost. */
-  failed: boolean;
-  done: boolean;
   startedAt: number;
 }
-
-type Feedback = { kind: 'good' | 'bad' | 'info' | 'hint'; text: string } | null;
 
 function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
   const settings = useSettings();
@@ -208,14 +201,9 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
   const [cur, setCur] = useState<Current>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
-  const [feedback, setFeedback] = useState<Feedback>(null);
-  const [flash, setFlash] = useState<'good' | 'bad' | null>(null);
   const [result, setResult] = useState<{ ratingDiff?: number; rated: boolean }>();
   const clock = useVisibleClock();
   const seen = useRef(new Set<string>());
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const later = (f: () => void, ms: number) => timers.current.push(setTimeout(f, ms));
-  useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const report = settings.puzzleRated && hasScope(settings, 'puzzle:write');
 
   const add = useCallback((ps: LichessPuzzle[]) => {
@@ -239,23 +227,15 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
     }
   }, [angle, difficulty, add, onGlicko]);
 
-  // Start: the opponent's move that sets the puzzle up is played, then it's your turn.
   const begin = useCallback(
     (p: LichessPuzzle) => {
-      const start = puzzleStart(p);
-      if (!start) {
+      if (!puzzleStart(p)) {
         setQueue((q) => q.filter((x) => x !== p));
         return;
       }
-      timers.current.forEach(clearTimeout);
       setResult(undefined);
-      setFeedback(null);
-      setCur({ puzzle: p, start, pos: start.before, step: 0, failed: false, done: false, startedAt: Date.now() });
-      later(() => {
-        setCur((c) => (c && c.puzzle === p ? { ...c, pos: start.pos, lastMove: start.lastMove } : c));
-        setFeedback({ kind: 'info', text: `Your turn — find the best move for ${start.color === 'white' ? 'White' : 'Black'}.` });
-        clock.reset();
-      }, 450);
+      setCur({ puzzle: p, startedAt: Date.now() });
+      clock.reset();
     },
     [clock],
   );
@@ -298,57 +278,7 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
     }
   };
 
-  const onMove = (uci: string) => {
-    if (!cur || cur.done) return;
-    const sol = cur.puzzle.puzzle.solution;
-    const verdict = judgeMove(cur.pos, sol, cur.step, uci);
-    const played = playUci(cur.pos, uci);
-    if (verdict === 'wrong' || !played) {
-      setFlash('bad');
-      later(() => setFlash(null), 600);
-      setCur({ ...cur, failed: true });
-      setFeedback({ kind: 'bad', text: cur.failed ? 'Not that either — try again, or show the solution.' : 'That’s not it — the puzzle counts as missed. Try again, or show the solution.' });
-      return;
-    }
-    setFlash('good');
-    later(() => setFlash(null), 500);
-    if (verdict === 'solved') {
-      const done = { ...cur, pos: played.pos, lastMove: played.uci, step: sol.length, done: true };
-      setCur(done);
-      setFeedback(cur.failed ? { kind: 'hint', text: 'Solved — but after a miss, so it counts as missed.' } : { kind: 'good', text: '✓ Solved!' });
-      void finish(done, !cur.failed);
-      return;
-    }
-    // Right: the opponent's reply follows.
-    const next = { ...cur, pos: played.pos, lastMove: played.uci, step: cur.step + 1 };
-    setCur(next);
-    setFeedback({ kind: 'good', text: '✓ Best move — keep going.' });
-    later(() => {
-      const reply = playUci(played.pos, sol[cur.step + 1]);
-      if (!reply) return;
-      setCur((c) => (c && c.puzzle === cur.puzzle ? { ...c, pos: reply.pos, lastMove: reply.uci, step: cur.step + 2 } : c));
-    }, 350);
-  };
-
-  const showSolution = () => {
-    if (!cur || cur.done) return;
-    const sol = cur.puzzle.puzzle.solution;
-    const lost = { ...cur, failed: true, done: true };
-    setCur(lost);
-    setFeedback({ kind: 'hint', text: 'The solution:' });
-    let pos = cur.pos;
-    sol.slice(cur.step).forEach((u, i) => {
-      const r = playUci(pos, u);
-      if (!r) return;
-      pos = r.pos;
-      const at = r;
-      later(() => setCur((c) => (c && c.puzzle === cur.puzzle ? { ...c, pos: at.pos, lastMove: at.uci } : c)), 500 * (i + 1));
-    });
-    void finish(lost, false);
-  };
-
   const next = () => {
-    timers.current.forEach(clearTimeout);
     setQueue((q) => q.slice(1));
     setCur(undefined);
   };
@@ -369,66 +299,17 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
       </div>
     );
 
-  const p = cur.puzzle.puzzle;
-  const yourTurn = !cur.done && cur.pos.turn === cur.start.color && cur.pos !== cur.start.before;
-  // Above and below the board, as in a game review: whose side it is, and the material balance.
-  const side = (c: Color) => (
-    <div className={`player-strip ${!cur.done && cur.pos.turn === c ? 'to-move' : ''}`}>
-      <span className={`strip-dot ${c}`} />
-      <span className="strip-name">{c === cur.start.color ? 'You' : 'Opponent'}</span>
-      <span className="muted small">{c === 'white' ? 'White' : 'Black'}</span>
-      <MaterialBalance pos={cur.pos} color={c} />
-    </div>
-  );
   return (
-    <div className="board-layout puzzle-layout">
-      <div className="board-col col puzzle-board">
-        {side(opposite(cur.start.color))}
-        <Board pos={cur.pos} orientation={cur.start.color} interactive={yourTurn} lastMove={cur.lastMove} onMove={onMove} flash={flash} />
-        {side(cur.start.color)}
-      </div>
-      <div className="col" style={{ gap: 10 }}>
-        <div className={`feedback ${feedback?.kind ?? ''}`}>
-          <b>{feedback?.text ?? '…'}</b>
-          {cur.done && (
-            <div className="small" style={{ marginTop: 6 }}>
-              Puzzle rated <b>{p.rating}</b>
-              {p.themes.length > 0 && <span className="muted"> · {p.themes.slice(0, 4).join(', ')}</span>}
-              {result?.rated && result.ratingDiff !== undefined && (
-                <>
-                  {' '}
-                  · your Lichess rating{' '}
-                  <b className={result.ratingDiff >= 0 ? 'good-text' : 'warn-text'}>
-                    {result.ratingDiff >= 0 ? '+' : ''}
-                    {result.ratingDiff}
-                  </b>
-                </>
-              )}
-              {result && !result.rated && <span className="muted"> · kept here only</span>}
-            </div>
-          )}
-        </div>
-        {error && cur && <div className="error small">{error}</div>}
-        <div className="row">
-          {!cur.done ? (
-            <button onClick={showSolution}>Show solution</button>
-          ) : (
-            <button className="primary" onClick={next}>
-              Next puzzle →
-            </button>
-          )}
-          <span className="spacer" />
-          <a className="btn small" href={`${LICHESS}/training/${p.id}`} target="_blank" rel="noreferrer">
-            On Lichess ↗
-          </a>
-        </div>
-        <p className="muted small puzzle-note" style={{ margin: 0 }}>
-          {report
-            ? 'Counted toward your Lichess puzzle rating — the first time you play a puzzle, as on Lichess.'
-            : 'Kept here only (with the time it took) — your Lichess rating isn’t touched.'}
-        </p>
-      </div>
-    </div>
+    <PuzzleSolver
+      key={`${cur.puzzle.puzzle.id}|${cur.startedAt}`}
+      puzzle={cur.puzzle}
+      mode={settings.puzzleWrite ? 'write' : 'play'}
+      report={report}
+      result={result}
+      error={error}
+      onResult={(win) => void finish(cur, win)}
+      onNext={next}
+    />
   );
 }
 

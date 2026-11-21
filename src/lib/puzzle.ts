@@ -10,7 +10,7 @@ import { tokenizeMoveText } from './pgn';
 
 /** A puzzle as the Lichess API sends it (/api/puzzle/batch/{angle}, /api/puzzle/daily). */
 export interface LichessPuzzle {
-  game: { id: string; pgn: string; players?: { name?: string; color: Color; rating?: number }[] };
+  game: { id: string; pgn: string; players?: { name?: string; color: Color; rating?: number; title?: string }[] };
   puzzle: { id: string; rating: number; plays?: number; solution: string[]; themes: string[]; initialPly: number };
 }
 

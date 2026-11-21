@@ -1,4 +1,5 @@
 import 'fake-indexeddb/auto';
+import { gradeWritten, MoveTree, unconsidered } from '../lib/moveTree';
 import { describe, expect, it } from 'vitest';
 import { judgeMove, openingAngle, puzzleStart, type LichessPuzzle } from '../lib/puzzle';
 import { fenOf, playUci } from '../lib/chess';
@@ -77,5 +78,43 @@ describe('the Lichess puzzle calls', () => {
     } finally {
       globalThis.fetch = realFetch;
     }
+  });
+});
+
+describe('writing a puzzle solution', () => {
+  // A stand-in puzzle from the start: 1.e4 (yours) e5 (theirs) 2.Nf3 (yours).
+  const solution = ['e2e4', 'e7e5', 'g1f3'];
+  const write = (lines: string[][]) => {
+    const tree = new MoveTree();
+    for (const line of lines) {
+      let id: string | undefined = tree.root;
+      for (const uci of line) id = id && tree.add(id, uci, 'mine');
+    }
+    return tree;
+  };
+  it('asks for their other replies at each of their turns on your line', () => {
+    const tree = write([['e2e4', 'e7e5', 'g1f3']]);
+    const afterE4 = `${tree.root} e2e4`;
+    expect(unconsidered(tree, tree.root, new Set())).toEqual([afterE4]);
+    // A branch, or "only one sensible reply", settles it.
+    expect(unconsidered(write([['e2e4', 'e7e5', 'g1f3'], ['e2e4', 'c7c5']]), tree.root, new Set())).toEqual([]);
+    expect(unconsidered(tree, tree.root, new Set([afterE4]))).toEqual([]);
+  });
+  it('is right when your lines contain the solution, their best defence included', () => {
+    expect(gradeWritten(write([['e2e4', 'e7e5', 'g1f3'], ['e2e4', 'c7c5', 'g1f3']]), 'root', solution)).toEqual({ win: true });
+    // Their move wasn't considered.
+    expect(gradeWritten(write([['e2e4', 'c7c5', 'g1f3']]), 'root', solution)).toEqual({ win: false, wrongAt: { nodeId: 'root e2e4', expected: 'e7e5', yours: false } });
+    // Your first move was wrong.
+    expect(gradeWritten(write([['d2d4']]), 'root', solution).wrongAt).toEqual({ nodeId: 'root', expected: 'e2e4', yours: true });
+  });
+  it('takes any mate, as Lichess does', () => {
+    const tree = new MoveTree();
+    let id: string = tree.root;
+    for (const san of ['e4', 'e5', 'Bc4', 'Nc6', 'Qh5', 'Nf6']) id = tree.addSan(id, san, 'game')!;
+    tree.add(id, 'h5f7', 'mine');
+    expect(gradeWritten(tree, id, ['h5f7'])).toEqual({ win: true });
+    expect(tree.path(`${id} h5f7`).map((n) => n.san).join(' ')).toBe('e4 e5 Bc4 Nc6 Qh5 Nf6 Qxf7#');
+    tree.remove(`${id} h5f7`);
+    expect(tree.children(id)).toEqual([]);
   });
 });

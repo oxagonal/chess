@@ -132,21 +132,33 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
     setTick((t) => t + 1);
   };
 
+  const cancelPromo = () => {
+    setPromo(null);
+    setTick((t) => t + 1);
+  };
   const pieceColor = turn;
+  // The choice of piece on the promotion square itself, as on Lichess and Chess.com: a column from
+  // that square toward the middle of the board — queen, knight, rook, bishop. A click elsewhere cancels.
+  const promoColumn = promo && (() => {
+    const file = 'abcdefgh'.indexOf(promo.dest[0]);
+    const col = orientation === 'white' ? file : 7 - file;
+    const atTop = (promo.dest[1] === '8') === (orientation === 'white');
+    return (
+      <div className="promo-overlay" onClick={cancelPromo}>
+        <div className={`promo-column cg-wrap ${atTop ? 'top' : 'bottom'}`} style={{ left: `${col * 12.5}%` }} onClick={(e) => e.stopPropagation()}>
+          {(['q', 'n', 'r', 'b'] as const).map((r) => (
+            <button key={r} className="promo-btn" onClick={() => choose(r)} title={`Promote to ${roleName(r)}`} aria-label={`Promote to ${roleName(r)}`}>
+              {createElement('piece', { className: `${roleName(r)} ${pieceColor}` })}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  })();
   return (
     <div className={`board-wrap ${flash ? `flash-${flash}` : ''}`}>
       <div ref={el} className="cg-wrap-host" />
-      {promo && (
-        <div className="promo-overlay" onClick={() => choose('q')}>
-          <div className="promo-box cg-wrap" onClick={(e) => e.stopPropagation()}>
-            {(['q', 'r', 'b', 'n'] as const).map((r) => (
-              <button key={r} className="promo-btn" onClick={() => choose(r)} title={`Promote to ${roleName(r)}`}>
-                {createElement('piece', { className: `${roleName(r)} ${pieceColor}` })}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {promoColumn}
     </div>
   );
 }

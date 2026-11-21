@@ -270,9 +270,13 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .cg-wrap coords { font-size: 10px; font-weight: 700; }
 /* chessground offsets file labels 24px to the right, which pokes past the board edge on phones */
 .cg-wrap coords.files { left: 0; width: 100%; padding-left: 18px; box-sizing: border-box; }
-.promo-overlay { position: absolute; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 10; }
-.promo-box.cg-wrap { display: flex; gap: 6px; background: var(--panel); padding: 10px; border-radius: 8px; position: static; }
-.promo-btn { width: 72px; height: 72px; padding: 4px; }
+.promo-overlay { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 10; }
+/* On the promotion square: a column of four squares toward the middle of the board. */
+.promo-column.cg-wrap { position: absolute; width: 12.5%; height: 50%; display: flex; flex-direction: column; }
+.promo-column.top { top: 0; }
+.promo-column.bottom { bottom: 0; flex-direction: column-reverse; }
+.promo-btn { flex: 1 1 0; width: 100%; min-height: 0; padding: 7%; border: none; border-radius: 50%; background: radial-gradient(circle at center, #f1efe9 22%, #a9a49b 100%); cursor: pointer; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); transition: border-radius 0.12s, background 0.12s; }
+.promo-btn:hover:not(:disabled) { border-radius: 8%; background: radial-gradient(circle at center, #ffffff 25%, #d68a3c 100%); border-color: transparent; }
 .promo-btn piece { display: block; width: 100%; height: 100%; background-size: cover; position: static !important; transform: none !important; }
 /* The control row under a board */
 .board-col > .row { background: var(--panel); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 8px; box-shadow: var(--shadow); }
@@ -444,11 +448,12 @@ button.chip:hover:not(:disabled) { background: var(--border); }
   .puzzles > .puzzle-layout { order: 1; }
   .puzzles > .note, .puzzles > .puzzle-picker { order: 2; }
   .puzzles > .puzzle-history { order: 3; }
-  /* Feedback and buttons above the board, so they're never under the tab bar. */
-  .puzzle-layout > :last-child { order: -1; }
   .puzzle-note { display: none; }
-  /* The whole board above the tab bar: no taller than the screen leaves (title, feedback, buttons). */
-  .puzzle-layout > .board-col { width: min(100%, calc(100dvh - 62px - env(safe-area-inset-bottom) - 350px)); justify-self: center; }
+  /* The board first, as big as the screen allows above the tab bar (with the players and the buttons);
+     what to do and the moves under it, the moves in a short box of their own. */
+  .puzzle-layout > .board-col { width: min(100%, calc(100dvh - 62px - env(safe-area-inset-bottom) - 250px)); justify-self: center; }
+  .puzzle-side .move-tree { max-height: 128px; }
+  .puzzle-side .feedback { font-size: 13.5px; }
   .puzzle-picker > .field { flex: 1 1 140px; }
   .puzzle-picker select { width: 100%; }
 }
@@ -1220,3 +1225,26 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
 .review-timer.over { color: var(--bad); }
 .ps-tabs .review-timer { font-size: 11.5px; }
 .review-phone .quick-review { margin-bottom: 8px; }
+
+/* ------------------------------------------------ puzzles: the move tree */
+.move-tree { line-height: 1.9; font-size: 14px; max-height: 260px; overflow-y: auto; }
+.mt-step { white-space: nowrap; margin-right: 3px; }
+.mt-num { color: var(--faint); margin: 0 3px 0 6px; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.mt-move { background: none; border: none; padding: 1px 4px; border-radius: 4px; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; min-height: 0; }
+.mt-move:hover { background: var(--panel3); }
+.mt-move.current { background: #4a90d9; color: #fff; }
+.mt-game { color: var(--faint); font-weight: 500; }
+.mt-solution { color: var(--good); }
+.mt-mine { color: var(--text); }
+.mt-explore { color: var(--muted); font-style: italic; font-weight: 500; }
+.mt-wrong { color: var(--bad); text-decoration: line-through; }
+.mt-var { color: var(--muted); }
+.mt-var .mt-num:first-child { margin-left: 2px; }
+.title-badge { color: #e8a13c; font-weight: 800; margin-right: 5px; font-size: 0.92em; }
+.puzzle-nav { justify-content: center; gap: 6px; }
+.puzzle-nav button { min-width: 44px; }
+.puzzle-side { min-width: 0; }
+/* The board, both players and the buttons on screen together. */
+@media (min-width: 701px) {
+  .puzzle-layout > .board-col { max-width: calc(100dvh - 140px); }
+}

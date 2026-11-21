@@ -71,6 +71,8 @@ export interface AppSettings {
   /** Puzzles: what they're picked by ('mix', a theme or an opening's key) and how hard, around your rating. */
   puzzleAngle: string;
   puzzleDifficulty: 'easiest' | 'easier' | 'normal' | 'harder' | 'hardest';
+  /** Puzzles: write the whole solution first (with the opponent's other replies) before it's checked. */
+  puzzleWrite: boolean;
   /** Builder: save every move played on the board straight into the repertoire. */
   builderAutoAdd: boolean;
   /** Show Stockfish evaluations next to each move in the builder. */
@@ -157,6 +159,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   puzzleRated: true,
   puzzleAngle: 'mix',
   puzzleDifficulty: 'normal',
+  puzzleWrite: true,
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,
