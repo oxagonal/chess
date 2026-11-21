@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
-import { addEdges, chapterForNewLine, deleteMove, deleteUnionMove, setMoveAnnotation, setNoTrain, splitOff } from '../db/repertoire';
+import { addEdges, chapterForNewLine, deleteMove, deleteRepertoire, deleteUnionMove, renameRepertoire, setMoveAnnotation, setNoTrain, splitOff } from '../db/repertoire';
 import { loadOpeningIndex, nameParts } from '../lib/openingNames';
 import { catchAllName, catchAllOf, chapterGap, chapterOfMoveId, chapterPosition, chapterTerritory, entersOtherChapter, sourcesOf, trainable } from '../lib/chapters';
 import { useOpeningIndex } from '../components/ChapterTree';
@@ -470,6 +470,29 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   };
 
   const counts = `${plural(graph.myMoves().length, 'move')} · ${plural(graph.leaves().length, 'line')}`;
+  // The chapter itself (not when browsing all of a color's chapters).
+  const chapterActions = !colorMode && (
+    <>
+      <button
+        onClick={() => {
+          const n = prompt('Rename chapter', rep.name);
+          if (n?.trim()) void renameRepertoire(rep.id, n.trim());
+        }}
+      >
+        Rename chapter…
+      </button>
+      <button
+        className="danger"
+        onClick={async () => {
+          if (!confirm(`Delete “${rep.name}”? Its lines go with it, and the training progress on moves no other chapter has.`)) return;
+          await deleteRepertoire(rep.id);
+          navigate('repertoire');
+        }}
+      >
+        Delete chapter…
+      </button>
+    </>
+  );
   const header = (
     <div className="builder-head">
       <ChapterSwitcher chapter={rep} line={line.slice(0, cursor).map((m) => m.san)} />
@@ -516,6 +539,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           </button>
           <PositionMenuItems pos={pos} ply={cursor} orientation={orientation} />
           {!onDone && <button onClick={() => navigate('repertoire')}>All repertoires</button>}
+          {!onDone && chapterActions}
           <div className="menu-note muted small">{counts}</div>
         </MoreMenu>
       ) : onDone ? null : (
@@ -532,6 +556,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           <a className="btn small" href={href('repertoire')}>
             All
           </a>
+          {chapterActions && <MoreMenu label="Chapter">{chapterActions}</MoreMenu>}
         </>
       )}
     </div>
