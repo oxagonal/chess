@@ -207,6 +207,9 @@ function MapView({ scopeId, chapters, collections, train }: { scopeId: string; c
                   Drill ▸
                 </button>
               )}
+              <a className="btn small ghost" href={href(`repertoire/${ch.id}`)} title="Open the chapter in the builder">
+                Edit
+              </a>
               <ChapterMenu chapter={ch} onPanel={setPanel} />
             </span>
           );

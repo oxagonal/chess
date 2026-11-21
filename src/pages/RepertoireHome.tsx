@@ -55,7 +55,6 @@ export type ChapterPanel = { kind: 'split' | 'merge' | 'import'; id: string } | 
 export function ChapterMenu({ chapter: r, onPanel }: { chapter: Chapter; onPanel: (p: ChapterPanel) => void }) {
   return (
     <MoreMenu label="Chapter">
-      <button onClick={() => navigate(`repertoire/${r.id}`)}>Edit in the builder</button>
       <button onClick={() => onPanel({ kind: 'split', id: r.id })}>Split into chapters…</button>
       <button onClick={() => onPanel({ kind: 'merge', id: r.id })}>Merge into…</button>
       <button onClick={() => onPanel({ kind: 'import', id: r.id })}>Import PGN or study…</button>

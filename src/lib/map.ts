@@ -171,3 +171,63 @@ export function strengthHistory(
     return { day: end + 1 - DAY, counts };
   });
 }
+
+/** A chapter's games, as probabilities (shares of all your games with its color). */
+export interface ChapterGames {
+  /** How often games come into the chapter. */
+  games: number;
+  /** …and stay in its lines until positions get rarer than the target. */
+  inLines: number;
+  /** …leave them while still more common than the target. */
+  uncovered: number;
+  /** …leave by an opponent move rarer than the target (rare sidelines). */
+  rare: number;
+}
+
+const unit = (x: number) => Math.min(1, Math.max(0, x));
+
+/**
+ * How a coverage run shares out a chapter's games. They come in at `entries`: its opening's position
+ * when the move there is yours, else the opponent's replies there that the chapter answers. With
+ * `unanswered`, the chapter also takes the replies at its opening's position that no chapter answers
+ * (`answered`: where every chapter's replies there lead) — the chapter, or catch-all, that starts there.
+ * Coverage counts rare sidelines as covered, so in its lines = covered − rare. Undefined when the run
+ * hasn't priced these positions.
+ */
+export function chapterGames(
+  run: { probs: Record<string, number>; coverage?: Record<string, number>; sidelines?: Record<string, number> },
+  entries: readonly string[],
+  unanswered?: { anchor: string; answered: readonly string[] },
+): ChapterGames | undefined {
+  const coverage = run.coverage;
+  if (!coverage) return undefined;
+  const split = (k: string) => {
+    const p = run.probs[k] ?? 0;
+    const c = unit(coverage[k] ?? 0);
+    const r = Math.min(c, unit(run.sidelines?.[k] ?? 0));
+    return { p, inLines: p * (c - r), rare: p * r, uncovered: p * (1 - c) };
+  };
+  const out: ChapterGames = { games: 0, inLines: 0, uncovered: 0, rare: 0 };
+  for (const e of entries) {
+    const s = split(e);
+    out.games += s.p;
+    out.inLines += s.inLines;
+    out.rare += s.rare;
+    out.uncovered += s.uncovered;
+  }
+  if (unanswered) {
+    // What leaves your prep at the opening's position, less what leaves it after the answered replies.
+    const at = split(unanswered.anchor);
+    let uncovered = at.uncovered;
+    let rare = at.rare;
+    for (const k of new Set(unanswered.answered)) {
+      const s = split(k);
+      uncovered -= s.uncovered;
+      rare -= s.rare;
+    }
+    out.uncovered += Math.max(0, uncovered);
+    out.rare += Math.max(0, rare);
+    out.games += Math.max(0, uncovered) + Math.max(0, rare);
+  }
+  return out.games > 0 ? out : undefined;
+}

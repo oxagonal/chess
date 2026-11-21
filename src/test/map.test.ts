@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { RepGraph } from '../lib/graph';
 import { movesFromLines } from '../lib/lines';
 import { cardIdOf } from '../lib/chapters';
-import { chapterLines, strengthCounts, strengthHistory, strengthOf } from '../lib/map';
+import { chapterLines, strengthCounts, strengthHistory, strengthOf, chapterGames } from '../lib/map';
 import { grade, newCard, Rating } from '../lib/srs';
 import type { ReviewCard, ReviewLogEntry } from '../lib/types';
 
@@ -58,5 +58,35 @@ describe('repertoire map', () => {
     expect(hist[0].counts.new).toBe(1); // four days ago: not learned yet
     expect(hist[2].counts.new).toBe(0); // learned three days ago
     expect(hist[4].day).toBe(TODAY);
+  });
+});
+
+describe("a chapter's games", () => {
+  it('come in at its opening when the move there is yours, however little of them you cover', () => {
+    // 1.e4 b6: 1 game in 100; 10% stay in your lines (half of those by rare sidelines).
+    const run = { probs: { A: 0.01 }, coverage: { A: 0.1 }, sidelines: { A: 0.05 } };
+    const g = chapterGames(run, ['A'])!;
+    expect(g.games).toBeCloseTo(0.01);
+    expect(g.inLines).toBeCloseTo(0.0005);
+    expect(g.rare).toBeCloseTo(0.0005);
+    expect(g.uncovered).toBeCloseTo(0.009);
+  });
+
+  it("come in by the replies it answers — and, for the chapter starting there, the replies nobody answers", () => {
+    const run = {
+      probs: { A: 0.2, Bc5: 0.1, Nf6: 0.06, h6: 0.01 },
+      coverage: { A: 0.6, Bc5: 0.8, Nf6: 0.7, h6: 0.5 },
+      sidelines: { A: 0.1, Bc5: 0.1, Nf6: 0.05, h6: 0.1 },
+    };
+    // Another chapter's opening is here too: only its own reply counts.
+    const own = chapterGames(run, ['h6'])!;
+    expect(own.games).toBeCloseTo(0.01);
+    expect(own.inLines).toBeCloseTo(0.004);
+    // The catch-all starting here also takes what leaves your prep by unanswered replies.
+    const catchAll = chapterGames(run, ['h6'], { anchor: 'A', answered: ['Bc5', 'Nf6', 'h6'] })!;
+    expect(catchAll.uncovered).toBeCloseTo(0.005 + (0.08 - 0.043));
+    expect(catchAll.rare).toBeCloseTo(0.001 + (0.02 - 0.014));
+    expect(catchAll.games).toBeCloseTo(0.01 + 0.037 + 0.006);
+    expect(chapterGames({ probs: { A: 0.1 } }, ['A'])).toBeUndefined();
   });
 });
