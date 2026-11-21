@@ -769,7 +769,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
                 {Math.round(prepared * 100)}%
               </span>
             ) : undefined,
-          extras: card && <CardBadge state={card.state} due={card.due} />,
+          // Due or when it's next due — not "new" for a move you haven't learned yet (most of a fresh line).
+          extras: card && card.state !== 0 && <CardBadge state={card.state} due={card.due} />,
         };
       })}
       notes={
@@ -933,8 +934,9 @@ function fitBoard(from: HTMLElement) {
   if (Math.abs(w - h) > 2) api.group.api.setSize({ width: api.group.api.width + (h - w) });
 }
 
+/** A learned move's training state in the explorer: due, or how long until it is. */
 function CardBadge({ state, due }: { state: number; due: number }) {
-  if (state === 0) return <span className="badge new">new</span>;
+  if (state === 0) return null;
   if (due <= Date.now()) return <span className="badge due">due</span>;
   const days = Math.round((due - Date.now()) / 86_400_000);
   return <span className="badge" title={`Next review ${new Date(due).toLocaleString()}`}>{days < 1 ? '<1d' : `${days}d`}</span>;
