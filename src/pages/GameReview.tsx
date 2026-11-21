@@ -1,4 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { QuickReview, ReviewTimer, type PrepSummary } from '../components/QuickReview';
+import { crucialSwings } from '../lib/quickReview';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { DockviewApi, DockviewPanelApi } from 'dockview-react';
 import type { Chess } from 'chessops/chess';
@@ -65,8 +67,14 @@ function sourceName(source: GameSource): string {
 export function GameReview({ id, initialPly }: { id: string; initialPly?: number }) {
   const game = useLiveQuery(() => db.games.get(id), [id]);
   const graphs = useAllGraphs();
-  // Reviewing your games: the games third (the Plan tab), per game — for its review timer too.
-  useActivityClock({ third: 'games', what: 'review', refId: id });
+  // Reviewing your games: the games third (the Plan tab), per game — for its review timer too, which
+  // adds the time of earlier visits to this one.
+  const reviewClock = useActivityClock({ third: 'games', what: 'review', refId: id });
+  const earlierReviews = useLiveQuery(() => db.activity.where('refId').equals(id).toArray(), [id]);
+  const spentMs = (earlierReviews ?? []).filter((a) => a.id !== reviewClock.id).reduce((t, a) => t + a.ms, 0) + reviewClock.ms;
+  // The game's positions you've been to this visit (for the quick review's ticks).
+  const visitedRef = useRef<{ id: string; plies: Set<number> }>({ id, plies: new Set() });
+  if (visitedRef.current.id !== id) visitedRef.current = { id, plies: new Set() };
   const stacked = useMediaQuery('(max-width: 900px)');
   const phone = useMediaQuery(PHONE_QUERY);
   // Coming back to a game (e.g. from the builder) finds it where you left it.
@@ -135,6 +143,8 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
 
   const r = result!;
   const devPly = r.ply;
+  // Where your opening knowledge ended: where you left your prep, or where it ran out.
+  const prepEndPly = devPly ?? (r.kind === 'end-of-prep' ? r.bookPlies : undefined);
   const last = replay.positions.length - 1;
   const cur = Math.min(cursor ?? devPly ?? Math.min(r.bookPlies, last), last);
   /** Go to a move of the game itself (side lines stay in the scoresheet). */
@@ -234,6 +244,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
   // Arrows: where you left your prep (your prepared moves vs what was played), and at the computer's
   // swings the move played (red) vs the engine's choice (green).
   const review = game.review;
+  if (!inLine) visitedRef.current.plies.add(cur);
   const allSwings = review ? swings(review) : [];
   const judged = new Map(allSwings.filter((s) => s.judgement).map((s) => [s.ply, s]));
   const top = new Set(review ? [...biggestSwingsFor(review, game.userColor), ...biggestSwingsFor(review, opposite(game.userColor))].map((s) => s.ply) : []);
@@ -466,9 +477,64 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
           .map((m) => <MoveNote key={m.id} id={sourcesOf(m)[0]} san={m.san} label="(your prep)" compact prompt autoFocus={popup ? false : undefined} />)}
     </>
   );
+  // The same, in one line for the quick review — what to do about it shows when the board is there.
+  const prepSummary = (): PrepSummary => {
+    const tone = r.kind === 'you-deviated' ? 'bad' : r.kind === 'opponent-deviated' ? 'hint' : 'good';
+    const text =
+      r.kind === 'you-deviated' ? (
+        <>
+          you played <b>{r.played}</b>; your prep says <b>{r.expected?.join(' or ')}</b>
+        </>
+      ) : r.kind === 'opponent-deviated' ? (
+        <>
+          {opp} played <b>{r.played}</b>, which your prep doesn't cover
+        </>
+      ) : r.kind === 'end-of-prep' ? (
+        <>your prep ran out after {Math.ceil(r.bookPlies / 2)} moves</>
+      ) : r.kind === 'still-in-book' ? (
+        <>the whole game stayed in your prep</>
+      ) : r.kind === 'other-opening' ? (
+        <>an opening that isn't in your repertoire ({r.played})</>
+      ) : (
+        <>
+          no {game.userColor} repertoire yet — <a href={href('repertoire')}>create one</a>
+        </>
+      );
+    const detail = (
+      <>
+        <PrepActions game={game} r={r} graph={graph} />
+        {r.kind === 'you-deviated' &&
+          r.key &&
+          graph
+            ?.childrenOf(r.key)
+            .filter((m) => m.mine)
+            .map((m) => <MoveNote key={m.id} id={sourcesOf(m)[0]} san={m.san} label="(your prep)" compact prompt autoFocus={false} />)}
+      </>
+    );
+    return { label: PREP_LABEL[r.kind], tone, text: <>{text}{r.rejoins?.length ? ' — then it transposed back into your prep' : ''}</>, detail };
+  };
+  const quick = (
+    <QuickReview
+      timeClass={game.timeClass}
+      spentMs={spentMs}
+      sans={replay.sans}
+      prep={prepSummary()}
+      prepPly={prepEndPly}
+      atPrep={!inLine && prepEndPly !== undefined && cur === prepEndPly}
+      swings={review?.complete !== false && review ? crucialSwings(review, game.timeClass) : undefined}
+      visited={visitedRef.current.plies}
+      takeaway={!!game.takeaways?.trim()}
+      done={!!game.reviewedAt}
+      onGo={goTo}
+    />
+  );
   const gamePanel = (
     <div className="panel col review-game" style={{ gap: 10 }}>
-      <div>
+      <div className="row review-game-head">
+        <a href={href('games')} className="btn small ghost" title="All games" aria-label="All games">
+          ←
+        </a>
+        <div className="col review-game-title">
         <div className="keep-case review-players">
           <b>{game.white}</b> {game.whiteElo ? <span className="muted">({game.whiteElo})</span> : null} – <b>{game.black}</b>{' '}
           {game.blackElo ? <span className="muted">({game.blackElo})</span> : null}
@@ -483,30 +549,25 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
             </a>
           )}
         </div>
-      </div>
-      {prepOutcome()}
-      <div className="row">
-        <a href={href('games')} className="btn small">
-          ← All games
-        </a>
+        </div>
+        <span className="spacer" />
         {game.source === 'otb' && (
-          <>
-            <a className="btn small" href={href(`games/edit/${encodeURIComponent(game.id)}`)}>
-              Edit game
-            </a>
+          <MoreMenu label="Game">
+            <button onClick={() => navigate(`games/edit/${encodeURIComponent(game.id)}`)}>Edit game</button>
             <button
-              className="small danger"
+              className="danger"
               onClick={async () => {
                 if (!confirm('Delete this game?')) return;
                 await db.games.delete(game.id);
                 navigate('games');
               }}
             >
-              Delete
+              Delete…
             </button>
-          </>
+          </MoreMenu>
         )}
       </div>
+      {quick}
     </div>
   );
 
@@ -600,7 +661,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
   if (phone) {
     // What the game did with your prep matters at one move — where it left your prep (or your prep
     // ran out) — so instead of a tab it pops up over the tabs when the board gets there.
-    const prepPly = devPly ?? (r.kind === 'end-of-prep' ? r.bookPlies : undefined);
+    const prepPly = prepEndPly;
     const atPrep = !inLine && prepPly !== undefined && cur === prepPly;
     // Closed for this visit: coming back to the move shows it again.
     if (prepClosed && !atPrep) setPrepClosed(false);
@@ -626,7 +687,17 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
           engine={<EnginePanel top fenKey={key} ply={plyHere} onPlay={(san) => play({ san })} onJump={playLine} />}
           tabs={[
             { id: 'moves', label: 'Moves', content: movesPanel },
-            { id: 'review', label: 'Review', content: reviewPanel },
+            {
+              id: 'review',
+              label: 'Review',
+              mark: <ReviewTimer compact spentMs={spentMs} timeClass={game.timeClass} />,
+              content: (
+                <>
+                  {quick}
+                  {reviewPanel}
+                </>
+              ),
+            },
             { id: 'explorer', label: 'Explorer', content: explorer },
             { id: 'notes', label: 'Notes', mark: game.reviewedAt ? <span className="ps-mark" title="Reviewed">✓</span> : undefined, content: takeaways },
           ]}

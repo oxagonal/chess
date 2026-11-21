@@ -1199,3 +1199,24 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
 @media (max-width: 700px) {
   .plan-third { grid-template-columns: 84px 1fr auto; }
 }
+
+/* ---------------------------------------------------- quick game review */
+.quick-review { gap: 6px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--bg2); }
+.qr-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.qr-steps li.done { color: var(--muted); }
+.qr-chip { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; white-space: nowrap; background: var(--panel3); color: var(--text); }
+.qr-chip.bad { background: rgba(224, 90, 85, 0.2); color: #f08a86; }
+.qr-chip.hint { background: rgba(232, 161, 60, 0.18); color: var(--warn); }
+.qr-chip.good { background: rgba(116, 185, 90, 0.18); color: var(--good); }
+.qr-detail { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; color: var(--text); }
+.qr-detail > .row { margin-top: 0 !important; }
+.review-game-head { align-items: flex-start; gap: 10px; flex-wrap: nowrap; }
+.review-game-title { gap: 2px; min-width: 0; }
+.qr-steps li.done::marker { content: '✓  '; color: var(--good); }
+.qr-steps .linklike { font-weight: 650; }
+.qr-steps .linklike.qr-seen { color: var(--muted); font-weight: 500; }
+.review-timer { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--good); white-space: nowrap; }
+.review-timer.near { color: var(--warn); }
+.review-timer.over { color: var(--bad); }
+.ps-tabs .review-timer { font-size: 11.5px; }
+.review-phone .quick-review { margin-bottom: 8px; }

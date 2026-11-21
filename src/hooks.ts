@@ -178,18 +178,19 @@ export function useNow(intervalMs = 30_000) {
 
 /**
  * Record the time spent here (services/activity) while the component is mounted — one activity per
- * visit; returns this visit's active time so far (ms), updated every few seconds. Undefined: nothing.
+ * visit; returns this visit's active time so far (ms), updated every few seconds, and its row's id.
+ * Undefined: nothing.
  */
-export function useActivityClock(spec: ActivitySpec | undefined): number {
-  const [ms, setMs] = useState(0);
+export function useActivityClock(spec: ActivitySpec | undefined): { ms: number; id?: string } {
+  const [state, setState] = useState<{ ms: number; id?: string }>({ ms: 0 });
   const key = spec ? `${spec.third}|${spec.topic ?? ''}|${spec.what}|${spec.refId ?? ''}` : '';
   useEffect(() => {
     if (!spec) return;
-    setMs(0);
-    const clock = new ActivityClock(spec, setMs);
+    const clock = new ActivityClock(spec, (ms) => setState({ ms, id: clock.id }));
+    setState({ ms: 0, id: clock.id });
     clock.begin();
     return () => clock.end();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return ms;
+  return state;
 }
