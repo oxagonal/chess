@@ -122,6 +122,22 @@ describe('writing a puzzle solution', () => {
     // Their turn now has several replies considered.
     expect(unconsidered(b.tree, b.tree.root, new Set())).toEqual([]);
   });
+  it("lets off a capture you didn't write when the solution just ends by taking back", () => {
+    // Doubled rooks: 1.Rd7 Qxd7 2.Rxd7. You wrote 1.Rd7 against …h6 and …g6, not …Qxd7.
+    const written = () => {
+      const tree = new MoveTree(posFromFen('6k1/5ppp/4q3/8/8/8/3R1PPP/3R2K1 w - - 0 1')!);
+      const rd7 = tree.add(tree.root, 'd2d7', 'mine')!;
+      tree.add(rd7, 'h7h6', 'mine');
+      tree.add(rd7, 'g7g6', 'mine');
+      return { tree, rd7 };
+    };
+    const { tree, rd7 } = written();
+    expect(gradeWritten(tree, tree.root, ['d2d7', 'e6d7', 'd1d7'])).toEqual({ win: true, recapture: { nodeId: rd7, reply: 'e6d7', answer: 'd1d7' } });
+    // If the solution goes on after taking back, you had to see that: still a miss.
+    expect(gradeWritten(written().tree, 'root', ['d2d7', 'e6d7', 'd1d7', 'g8f8', 'd7d8']).wrongAt).toMatchObject({ expected: 'e6d7', yours: false });
+    // An answer that isn't taking back on that square doesn't count as obvious.
+    expect(gradeWritten(written().tree, 'root', ['d2d7', 'e6d7', 'g1f1']).win).toBe(false);
+  });
   it("doesn't ask for other replies when theirs is the only legal move", () => {
     // Rh1+: the king on f6 covers g7, so Kg8 is Black's only move. After Rg1+ (pinning nothing), two.
     const tree = new MoveTree(posFromFen('7k/8/5K2/8/8/8/8/6R1 w - - 0 1')!);

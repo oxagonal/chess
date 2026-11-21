@@ -66,6 +66,14 @@ export function PuzzleSolver({
   const [, setVersion] = useState(0);
   const bump = () => setVersion((v) => v + 1);
   const [cursor, setCursor] = useState(built.beforeId);
+  // Writing: the position the board shows — the puzzle's, or one you clicked in the move list. Moves
+  // you enter after it don't move the board; they're drawn as numbered arrows from it.
+  const [view, setView] = useState<string>();
+  /** Go to a move (the list, ◀ ▶): the board shows it. */
+  const go = (id: string) => {
+    setCursor(id);
+    setView(id);
+  };
   const [phase, setPhase] = useState<'solve' | 'done'>('solve');
   const [only, setOnly] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -106,7 +114,7 @@ export function PuzzleSolver({
           mode === 'write' ? (
             <>
               Your turn ({you === 'white' ? 'White' : 'Black'}). <b>Write your solution without moving the pieces</b>: tap a piece's square, then
-              where it goes — as things stand in your line (the board stays on the puzzle). Your move, their best reply, your answer… and at each
+              where it goes — as things stand in your line (the board stays put; click a move in the list to see its position). Your move, their best reply, your answer… and at each
               of their turns their other sensible replies too. Nothing is checked until you say so.
             </>
           ) : (
@@ -146,7 +154,22 @@ export function PuzzleSolver({
   const check = () => {
     const g = gradeWritten(tree, startId, solution);
     addSolution();
-    if (g.win) {
+    if (g.win && g.recapture) {
+      const at = tree.get(g.recapture.nodeId);
+      const reply = playUci(at.pos, g.recapture.reply);
+      const answer = reply && playUci(reply.pos, g.recapture.answer);
+      setFeedback({
+        kind: 'good',
+        text: (
+          <>
+            ✓ Right — you didn't write {moveNumberPrefix(at.ply, true)}
+            {reply?.san}, but {moveNumberPrefix(at.ply + 1, true)}
+            {answer?.san} is the obvious recapture, so it counts.
+          </>
+        ),
+      });
+      flashFor('good');
+    } else if (g.win) {
       setFeedback({ kind: 'good', text: <>✓ Right — your lines have the solution, their best defence included.</> });
       flashFor('good');
     } else if (g.wrongAt) {
@@ -224,7 +247,8 @@ export function PuzzleSolver({
   };
   // Your line so far as arrows on the still board — yours green, theirs blue — each numbered in the
   // corner of the square it lands on.
-  const linePath = blind ? tree.path(cursor).filter((n) => n.id !== startId && tree.isUnder(n.id, startId)) : [];
+  const anchor = view !== undefined && tree.has(view) && tree.isUnder(cursor, view) && tree.isUnder(view, startId) ? view : startId;
+  const linePath = blind ? tree.path(cursor).filter((n) => n.id !== anchor && tree.isUnder(n.id, anchor)) : [];
   const lineArrows: Arrow[] = linePath.map((n) => ({ uci: n.uci, brush: n.pos.turn === you ? 'blue' : 'green' }));
   const lineLabels: SquareLabel[] = [];
   linePath.forEach((n, i) => {
@@ -236,7 +260,7 @@ export function PuzzleSolver({
       same.color = color;
     } else lineLabels.push({ square, text: String(i + 1), color });
   });
-  const shown = blind ? tree.get(startId) : node;
+  const shown = blind ? tree.get(anchor) : node;
 
   // "Same answer to…": at your answer to one of their moves, write it against their other moves too.
   const theirMove = blind && node.tags.includes('mine') && node.pos.turn !== you && node.parent ? tree.get(node.parent) : undefined;
@@ -310,12 +334,12 @@ export function PuzzleSolver({
     phase === 'done' || (mode === 'write' ? tree.isUnder(cursor, startId) : cursor === tip && node.pos.turn === you && cursor !== built.beforeId);
 
   /* ---- moving around ---- */
-  const back = () => node.parent && setCursor(node.parent);
+  const back = () => node.parent && go(node.parent);
   // Once it's over, ▶ follows the solution where there's a choice.
   const forward = () => {
     const kids = tree.children(cursor);
     const next = (phase === 'done' && kids.find((k) => k.tags.includes('solution'))) || kids[0];
-    if (next) setCursor(next.id);
+    if (next) go(next.id);
   };
   const nav = useRef({ back, forward });
   nav.current = { back, forward };
@@ -372,7 +396,7 @@ export function PuzzleSolver({
         />
         {strip(you)}
         <div className="row puzzle-nav">
-          <button onClick={() => setCursor(tree.root)} aria-label="Start of the game" title="Start of the game">
+          <button onClick={() => go(tree.root)} aria-label="Start of the game" title="Start of the game">
             ⏮
           </button>
           <button onClick={back} aria-label="Back" title="Back (←)">
@@ -381,7 +405,7 @@ export function PuzzleSolver({
           <button onClick={forward} aria-label="Forward" title="Forward (→)">
             ▶
           </button>
-          <button onClick={() => setCursor(startId)} title="The puzzle's position">
+          <button onClick={() => go(startId)} title="The puzzle's position">
             Puzzle
           </button>
         </div>
@@ -411,7 +435,7 @@ export function PuzzleSolver({
         </div>
         {error && <div className="error small">{error}</div>}
         <div className="panel col puzzle-tree" style={{ gap: 8 }}>
-          <MoveTreeView tree={tree} cursor={cursor} onSelect={setCursor} wrong={wrong} />
+          <MoveTreeView tree={tree} cursor={cursor} onSelect={go} wrong={wrong} />
           {mode === 'write' && phase === 'solve' && (
             <>
               {blind && (
@@ -507,7 +531,7 @@ export function PuzzleSolver({
                     return (
                       <span key={id}>
                         {i > 0 && ', '}
-                        <button className="linklike" onClick={() => setCursor(id)}>
+                        <button className="linklike" onClick={() => go(id)}>
                           {moveNumberPrefix(n.ply - 1, true)}
                           {n.san}
                         </button>

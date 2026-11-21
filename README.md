@@ -97,11 +97,12 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   difficulty you pick. By default you write the whole solution first, branches included, without moving the
   pieces: the board stays on the puzzle while you tap a piece's square and where it goes as things stand in
   your line (or drag it, with either mouse button, as if drawing an arrow; or type it), your line shows as
-  numbered arrows (or none, all in your head), and one answer to many replies ("any king move, then Qxa8")
+  numbered arrows (or none, all in your head), a click on a move in the list (or ◀ ▶) shows its position
+  with what you enter after it as arrows from there, and one answer to many replies ("any king move, then Qxa8")
   is two clicks: "same answer to every king move / every other reply". Before you can check it every reply
   on your main line needs another one considered (or "only one sensible reply", unless it's their only legal
-  move) — then it's checked against Lichess's solution (any mate
-  counts, as on Lichess). Afterwards the puzzle is a small study: the game from move 1 with the players'
+  move) — then it's checked against Lichess's solution (any mate counts, as on Lichess, and a capture you
+  didn't write is let off when the solution simply ends by taking back: 29…Qxd8 30.Rxd8). Afterwards the puzzle is a small study: the game from move 1 with the players'
   names, titles and ratings, step back and forth, play any move, Stockfish with clickable lines. Unchecking
   "Write the solution first" gives the usual move-by-move solving. Puzzles come in blocks whose size you pick
   before you start (10 by default), against tilt: your rating stays hidden until the block ends; after a miss

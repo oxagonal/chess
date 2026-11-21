@@ -170,12 +170,26 @@ export interface WrittenGrade {
   win: boolean;
   /** Where it went wrong: the position, and the solution's move there. */
   wrongAt?: { nodeId: string; expected: string; yours: boolean };
+  /**
+   * Their capture you didn't write, let off: the solution ends with you simply taking back on that
+   * square — obvious enough that writing it out would be busywork.
+   */
+  recapture?: { nodeId: string; reply: string; answer: string };
+}
+
+/** Is `answer` (after their `reply` from `pos`) taking back on the square they just captured on? */
+function isRecapture(pos: Chess, reply: string, answer: string): boolean {
+  const theirs = playUci(pos, reply);
+  if (!theirs || !theirs.san.includes('x')) return false;
+  const yours = playUci(theirs.pos, answer);
+  return !!yours && yours.san.includes('x') && yours.uci.slice(2, 4) === theirs.uci.slice(2, 4);
 }
 
 /**
  * Check your written solution against the puzzle's: along the solution, at each of your turns one of
  * your written moves must be right (the solution's, or any move that mates, as on Lichess), and at each
- * of theirs you must have written their move.
+ * of theirs you must have written their move — except a capture the solution simply ends by taking back
+ * (29…Qxd8 30.Rxd8): nobody needs to write down that they'd recapture.
  */
 export function gradeWritten(tree: MoveTree, startId: string, solution: readonly string[]): WrittenGrade {
   let id = startId;
@@ -189,7 +203,11 @@ export function gradeWritten(tree: MoveTree, startId: string, solution: readonly
       id = right.id;
     } else {
       const reply = written.find((k) => k.uci === solution[step]);
-      if (!reply) return { win: false, wrongAt: { nodeId: id, expected: solution[step], yours: false } };
+      if (!reply) {
+        if (step + 2 === solution.length && isRecapture(node.pos, solution[step], solution[step + 1]))
+          return { win: true, recapture: { nodeId: id, reply: solution[step], answer: solution[step + 1] } };
+        return { win: false, wrongAt: { nodeId: id, expected: solution[step], yours: false } };
+      }
       id = reply.id;
     }
   }
