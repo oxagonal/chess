@@ -225,6 +225,42 @@ export function withSharedLineNote(lines: readonly SavedLine[], line: SavedLine,
 }
 
 /**
+ * Delete move `index` of `line` and everything after it — in every line through that move (as the
+ * tree shows them merged). A line cut back to nothing, or to moves another line already has, goes;
+ * otherwise it's kept shortened, notes on its remaining moves and all. Returns the lines, and a line
+ * that still has the moves before the deleted one (to stay in), if any.
+ */
+export function deleteFromMove(lines: readonly SavedLine[], line: SavedLine, index: number): { lines: SavedLine[]; keep?: SavedLine } {
+  const through = sharing(line, index + 1);
+  const out: SavedLine[] = [];
+  let keep: SavedLine | undefined;
+  for (const l of lines) {
+    if (!through(l)) {
+      out.push(l);
+      continue;
+    }
+    if (index === 0 || keep) continue;
+    const notes = Object.fromEntries(Object.entries(l.notes ?? {}).filter(([i]) => Number(i) < index));
+    const { notes: _old, ...rest } = l;
+    keep = { ...rest, sans: l.sans.slice(0, index), ...(Object.keys(notes).length ? { notes } : {}) };
+    out.push(keep);
+  }
+  // Another line through the same first moves already shows them: the cut-back one isn't needed.
+  if (keep) {
+    const cut = keep;
+    const other = out.find((l) => l !== cut && sharing(cut, index)(l));
+    if (other) return { lines: out.filter((l) => l !== cut), keep: other };
+  }
+  return { lines: out, keep };
+}
+
+/** Whether deleting move `index` of `line` onward would lose notes (on it or a later move of a line through it). */
+export function deleteLosesNotes(lines: readonly SavedLine[], line: SavedLine, index: number): boolean {
+  const through = sharing(line, index + 1);
+  return lines.some((l) => through(l) && Object.keys(l.notes ?? {}).some((i) => Number(i) >= index));
+}
+
+/**
  * Whether move `index` of `line` is a branch that isn't first among the moves played at its spot —
  * only those can be promoted. (A side line never replaces the game's own move.)
  */

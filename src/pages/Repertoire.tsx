@@ -360,7 +360,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // Right-click (long-press on touch) a saved move to annotate it: symbols and a note, like a Lichess
   // study. Not in Play from memory. `ply` is the move's place from the start (for its move number).
   const annotate = (m: RepMove | undefined, ply: number) =>
-    m && !zen ? annotateProps((x, y) => setNoteTarget({ id: sourcesOf(m)[0], sources: sourcesOf(m), san: m.san, ply, x, y })) : {};
+    m && !zen ? annotateProps((x, y) => setNoteTarget({ id: sourcesOf(m)[0], sources: sourcesOf(m), moveId: m.id, san: m.san, ply, x, y })) : {};
   // A saved move as written in the notation: its symbols after it, colored like Lichess.
   // (A move marked not to train is struck through, in red.)
   const shown = (m: RepMove) => ({
@@ -605,7 +605,13 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           />
         )}
       </div>
-      {noteTarget && <RepAnnotationMenu target={noteTarget} onClose={() => setNoteTarget(null)} />}
+      {noteTarget && (
+        <RepAnnotationMenu
+          target={noteTarget}
+          onClose={() => setNoteTarget(null)}
+          onDelete={noteTarget.moveId ? () => void removeMove(noteTarget.moveId!, noteTarget.san) : undefined}
+        />
+      )}
       {asking && (
         <ChooseChapter
           ids={asking.ids}
@@ -1108,10 +1114,10 @@ function ChooseChapter({ ids, onPick }: { ids: string[]; onPick: (id?: string) =
   );
 }
 
-type RepAnnotationTarget = AnnotationTarget & { id: string; sources?: string[] };
+type RepAnnotationTarget = AnnotationTarget & { id: string; sources?: string[]; /** The move in the builder's graph (to delete it). */ moveId?: string };
 
 /** The annotation menu for a saved repertoire move: reads the move's latest symbols and note, saves as you go. */
-function RepAnnotationMenu({ target, onClose }: { target: RepAnnotationTarget; onClose: () => void }) {
+function RepAnnotationMenu({ target, onClose, onDelete }: { target: RepAnnotationTarget; onClose: () => void; onDelete?: () => void }) {
   const move = useLiveQuery(() => db.moves.get(target.id), [target.id]);
   if (!move) return null;
   return (
@@ -1135,6 +1141,18 @@ function RepAnnotationMenu({ target, onClose }: { target: RepAnnotationTarget; o
             </button>
           )}
           <SplitOffForm move={move} onDone={onClose} />
+          {onDelete && (
+            <button
+              className="small ghost danger"
+              title="Delete this move — and the moves only it leads to — from the repertoire"
+              onClick={() => {
+                onClose();
+                onDelete();
+              }}
+            >
+              🗑 Delete this move
+            </button>
+          )}
         </>
       }
     />

@@ -853,7 +853,6 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .rejoin-note b:first-child { color: var(--mine); }
 /* A line you're trying: a side line under the row where it leaves the game. */
 .review-moves .ml-side .mv.current, .ml-inline .mv.current { background: var(--accent2); color: #fff; border-radius: 4px; }
-.review-moves .tried-remove { min-height: 0; padding: 0 6px; margin-left: 4px; font-size: 12px; }
 /* Annotation symbols, colored like Lichess (the move takes the symbol's color). */
 .ml-move.g-brilliant, .ml-side .mv.g-brilliant, .ml-inline .mv.g-brilliant, .anno-glyph.g-brilliant { color: #2fc2a5; }
 .ml-move.g-good, .ml-side .mv.g-good, .ml-inline .mv.g-good, .anno-glyph.g-good { color: #7cc35a; }

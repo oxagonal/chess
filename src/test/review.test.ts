@@ -206,3 +206,30 @@ describe('what a game says to work on', () => {
     expect(toggleTag(['Tactics', 'Endgames'], 'tactics', o)).toEqual(['Endgames']);
   });
 });
+
+describe('deleting a move of a tried line', () => {
+  it('cuts every line through it, keeping what another line already shows only once', async () => {
+    const { deleteFromMove, deleteLosesNotes } = await import('../lib/annotations');
+    const A: SavedLine = { id: 'A', from: 10, sans: ['e4', 'e5', 'Nf3'], notes: { '0': { comment: 'main' }, '2': { glyphs: ['!'] } } };
+    const B: SavedLine = { id: 'B', from: 10, sans: ['e4', 'e5', 'Bc4'], notes: { '0': { comment: 'main' } } };
+    const C: SavedLine = { id: 'C', from: 4, sans: ['d4'] };
+    // Nf3 (A's 3rd move): A is cut back to e4 e5, which B already has — A goes, B stays, C untouched.
+    let r = deleteFromMove([A, B, C], A, 2);
+    expect(r.lines.map((l) => l.id)).toEqual(['B', 'C']);
+    expect(r.keep?.id).toBe('B');
+    // e5 (shared by A and B): both go back to e4, as one line, its note kept.
+    r = deleteFromMove([A, B, C], A, 1);
+    expect(r.lines.map((l) => [l.id, l.sans.join(' ')])).toEqual([
+      ['A', 'e4'],
+      ['C', 'd4'],
+    ]);
+    expect(r.lines[0].notes).toEqual({ '0': { comment: 'main' } });
+    // The first move: every line through it goes.
+    r = deleteFromMove([A, B, C], B, 0);
+    expect(r.lines.map((l) => l.id)).toEqual(['C']);
+    expect(r.keep).toBeUndefined();
+    // Losing notes: A's ! on Nf3 goes with it; deleting Bc4 loses none.
+    expect(deleteLosesNotes([A, B, C], A, 2)).toBe(true);
+    expect(deleteLosesNotes([A, B, C], B, 2)).toBe(false);
+  });
+});

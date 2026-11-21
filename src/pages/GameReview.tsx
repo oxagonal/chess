@@ -14,6 +14,8 @@ import { keyOf, opposite, playSan, playUci, startPos } from '../lib/chess';
 import { biggestSwingsFor, formatEvalShort, JUDGEMENT_GLYPH, swings } from '../lib/review';
 import {
   canPromote,
+  deleteFromMove,
+  deleteLosesNotes,
   glyphClass,
   glyphName,
   lineTree,
@@ -370,22 +372,6 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
                   // Stay in the line you're in where it goes through this move.
                   setSel({ id: onIt ? sel!.id : n.line.id, at: n.index + 1 });
                 },
-                tail: n.ends.length ? (
-                  <button
-                    className="ghost small tried-remove"
-                    title="Remove this line"
-                    aria-label="Remove this line"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!confirm('Remove this side line?')) return;
-                      const gone = new Set(n.ends.map((l) => l.id));
-                      writeLines(lines.filter((x) => !gone.has(x.id)));
-                      if (sel && gone.has(sel.id)) setSel(null);
-                    }}
-                  >
-                    ✕
-                  </button>
-                ) : undefined,
                 next: n.next.map(toNode),
               };
             };
@@ -537,6 +523,27 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
               }}
             >
               ↑ Promote variation
+            </button>
+          )}
+          {menuLine && (
+            <button
+              className="small danger"
+              title="Delete this move and everything after it in the lines you tried (the game itself isn't changed)"
+              onClick={() => {
+                const i = menu.index!;
+                if (deleteLosesNotes(lines, menuLine, i) && !confirm(`Delete ${menu.san} and what follows? Notes on those moves go too.`)) return;
+                const r = deleteFromMove(lines, menuLine, i);
+                writeLines(r.lines);
+                // The board stays where the deleted move was played from.
+                if (r.keep && i > 0) setSel({ id: r.keep.id, at: i });
+                else {
+                  setSel(null);
+                  setCursor(menuLine.from);
+                }
+                closeMenu();
+              }}
+            >
+              🗑 Delete from here
             </button>
           )}
           {/* The position after this move in your whole repertoire of this color, ready to add moves. */}
