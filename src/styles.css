@@ -595,6 +595,7 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .choose { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
 .choose-board { width: min(360px, 100%); flex: none; }
 .choose-options { flex: 1 1 300px; min-width: 0; }
+.choose-option.elsewhere { cursor: default; border-color: color-mix(in srgb, var(--accent2) 45%, var(--border-soft)); }
 .choose-option { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg2); cursor: pointer; }
 .choose-option.off { opacity: .55; }
 .choose-san { font-size: 16px; min-width: 52px; }

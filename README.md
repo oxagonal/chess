@@ -23,7 +23,8 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   position, so transposed move orders land together); rename, merge or leave out suggestions first.
 - **Import wizard** — Repertoire → *Import a Lichess study or PGN*: study chapters become chapters (or go into
   existing ones), opponent replies rarer than 1 in N can be trimmed, and every position where the study gives
-  you more than one move is shown on a board, with explorer stats, to keep one, some or all.
+  you more than one move — or a different move from one of your other chapters (a clash with your prep, found
+  by position, transpositions too) — is shown on a board, with explorer stats, to keep one, some or all.
 - **Repertoire builder** — build White and Black repertoires move by move on the board, with the Lichess
   opening explorer (at *your* rating), the masters database and your own games alongside. Positions are
   merged by FEN, so transpositions are handled automatically. A live **coverage score** shows, for the

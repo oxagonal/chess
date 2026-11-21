@@ -9,7 +9,7 @@ import { colorName, loadScope } from '../db/scopes';
 import { statsProvider, type StatsProvider } from '../services/coverage';
 import { onExplorerStatus } from '../services/explorer';
 import { reachProbabilities } from '../lib/coverage';
-import { alternativesIn, importGraph, keptEdges, reachable, studyChapters, trimByReach, type StudyChapter } from '../lib/importPlan';
+import { alternativesIn, clashesIn, importGraph, keptEdges, movesByPosition, reachable, studyChapters, trimByReach, type Alternative, type Elsewhere, type StudyChapter } from '../lib/importPlan';
 import { formatLine, posFromFen, type Color } from '../lib/chess';
 import { RepGraph } from '../lib/graph';
 import { byName, matchChapter } from '../lib/chapters';
@@ -65,6 +65,8 @@ interface Plan {
   trimmed: Set<string>;
   /** Your moves you chose not to keep. */
   removed: Set<string>;
+  /** Your moves in your other chapters of this color, by position: where the import would clash with them. */
+  others: Map<string, Elsewhere[]>;
 }
 
 const keptOf = (p: Plan) => reachable(p.graph, (m) => (p.trimmed.has(m.id) || p.locked.has(m.id)) && !p.removed.has(m.id));
@@ -73,12 +75,19 @@ const keptOf = (p: Plan) => reachable(p.graph, (m) => (p.trimmed.has(m.id) || p.
  * Positions where the import gives you more than one move, with every option (unticked ones too, so
  * you can tick them back) — as long as the moves you've kept still reach the position.
  */
-function choicesOf(p: Plan) {
+function choicesOf(p: Plan): Choice[] {
   const base = reachable(p.graph, (m) => p.trimmed.has(m.id) || p.locked.has(m.id));
   const kept = keptOf(p);
   const reached = new Set([p.graph.root, ...[...kept].map((id) => p.graph.byId.get(id)!.toKey)]);
-  return alternativesIn(p.graph, base).filter((a) => reached.has(a.key));
+  const byKey = new Map<string, Choice>(alternativesIn(p.graph, base).filter((a) => reached.has(a.key)).map((a) => [a.key, { ...a, elsewhere: [] }]));
+  // Where your other chapters already have a different move: even with one move from the import.
+  for (const c of clashesIn(p.graph, base, reached, (m) => !p.locked.has(m.id), p.others)) {
+    byKey.set(c.key, { ...(byKey.get(c.key) ?? c), elsewhere: c.elsewhere });
+  }
+  return [...byKey.values()].sort((a, b) => a.path.length - b.path.length || (a.path.join(' ') < b.path.join(' ') ? -1 : 1));
 }
+
+type Choice = Alternative & { elsewhere: Elsewhere[] };
 
 /**
  * Import a Lichess study or PGN as chapters: pick and name its chapters, trim opponent replies too
@@ -127,11 +136,16 @@ export function ImportWizard({ chapters, onClose }: { chapters: Chapter[]; onClo
       ? [{ ...combined, edges: parsed.filter((_, i) => rows[i].include).flatMap((c) => c.edges) }]
       : parsed.flatMap((c, i) => (rows[i].include ? [{ ...rows[i], edges: c.edges }] : []));
     const out: Plan[] = [];
+    const [allChapters, allMoves] = await Promise.all([db.repertoires.toArray(), db.moves.toArray()]);
+    const chapterOf = new Map(allChapters.map((c) => [c.id, c]));
     for (const g of groups) {
-      const existing = g.target === 'new' ? [] : await db.moves.where('repId').equals(g.target).toArray();
+      const existing = g.target === 'new' ? [] : allMoves.filter((m) => m.repId === g.target);
       const graph = importGraph(g.color, g.edges, existing);
       const locked = new Set(existing.map((m) => `import|${m.fromKey}|${m.san}`));
-      out.push({ name: g.name, color: g.color, target: g.target, graph, locked, trimmed: new Set(graph.byId.keys()), removed: new Set() });
+      // Your other chapters of this color: the import is checked against them too.
+      const elsewhere = allMoves.filter((m) => m.repId !== g.target && chapterOf.get(m.repId)?.color === g.color);
+      const others = movesByPosition(elsewhere, (id) => chapterOf.get(id)?.name ?? 'another chapter');
+      out.push({ name: g.name, color: g.color, target: g.target, graph, locked, trimmed: new Set(graph.byId.keys()), removed: new Set(), others });
     }
     setPlans(out);
     setStep('trim');
@@ -552,7 +566,7 @@ function ChooseStep({ plans, setPlans, onBack, onNext }: { plans: Plan[]; setPla
   if (!all.length)
     return (
       <div className="col" style={{ gap: 10 }}>
-        <div className="note">No position gives you more than one move — nothing to choose.</div>
+        <div className="note">No position gives you more than one move, or a different move from your other chapters — nothing to choose.</div>
         <div className="row">
           <button className="ghost" onClick={onBack}>
             Back
@@ -585,7 +599,7 @@ function ChooseStep({ plans, setPlans, onBack, onNext }: { plans: Plan[]; setPla
     return (
       <div className="col" style={{ gap: 10 }}>
         <div className="note">
-          All {all.length} position{all.length === 1 ? '' : 's'} with more than one move of yours reviewed.
+          All {all.length} position{all.length === 1 ? '' : 's'} with more than one move of yours (or a different move in another chapter) reviewed.
         </div>
         <div className="row">
           <button className="ghost" onClick={() => setReviewed(new Set())}>
@@ -603,7 +617,11 @@ function ChooseStep({ plans, setPlans, onBack, onNext }: { plans: Plan[]; setPla
   const pos = posFromFen(cur.a.key);
   const s = stats.get(cur.a.key);
   const options = cur.a.options;
-  const arrows: Arrow[] = options.map((m) => ({ uci: m.uci, brush: plan.removed.has(m.id) ? 'paleGrey' : 'green' }));
+  const elsewhere = cur.a.elsewhere;
+  const arrows: Arrow[] = [
+    ...options.map((m): Arrow => ({ uci: m.uci, brush: plan.removed.has(m.id) ? 'paleGrey' : 'green' })),
+    ...elsewhere.map((e): Arrow => ({ uci: e.uci, brush: 'blue' })),
+  ];
   const keptCount = options.filter((m) => !plan.removed.has(m.id)).length;
   const done = all.length - todo.length;
 
@@ -626,7 +644,16 @@ function ChooseStep({ plans, setPlans, onBack, onNext }: { plans: Plan[]; setPla
           )}
         </div>
         <div className="col choose-options" style={{ gap: 8 }}>
-          <div className="muted small">The study gives you {options.length} moves here. Keep the ones you'll play:</div>
+          <div className="muted small">
+            {elsewhere.length ? (
+              <>
+                <b className="warn-text">Your other prep plays {elsewhere.map((e) => e.san).join(' / ')} here</b> (blue) — keep the study's move as
+                well (you'll know both), or untick it to stay with yours:
+              </>
+            ) : (
+              <>The study gives you {options.length} moves here. Keep the ones you'll play:</>
+            )}
+          </div>
           {options.map((m) => {
             const ms = s?.moves.find((x) => x.san === m.san);
             const games = ms ? moveGames(ms) : 0;
@@ -653,13 +680,33 @@ function ChooseStep({ plans, setPlans, onBack, onNext }: { plans: Plan[]; setPla
               </label>
             );
           })}
+          {elsewhere.map((e) => {
+            const ms = s?.moves.find((x) => x.san === e.san);
+            const games = ms ? moveGames(ms) : 0;
+            return (
+              <div key={e.san} className="choose-option elsewhere" title="Already in another chapter — the import doesn't change it">
+                <input type="checkbox" checked disabled aria-label={`${e.san} (in ${e.chapter})`} />
+                <b className="choose-san">{e.san}</b>
+                <span className="chip">in “{e.chapter}”</span>
+                <span className="spacer" />
+                {ms && s ? (
+                  <>
+                    <span className="muted small">{Math.round((games / Math.max(1, s.total)) * 100)}%</span>
+                    <span className="choose-wdl">
+                      <WdlBar white={ms.white} draws={ms.draws} black={ms.black} />
+                    </span>
+                  </>
+                ) : null}
+              </div>
+            );
+          })}
           <div className="row">
             <button className="small" onClick={keepAllHere}>
               Keep all
             </button>
             <span className="spacer" />
-            <button className="primary small" disabled={keptCount === 0} onClick={() => setReviewed(new Set(reviewed).add(cur.id))}>
-              {keptCount === options.length ? 'Keep all, next' : `Keep ${keptCount}, next`}
+            <button className="primary small" disabled={keptCount === 0 && !elsewhere.length} onClick={() => setReviewed(new Set(reviewed).add(cur.id))}>
+              {keptCount === 0 ? 'Keep only yours, next' : keptCount === options.length ? (elsewhere.length ? 'Keep both, next' : 'Keep all, next') : `Keep ${keptCount}, next`}
             </button>
           </div>
           <div className="muted small">Unticking a move drops everything that only it leads to (other positions to choose in update to match).</div>

@@ -66,3 +66,41 @@ describe('importing a study', () => {
     expect(sans).toContain('f3');
   });
 });
+
+describe('clashes with your other chapters', () => {
+  it('finds where an import gives you a different move than another chapter (Center Attack vs Pianissimo)', async () => {
+    const { clashesIn, movesByPosition } = await import('../lib/importPlan');
+    const { movesFromLines } = await import('../lib/lines');
+    const { pgnToEdges } = await import('../lib/pgn');
+    const pianissimo = movesFromLines('p', 'white', ['e4 e5 Nf3 Nc6 Bc4 Bc5 d3 Nf6 c3']);
+    const others = movesByPosition(pianissimo, () => 'Giuoco Pianissimo');
+    const { edges } = pgnToEdges('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d4 *');
+    const graph = importGraph('white', edges);
+    const all = new Set(graph.byId.keys());
+    const reached = new Set([graph.root, ...[...graph.byId.values()].map((m) => m.toKey)]);
+    const clashes = clashesIn(graph, all, reached, () => true, others);
+    // Only after 3...Bc5: the study's 4.c3 against the chapter's 4.d3 (1.e4, 2.Nf3 and 3.Bc4 agree).
+    // After 4.c3 Nf6 the study plays 5.d4; the Pianissimo reaches 4.d3 Nf6 5.c3 — a different position.
+    expect(clashes.map((c) => c.path.join(' '))).toEqual(['e4 e5 Nf3 Nc6 Bc4 Bc5']);
+    expect(clashes[0].options.map((m) => m.san)).toEqual(['c3']);
+    expect(clashes[0].elsewhere).toEqual([{ san: 'd3', uci: 'd2d3', chapter: 'Giuoco Pianissimo' }]);
+  });
+
+  it('finds a clash reached by transposition, and none where the import adds nothing of yours', async () => {
+    const { clashesIn, movesByPosition } = await import('../lib/importPlan');
+    const { movesFromLines } = await import('../lib/lines');
+    const { pgnToEdges } = await import('../lib/pgn');
+    // Your chapter: 1.e4 e5 2.Bc4 Nf6 3.d3. The study gets to the same position as 1.e4 Nf6 2.Bc4 e5,
+    // then plays 3.Nc3.
+    const mine = movesFromLines('m', 'white', ['e4 e5 Bc4 Nf6 d3']);
+    const others = movesByPosition(mine, () => 'Bishop’s Opening');
+    const { edges } = pgnToEdges('1. e4 Nf6 2. Bc4 e5 3. Nc3 *');
+    const graph = importGraph('white', edges);
+    const all = new Set(graph.byId.keys());
+    const reached = new Set([graph.root, ...[...graph.byId.values()].map((m) => m.toKey)]);
+    const clashes = clashesIn(graph, all, reached, () => true, others);
+    expect(clashes.map((c) => c.options.map((m) => m.san).join() + ' vs ' + c.elsewhere.map((e) => e.san).join())).toEqual(['Nc3 vs d3']);
+    // If none of the moves there are the import's own (all already in the chapter), it isn't flagged.
+    expect(clashesIn(graph, all, reached, () => false, others)).toEqual([]);
+  });
+});

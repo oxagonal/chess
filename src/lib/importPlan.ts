@@ -118,6 +118,60 @@ export function alternativesIn(graph: RepGraph, kept: ReadonlySet<string>): Alte
   return out.sort((a, b) => a.path.length - b.path.length || (a.path.join(' ') < b.path.join(' ') ? -1 : 1));
 }
 
+/** A move of yours another chapter already has, at a position an import reaches. */
+export interface Elsewhere {
+  san: string;
+  uci: string;
+  /** The chapter(s) that have it, by name. */
+  chapter: string;
+}
+
+/** Your moves in some chapters, by the position they're played from (mine only; one entry per move). */
+export function movesByPosition(moves: readonly RepMove[], chapterName: (repId: string) => string): Map<string, Elsewhere[]> {
+  const out = new Map<string, Elsewhere[]>();
+  for (const m of moves) {
+    if (!m.mine) continue;
+    const list = out.get(m.fromKey) ?? [];
+    const had = list.find((e) => e.san === m.san);
+    const name = chapterName(m.repId);
+    if (had) {
+      if (!had.chapter.split(', ').includes(name)) had.chapter += `, ${name}`;
+    } else list.push({ san: m.san, uci: m.uci, chapter: name });
+    out.set(m.fromKey, list);
+  }
+  return out;
+}
+
+/**
+ * Where an import would clash with your other chapters: positions it reaches (`reached`), your turn,
+ * where it adds a move of yours (`incoming`) but another chapter already plays something else there —
+ * so you'd end up with two moves to know. With the import's options there (`options`, from `base`) and
+ * the other chapters' moves it doesn't have (`elsewhere`). Positions match by position, so a
+ * transposition into your other prep counts too.
+ */
+export function clashesIn(
+  graph: RepGraph,
+  base: ReadonlySet<string>,
+  reached: ReadonlySet<string>,
+  incoming: (m: RepMove) => boolean,
+  others: ReadonlyMap<string, readonly Elsewhere[]>,
+): (Alternative & { elsewhere: Elsewhere[] })[] {
+  const out: (Alternative & { elsewhere: Elsewhere[] })[] = [];
+  for (const key of reached) {
+    if (!graph.isMyTurn(key)) continue;
+    const there = others.get(key);
+    if (!there?.length) continue;
+    const options = graph.childrenOf(key).filter((m) => base.has(m.id));
+    if (!options.some(incoming)) continue;
+    const elsewhere = there.filter((e) => !options.some((m) => m.san === e.san));
+    if (!elsewhere.length) continue;
+    const path = graph.pathTo(key);
+    if (!path) continue;
+    out.push({ key, path: path.map((m) => m.san), options, elsewhere });
+  }
+  return out;
+}
+
 /** The kept moves as edges to save, with their notes and symbols. */
 export function keptEdges(graph: RepGraph, kept: ReadonlySet<string>): ImportedEdge[] {
   return [...graph.byId.values()]
