@@ -24,6 +24,9 @@ export function trainable<M extends RepMove>(color: Color, moves: readonly M[]):
   return kept.filter((m) => reach.has(m.fromKey));
 }
 
+/** Alphabetical by name, for lists of chapters and repertoires to pick from ("#2" before "#10"). */
+export const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+
 /** A move's card: `${fromKey}|${san}` (your color is the side to move in fromKey). */
 export function cardIdOf(m: { fromKey: string; san: string }): string {
   return `${m.fromKey}|${m.san}`;

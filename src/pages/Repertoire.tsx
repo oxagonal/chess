@@ -9,7 +9,7 @@ import { useOpeningIndex } from '../components/ChapterTree';
 import { ChaptersPanel, ChapterSwitcher } from '../components/ChaptersPanel';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
 import { PHONE_QUERY, useCards, useCoverage, useMediaQuery, useRepGraph } from '../hooks';
-import { cardIdOf, cardsOf } from '../lib/chapters';
+import { byName, cardIdOf, cardsOf } from '../lib/chapters';
 import { colorName, useScopeGraph } from '../db/scopes';
 import type { StudioPanelDef } from '../components/Studio';
 // The studio (dockview) loads only when the desktop builder opens it — phones never download it.
@@ -1211,7 +1211,7 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
       <div className="anno-label">Split off from {move.san}</div>
       <select value={into} onChange={(e) => setInto(e.target.value)} aria-label="Into">
         <option value="new">Into a new chapter</option>
-        {(others ?? []).map((c) => (
+        {[...(others ?? [])].sort(byName).map((c) => (
           <option key={c.id} value={c.id}>
             Into “{c.name}”
           </option>

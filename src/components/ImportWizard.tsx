@@ -12,7 +12,7 @@ import { reachProbabilities } from '../lib/coverage';
 import { alternativesIn, importGraph, keptEdges, reachable, studyChapters, trimByReach, type StudyChapter } from '../lib/importPlan';
 import { formatLine, posFromFen, type Color } from '../lib/chess';
 import { RepGraph } from '../lib/graph';
-import { matchChapter } from '../lib/chapters';
+import { byName, matchChapter } from '../lib/chapters';
 import { moveGames, type Chapter, type PositionStats, type RepMove } from '../lib/types';
 import type { ImportedEdge } from '../lib/pgn';
 import { Board, type Arrow } from './Board';
@@ -312,6 +312,7 @@ function TargetSelect({ value, color, chapters, onChange }: { value: string; col
       <option value="new">New chapter</option>
       {chapters
         .filter((c) => c.color === color)
+        .sort(byName)
         .map((c) => (
           <option key={c.id} value={c.id}>
             Add to “{c.name}”

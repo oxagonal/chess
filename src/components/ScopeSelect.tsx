@@ -1,4 +1,5 @@
 import { COLORS, colorName, repertoireScopeId } from '../db/scopes';
+import { byName } from '../lib/chapters';
 import type { Chapter, Collection } from '../lib/types';
 
 /** The first scope worth showing: all of the first color that has chapters. */
@@ -30,7 +31,7 @@ export function ScopeSelect({
       </optgroup>
       {collections.length > 0 && (
         <optgroup label="Repertoires">
-          {collections.map((r) => (
+          {[...collections].sort(byName).map((r) => (
             <option key={r.id} value={repertoireScopeId(r.id)}>
               {r.name} ({r.color})
             </option>
@@ -38,7 +39,7 @@ export function ScopeSelect({
         </optgroup>
       )}
       <optgroup label="Chapters">
-        {chapters.map((r) => (
+        {[...chapters].sort(byName).map((r) => (
           <option key={r.id} value={r.id}>
             {r.name} ({r.color})
           </option>

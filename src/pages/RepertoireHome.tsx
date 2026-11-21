@@ -19,7 +19,7 @@ import { isCoverageFresh } from '../services/coverage';
 import { oneIn } from '../lib/coverage';
 import { linePaths } from '../lib/map';
 import { useCards, useChapterGraphs, useCoverage } from '../hooks';
-import { cardIdOf, chapterConflicts, chapterGap, chapterPosition, type ChapterConflict } from '../lib/chapters';
+import { byName, cardIdOf, chapterConflicts, chapterGap, chapterPosition, type ChapterConflict } from '../lib/chapters';
 import { compactLine, formatLine, type Color } from '../lib/chess';
 import { isDue, isNew } from '../lib/srs';
 import type { Chapter, Collection, CoverageResult, ReviewCard } from '../lib/types';
@@ -361,7 +361,7 @@ function ChapterRow({
 
 /** Merge a chapter into another of its color. */
 function MergePanel({ chapter, chapters, onClose }: { chapter: Chapter; chapters: Chapter[]; onClose: () => void }) {
-  const options = chapters.filter((c) => c.color === chapter.color && c.id !== chapter.id).sort((a, b) => a.name.localeCompare(b.name));
+  const options = chapters.filter((c) => c.color === chapter.color && c.id !== chapter.id).sort(byName);
   const [into, setInto] = useState(options[0]?.id ?? '');
   const [error, setError] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
