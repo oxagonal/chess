@@ -99,7 +99,11 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   considered (or "only one sensible reply") — then it's checked against Lichess's solution (any mate
   counts, as on Lichess). Afterwards the puzzle is a small study: the game from move 1 with the players'
   names, titles and ratings, step back and forth, play any move, Stockfish with clickable lines. Unchecking
-  "Write the solution first" gives the usual move-by-move solving. With Lichess connected they're picked around your Lichess puzzle rating (ones you
+  "Write the solution first" gives the usual move-by-move solving. Puzzles come in blocks whose size you pick
+  before you start (10 by default), against tilt: your rating stays hidden until the block ends; after a miss
+  the next puzzle waits until you've stepped through the solution; three misses in a row, or a quick miss
+  right after a miss, bring up a breather (end the block, go over the misses, or keep going); and the block
+  ends with a summary, your misses to go over again (not recorded) and a suggested break. With Lichess connected they're picked around your Lichess puzzle rating (ones you
   haven't played) and, if you let them, count toward it. Every puzzle is kept in your history with the time
   it took (synced), for the balance of the three.
 - **Sync between devices** — optional: keep your phone and computer in step through a secret gist in your

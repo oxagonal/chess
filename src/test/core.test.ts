@@ -5,7 +5,7 @@ import { movesFromLines } from '../lib/lines';
 import { graphToPgn, pgnToEdges, tokenizeMoveText } from '../lib/pgn';
 import { newMovesQuiz, planLine, orderCards } from '../lib/trainer';
 import { isSharp, movesThatHold } from '../lib/sharp';
-import { tiltCheck } from '../lib/tilt';
+import { puzzleTilt, tiltCheck } from '../lib/tilt';
 import { behind, gameDurationMs, planTotals, tooMuchOpenings, weekStart } from '../lib/plan';
 import type { StoredGame } from '../lib/types';
 import { newCard, grade, isDue, Rating, State } from '../lib/srs';
@@ -379,6 +379,15 @@ describe('tilt', () => {
   it('a long session is a reason too', () => {
     const games = Array.from({ length: 10 }, (_, i) => game(5 + i * 10, i % 2));
     expect(tiltCheck(games, now)!.reasons).toEqual(['10 games in this session']);
+  });
+  it('puzzles: three misses in a row, or a quick miss right after a miss', () => {
+    const a = (win: boolean, s = 60) => ({ win, ms: s * 1000 });
+    expect(puzzleTilt([a(true), a(false), a(false)])).toBeUndefined();
+    expect(puzzleTilt([a(false), a(false), a(false)])).toBe('3 misses in a row');
+    expect(puzzleTilt([a(true), a(false), a(false, 8)])).toMatch(/^a quick miss \(8 s\) right after a miss/);
+    // A quick miss after a solve is just a miss; a solve ends a streak.
+    expect(puzzleTilt([a(true), a(false, 8)])).toBeUndefined();
+    expect(puzzleTilt([a(false), a(false), a(true)])).toBeUndefined();
   });
 });
 

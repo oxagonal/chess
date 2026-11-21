@@ -5,7 +5,7 @@
  * they're picked around your Lichess puzzle rating, and your results can count toward it. Every
  * puzzle is kept in your history (synced), with the time it took — for the 1/3 balance.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { updateSettings, useSettings } from '../db/settings';
@@ -20,6 +20,7 @@ import { PuzzleSolver } from '../components/PuzzleSolver';
 import { nameParts } from '../lib/openingNames';
 import { openingAngle, PUZZLE_DIFFICULTIES, PUZZLE_THEMES, puzzleStart, type LichessPuzzle, type PuzzleDifficulty } from '../lib/puzzle';
 import type { PuzzleAttempt } from '../lib/types';
+import { puzzleTilt } from '../lib/tilt';
 import { startLichessLogin } from '../services/lichessAuth';
 import { fetchPuzzles, hasScope, reportPuzzles, type Glicko } from '../services/puzzles';
 
@@ -37,6 +38,7 @@ export function PuzzlesPage() {
   useActivityClock({ third: 'tactics', what: 'puzzles' });
   const settings = useSettings();
   const [glicko, setGlicko] = useState<Glicko>();
+  const active = blockActive(useBlock());
   if (!settings.loaded) return null;
   const canRead = hasScope(settings, 'puzzle:read');
   const canWrite = hasScope(settings, 'puzzle:write');
@@ -44,21 +46,82 @@ export function PuzzlesPage() {
     <div className="col puzzles" style={{ gap: 14 }}>
       <div className="row">
         <h1 style={{ margin: 0 }}>Puzzles</h1>
-        {glicko && (
+        {active && (
+          <span className="muted small" title="Play for learning, not rating: your puzzle rating and its changes show when the block ends">
+            Rating hidden until the block ends
+          </span>
+        )}
+        {glicko && !active && (
           <span className="badge" title={`Your Lichess puzzle rating (±${Math.round(glicko.deviation)})`}>
             {Math.round(glicko.rating)}
             {glicko.provisional ? '?' : ''} on Lichess
           </span>
         )}
         <span className="spacer" />
-        <TodayTally />
+        <TodayTally hideRating={active} />
       </div>
       <ConnectionNote connected={!!settings.lichessToken} canRead={canRead} />
       <PuzzlePicker canWrite={canWrite} />
       <PuzzleSession key={`${settings.puzzleAngle}|${settings.puzzleDifficulty}`} onGlicko={setGlicko} />
-      <History />
+      <History hideRating={active} />
     </div>
   );
+}
+
+/* --------------------------------------------------------------- the block */
+
+/** A puzzle done in this block. */
+interface BlockAttempt {
+  puzzle: LichessPuzzle;
+  win: boolean;
+  ms: number;
+  rated: boolean;
+  ratingDiff?: number;
+}
+
+/**
+ * A block of puzzles — how many is decided before you start (Studer's rule for games, kept for
+ * puzzles): what you've done, and where you are: solving, a breather when the signs of tilt show, or
+ * the summary at the end; and your misses when you go over them. Kept while the app is open, so
+ * leaving the tab doesn't start a new block.
+ */
+interface Block {
+  size: number;
+  startedAt: number;
+  attempts: BlockAttempt[];
+  /** Attempts before this index were already let go with "Keep going". */
+  resumeAt: number;
+  stage: 'solve' | 'breather' | 'summary';
+  /** Why the breather. */
+  reason?: string;
+  /** Going over your misses: the list, and which one. */
+  retry?: { list: LichessPuzzle[]; i: number };
+}
+
+let currentBlock: Block | null = null;
+const blockListeners = new Set<() => void>();
+function setBlock(b: Block | null) {
+  currentBlock = b;
+  blockListeners.forEach((l) => l());
+}
+function subscribeBlock(l: () => void) {
+  blockListeners.add(l);
+  return () => {
+    blockListeners.delete(l);
+  };
+}
+function useBlock(): Block | null {
+  return useSyncExternalStore(subscribeBlock, () => currentBlock);
+}
+/** A block is under way (not at its summary): your rating stays out of sight until it ends. */
+function blockActive(b: Block | null): boolean {
+  return !!b && b.stage !== 'summary';
+}
+/** Your misses in the block, each once. */
+function blockMisses(b: Block): LichessPuzzle[] {
+  const out = new Map<string, LichessPuzzle>();
+  for (const a of b.attempts) if (!a.win) out.set(a.puzzle.puzzle.id, a.puzzle);
+  return [...out.values()];
 }
 
 /** What connecting Lichess (with puzzle permissions) adds, when it isn't. */
@@ -152,6 +215,23 @@ function PuzzlePicker({ canWrite }: { canWrite: boolean }) {
           ))}
         </select>
       </label>
+      <label className="field" title="Decide before you start: a block of puzzles, then a short break and your misses. A change applies to the next block.">
+        <span>Block</span>
+        <select
+          value={settings.puzzleBlock}
+          onChange={(e) => {
+            const size = Number(e.target.value);
+            void updateSettings({ puzzleBlock: size });
+            if (currentBlock && !currentBlock.attempts.length) setBlock({ ...currentBlock, size });
+          }}
+        >
+          {[5, 10, 15, 20, 30].map((n) => (
+            <option key={n} value={n}>
+              {n} puzzles
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="check" title="Write your whole solution first — your moves, their replies, and their other sensible replies as branches — before anything is checked">
         <input type="checkbox" checked={settings.puzzleWrite} onChange={(e) => updateSettings({ puzzleWrite: e.target.checked })} />
         <span className="small">Write the solution first (with branches)</span>
@@ -203,6 +283,7 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
   const [error, setError] = useState<string>();
   const [result, setResult] = useState<{ ratingDiff?: number; rated: boolean }>();
   const clock = useVisibleClock();
+  const b = useBlock();
   const seen = useRef(new Set<string>());
   const report = settings.puzzleRated && hasScope(settings, 'puzzle:write');
 
@@ -234,18 +315,21 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
         return;
       }
       setResult(undefined);
+      if (!currentBlock) setBlock({ size: settings.puzzleBlock, startedAt: Date.now(), attempts: [], resumeAt: 0, stage: 'solve' });
       setCur({ puzzle: p, startedAt: Date.now() });
       clock.reset();
     },
-    [clock],
+    [clock, settings.puzzleBlock],
   );
 
   useEffect(() => {
     if (!queue.length && !loading && !error) void load();
   }, [queue.length, loading, error, load]);
+  // The next puzzle — unless the block is at a breather or its end, or you're going over misses.
+  const solving = !b || (b.stage === 'solve' && !b.retry);
   useEffect(() => {
-    if (!cur && queue.length) begin(queue[0]);
-  }, [cur, queue, begin]);
+    if (!cur && queue.length && solving) begin(queue[0]);
+  }, [cur, queue, begin, solving]);
 
   const finish = async (c: Current, win: boolean) => {
     const ms = clock.elapsed();
@@ -259,6 +343,7 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
       ms: Math.round(ms),
       startedAt: c.startedAt,
     };
+    if (currentBlock) setBlock({ ...currentBlock, attempts: [...currentBlock.attempts, { puzzle: c.puzzle, win, ms, rated: false }] });
     await db.puzzleLog.put(attempt);
     if (!report) {
       setResult({ rated: false });
@@ -272,16 +357,83 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
       if (r.glicko) onGlicko(r.glicko);
       add(r.puzzles);
       setResult({ rated: true, ratingDiff: diff });
+      if (currentBlock)
+        setBlock({ ...currentBlock, attempts: currentBlock.attempts.map((a) => (a.puzzle === c.puzzle ? { ...a, rated: true, ratingDiff: diff } : a)) });
     } catch (e) {
       setResult({ rated: false });
       setError(`Not counted on Lichess: ${(e as Error).message}`);
     }
   };
 
+  // After each puzzle: the block's end, a breather if you're tilting, or the next one.
   const next = () => {
     setQueue((q) => q.slice(1));
     setCur(undefined);
+    const bl = currentBlock;
+    if (!bl) return;
+    if (bl.attempts.length >= bl.size) return setBlock({ ...bl, stage: 'summary' });
+    const reason = puzzleTilt(bl.attempts.slice(bl.resumeAt));
+    if (reason) setBlock({ ...bl, stage: 'breather', reason });
   };
+  const goOverMisses = (bl: Block) => {
+    const list = blockMisses(bl);
+    if (list.length) setBlock({ ...bl, retry: { list, i: 0 } });
+  };
+  const mode = settings.puzzleWrite ? 'write' : 'play';
+
+  if (b?.retry) {
+    const { list, i } = b.retry;
+    const last = i + 1 >= list.length;
+    return (
+      <div className="col" style={{ gap: 8 }}>
+        <div className="row puzzle-block-bar">
+          <b>Going over your misses</b>
+          <span className="muted small">
+            {i + 1} of {list.length} · not recorded
+          </span>
+        </div>
+        <PuzzleSolver
+          key={`retry|${list[i].puzzle.id}|${i}`}
+          puzzle={list[i]}
+          mode={mode}
+          report={false}
+          practice
+          result={{ rated: false }}
+          onResult={() => {}}
+          onNext={() => setBlock({ ...b, retry: last ? undefined : { list, i: i + 1 } })}
+          nextLabel={last ? (b.stage === 'summary' ? 'Back to the summary →' : 'Done →') : 'Next miss →'}
+        />
+      </div>
+    );
+  }
+  if (b?.stage === 'summary')
+    return (
+      <BlockSummary
+        b={b}
+        onRetry={() => goOverMisses(b)}
+        onAnother={() => setBlock(null)}
+      />
+    );
+  if (b?.stage === 'breather')
+    return (
+      <div className="panel col breather" style={{ gap: 10 }}>
+        <h2 style={{ margin: 0 }}>Take a breather</h2>
+        <p style={{ margin: 0 }}>
+          <b>{b.reason ? b.reason[0].toUpperCase() + b.reason.slice(1) : 'Time for a pause'}.</b> This is where puzzles turn into guessing, and the urge to win one back makes it worse. Stand up, get some
+          water, come back calm — or stop here: going over your misses is worth more than new puzzles now.
+        </p>
+        <div className="row">
+          <button className="primary" onClick={() => setBlock({ ...b, stage: 'summary' })}>
+            End the block here
+          </button>
+          {blockMisses(b).length > 0 && <button onClick={() => goOverMisses(b)}>Go over the misses</button>}
+          <span className="spacer" />
+          <button className="small ghost" onClick={() => setBlock({ ...b, stage: 'solve', reason: undefined, resumeAt: b.attempts.length })}>
+            Keep going anyway
+          </button>
+        </div>
+      </div>
+    );
 
   if (!cur)
     return (
@@ -299,22 +451,100 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
       </div>
     );
 
+  // Has this puzzle's result gone into the block yet?
+  const recorded = !!b?.attempts.some((a) => a.puzzle === cur.puzzle);
+  const lastOne = !!b && b.attempts.length + (recorded ? 0 : 1) >= b.size;
   return (
-    <PuzzleSolver
-      key={`${cur.puzzle.puzzle.id}|${cur.startedAt}`}
-      puzzle={cur.puzzle}
-      mode={settings.puzzleWrite ? 'write' : 'play'}
-      report={report}
-      result={result}
-      error={error}
-      onResult={(win) => void finish(cur, win)}
-      onNext={next}
-    />
+    <div className="col" style={{ gap: 8 }}>
+      {b && <BlockProgress b={b} current={!recorded} />}
+      <PuzzleSolver
+        key={`${cur.puzzle.puzzle.id}|${cur.startedAt}`}
+        puzzle={cur.puzzle}
+        mode={mode}
+        report={report}
+        result={result}
+        error={error}
+        hideRating={blockActive(b)}
+        onResult={(win) => void finish(cur, win)}
+        onNext={next}
+        nextLabel={lastOne ? 'End of the block →' : 'Next puzzle →'}
+      />
+    </div>
+  );
+}
+
+/** Where you are in the block: a dot per puzzle — solved, missed, this one, to come. */
+function BlockProgress({ b, current }: { b: Block; current: boolean }) {
+  const n = b.attempts.length + (current ? 1 : 0);
+  return (
+    <div className="row puzzle-block-bar">
+      <b>
+        Puzzle {Math.min(n, b.size)} of {b.size}
+      </b>
+      <span className="block-dots" aria-hidden>
+        {Array.from({ length: Math.max(b.size, b.attempts.length) }, (_, i) => (
+          <span key={i} className={`block-dot ${i < b.attempts.length ? (b.attempts[i].win ? 'win' : 'miss') : i === b.attempts.length && current ? 'now' : ''}`} />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/** The end of a block: how it went, your misses, and a break before anything else. */
+function BlockSummary({ b, onRetry, onAnother }: { b: Block; onRetry: () => void; onAnother: () => void }) {
+  const n = b.attempts.length;
+  const wins = b.attempts.filter((a) => a.win).length;
+  const misses = blockMisses(b);
+  const minutes = Math.max(1, Math.round(b.attempts.reduce((s, a) => s + a.ms, 0) / 60_000));
+  const rated = b.attempts.filter((a) => a.rated && a.ratingDiff !== undefined);
+  const diff = rated.reduce((s, a) => s + (a.ratingDiff ?? 0), 0);
+  return (
+    <div className="panel col block-summary" style={{ gap: 12 }}>
+      <h2 style={{ margin: 0 }}>{n >= b.size ? 'Block done' : `Block ended after ${n} puzzle${n === 1 ? '' : 's'}`}</h2>
+      <div className="grid3">
+        <Stat value={`${wins} / ${n}`} label="Solved first time" />
+        <Stat value={`${minutes} min`} label="Time" />
+        {rated.length > 0 ? (
+          <Stat value={diff >= 0 ? `+${diff}` : String(diff)} label="Lichess puzzle rating" />
+        ) : (
+          <Stat value={misses.length} label={misses.length === 1 ? 'Miss to go over' : 'Misses to go over'} />
+        )}
+      </div>
+      {misses.length > 0 && (
+        <div className="col" style={{ gap: 4 }}>
+          <b className="small">Your misses</b>
+          {misses.map((p) => (
+            <div key={p.puzzle.id} className="row small">
+              <span className="warn-text">✗</span>
+              <span>{p.puzzle.rating}</span>
+              <span className="muted">{p.puzzle.themes.slice(0, 3).join(', ')}</span>
+              <span className="spacer" />
+              <a href={`${LICHESS}/training/${p.puzzle.id}`} target="_blank" rel="noreferrer">
+                Lichess ↗
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="note">
+        Take five minutes off before anything else. Then another block only if you feel fresh and you're enjoying it{misses.length ? ' — and going over your misses first is worth more than new puzzles' : ''}.
+      </div>
+      <div className="row">
+        {misses.length > 0 && (
+          <button className="primary" onClick={onRetry}>
+            Go over your misses
+          </button>
+        )}
+        <button className={misses.length ? '' : 'primary'} onClick={onAnother}>
+          Start another block
+        </button>
+      </div>
+    </div>
   );
 }
 
 /** Today's puzzles: how many, solved, time, and the change to your Lichess rating. */
-function TodayTally() {
+function TodayTally({ hideRating }: { hideRating: boolean }) {
   const today = useLiveQuery(() => db.puzzleLog.where('startedAt').aboveOrEqual(startOfToday()).toArray(), []);
   if (!today?.length) return null;
   const wins = today.filter((a) => a.win).length;
@@ -323,7 +553,7 @@ function TodayTally() {
   return (
     <span className="muted small">
       Today: <b>{today.length}</b> puzzle{today.length === 1 ? '' : 's'} · {wins} solved · {Math.max(1, Math.round(ms / 60000))} min
-      {today.some((a) => a.rated) && (
+      {!hideRating && today.some((a) => a.rated) && (
         <>
           {' '}
           · <b className={diff >= 0 ? 'good-text' : 'warn-text'}>{diff >= 0 ? `+${diff}` : diff}</b> on Lichess
@@ -334,7 +564,7 @@ function TodayTally() {
 }
 
 /** Your recent puzzles, and totals over the last 30 days. */
-function History() {
+function History({ hideRating }: { hideRating: boolean }) {
   const recent = useLiveQuery(() => db.puzzleLog.orderBy('startedAt').reverse().limit(15).toArray(), []);
   const month = useLiveQuery(() => db.puzzleLog.where('startedAt').aboveOrEqual(Date.now() - 30 * 86_400_000).toArray(), []);
   if (!recent || !month) return null;
@@ -375,7 +605,7 @@ function History() {
                 <td className="num">{a.rating}</td>
                 <td className="small muted hide-sm">{a.themes.slice(0, 3).join(', ')}</td>
                 <td className="num small">{Math.round(a.ms / 1000)} s</td>
-                <td className="num small">{a.ratingDiff === undefined ? '—' : a.ratingDiff >= 0 ? `+${a.ratingDiff}` : a.ratingDiff}</td>
+                <td className="num small">{hideRating || a.ratingDiff === undefined ? '—' : a.ratingDiff >= 0 ? `+${a.ratingDiff}` : a.ratingDiff}</td>
               </tr>
             ))}
           </tbody>

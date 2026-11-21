@@ -75,6 +75,8 @@ export interface AppSettings {
   puzzleWrite: boolean;
   /** Touch screens: draw arrows and circles with two fingers (one held on the board, the other drawing). */
   twoFingerDraw: boolean;
+  /** Puzzles: how many in a block, decided before you start (then a breather and your misses). */
+  puzzleBlock: number;
   /** Builder: save every move played on the board straight into the repertoire. */
   builderAutoAdd: boolean;
   /** Show Stockfish evaluations next to each move in the builder. */
@@ -163,6 +165,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   puzzleDifficulty: 'normal',
   puzzleWrite: true,
   twoFingerDraw: true,
+  puzzleBlock: 10,
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,

@@ -42,3 +42,21 @@ export function tiltCheck(games: readonly StoredGame[], now = Date.now()): Tilt 
   if (session.length >= LONG_SESSION) reasons.push(`${session.length} games in this session`);
   return reasons.length ? { session, reasons } : undefined;
 }
+
+/** Puzzles: misses in a row that call for a breather. */
+export const PUZZLE_MISS_STREAK = 3;
+/** A miss this quick, right after another miss, is rushing to win it back. */
+export const PUZZLE_RUSH_MS = 15_000;
+
+/**
+ * Puzzles: the sign, in words, that it's time for a breather — three misses in a row, or a quick miss
+ * straight after a miss (the "one more, quickly" urge Studer warns about in games).
+ */
+export function puzzleTilt(attempts: readonly { win: boolean; ms: number }[]): string | undefined {
+  let streak = 0;
+  for (let i = attempts.length - 1; i >= 0 && !attempts[i].win; i--) streak++;
+  if (streak >= PUZZLE_MISS_STREAK) return `${streak} misses in a row`;
+  const n = attempts.length;
+  if (streak >= 2 && attempts[n - 1].ms < PUZZLE_RUSH_MS) return `a quick miss (${Math.round(attempts[n - 1].ms / 1000)} s) right after a miss — rushing to win it back`;
+  return undefined;
+}

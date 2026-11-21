@@ -270,6 +270,15 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .cg-wrap coords { font-size: 10px; font-weight: 700; }
 /* chessground offsets file labels 24px to the right, which pokes past the board edge on phones */
 .cg-wrap coords.files { left: 0; width: 100%; padding-left: 18px; box-sizing: border-box; }
+/* Puzzles: the block — where you are, a breather, the summary. */
+.puzzle-block-bar { gap: 10px; align-items: center; }
+.block-dots { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.block-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--panel3); border: 1px solid var(--border-soft); }
+.block-dot.win { background: var(--good); border-color: var(--good); }
+.block-dot.miss { background: var(--bad, #d9534f); border-color: var(--bad, #d9534f); }
+.block-dot.now { border: 2px solid var(--accent2); background: transparent; }
+.breather { border-left: 4px solid #c98b2e; }
+.block-summary .grid3 { margin: 0; }
 .promo-overlay { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 10; }
 /* On the promotion square: a column of four squares toward the middle of the board. */
 .promo-column.cg-wrap { position: absolute; width: 12.5%; height: 50%; display: flex; flex-direction: column; }

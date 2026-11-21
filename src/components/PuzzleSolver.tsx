@@ -40,6 +40,9 @@ export function PuzzleSolver({
   error,
   onResult,
   onNext,
+  hideRating = false,
+  practice = false,
+  nextLabel = 'Next puzzle →',
 }: {
   puzzle: LichessPuzzle;
   mode: 'write' | 'play';
@@ -49,6 +52,11 @@ export function PuzzleSolver({
   error?: string;
   onResult: (win: boolean) => void;
   onNext: () => void;
+  /** During a block: your rating change waits for the end of it (play for learning, not rating). */
+  hideRating?: boolean;
+  /** Going over a miss again: nothing is recorded. */
+  practice?: boolean;
+  nextLabel?: string;
 }) {
   const built = useMemo(() => buildTree(puzzle), [puzzle]);
   const { tree, startId, you } = built;
@@ -64,6 +72,11 @@ export function PuzzleSolver({
   // Play mode: where the solution has got to, and whether a wrong move was played.
   const [tip, setTip] = useState(startId);
   const failed = useRef(false);
+  // After a miss, the next puzzle waits until you've been through the solution, move by move.
+  const [won, setWon] = useState<boolean>();
+  const [solutionIds, setSolutionIds] = useState<string[]>([]);
+  const [visited, setVisited] = useState<Set<string>>(() => new Set());
+  useEffect(() => setVisited((v) => (v.has(cursor) ? v : new Set(v).add(cursor))), [cursor]);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const later = (f: () => void, ms: number) => timers.current.push(setTimeout(f, ms));
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -96,11 +109,18 @@ export function PuzzleSolver({
   /** Lichess's solution, added to the tree (from the puzzle's start). */
   const addSolution = () => {
     let id: string | undefined = startId;
-    for (const uci of solution) id = id && tree.add(id, uci, 'solution');
+    const ids: string[] = [];
+    for (const uci of solution) {
+      id = id && tree.add(id, uci, 'solution');
+      if (id) ids.push(id);
+    }
+    setSolutionIds(ids);
     bump();
   };
   const finish = (win: boolean) => {
     setPhase('done');
+    setWon(win);
+    if (!win && !solutionIds.length) addSolution();
     onResult(win);
   };
 
@@ -195,9 +215,11 @@ export function PuzzleSolver({
 
   /* ---- moving around ---- */
   const back = () => node.parent && setCursor(node.parent);
+  // Once it's over, ▶ follows the solution where there's a choice.
   const forward = () => {
     const kids = tree.children(cursor);
-    if (kids.length) setCursor(kids[0].id);
+    const next = (phase === 'done' && kids.find((k) => k.tags.includes('solution'))) || kids[0];
+    if (next) setCursor(next.id);
   };
   const nav = useRef({ back, forward });
   nav.current = { back, forward };
@@ -231,6 +253,8 @@ export function PuzzleSolver({
   };
 
   const p = puzzle.puzzle;
+  const seenSolution = solutionIds.filter((id) => visited.has(id)).length;
+  const locked = phase === 'done' && won === false && seenSolution < solutionIds.length;
   const onOpen = open.includes(cursor);
   const hasMine = node.tags.includes('mine');
   return (
@@ -261,7 +285,7 @@ export function PuzzleSolver({
             <div className="small" style={{ marginTop: 6 }}>
               Puzzle rated <b>{p.rating}</b>
               {p.themes.length > 0 && <span className="muted"> · {p.themes.slice(0, 4).join(', ')}</span>}
-              {result?.rated && result.ratingDiff !== undefined && (
+              {!hideRating && result?.rated && result.ratingDiff !== undefined && (
                 <>
                   {' '}
                   · your Lichess rating{' '}
@@ -271,7 +295,9 @@ export function PuzzleSolver({
                   </b>
                 </>
               )}
-              {result && !result.rated && <span className="muted"> · kept here only</span>}
+              {hideRating && result?.rated && <span className="muted"> · rating change at the end of the block</span>}
+              {!practice && result && !result.rated && <span className="muted"> · kept here only</span>}
+              {practice && <span className="muted"> · going over it again (not recorded)</span>}
             </div>
           )}
         </div>
@@ -340,10 +366,16 @@ export function PuzzleSolver({
           )}
         </div>
         {phase === 'done' && <EnginePanel fenKey={node.key} ply={node.ply} onPlay={(san) => onSan([san])} onJump={(sans) => onSan(sans)} />}
+        {locked && (
+          <div className="note small">
+            Before the next puzzle, go through the solution: ▶ (or →) from the puzzle's position — {seenSolution} of {solutionIds.length}{' '}
+            moves seen. A miss is worth more than a solve if you see why.
+          </div>
+        )}
         <div className="row">
           {phase === 'done' && (
-            <button className="primary" onClick={onNext}>
-              Next puzzle →
+            <button className="primary" onClick={onNext} disabled={locked} title={locked ? 'Step through the solution first' : undefined}>
+              {nextLabel}
             </button>
           )}
           <span className="spacer" />
@@ -352,7 +384,9 @@ export function PuzzleSolver({
           </a>
         </div>
         <p className="muted small puzzle-note" style={{ margin: 0 }}>
-          {report
+          {practice
+            ? 'Going over a puzzle you missed: nothing is recorded or counted.'
+            : report
             ? 'Counted toward your Lichess puzzle rating — the first time you play a puzzle, as on Lichess.'
             : 'Kept here only (with the time it took) — your Lichess rating isn’t touched.'}
         </p>
