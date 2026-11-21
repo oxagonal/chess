@@ -283,6 +283,13 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .square-input { position: absolute; inset: 0; z-index: 5; cursor: pointer; touch-action: manipulation; }
 .write-tools { gap: 10px; align-items: center; flex-wrap: wrap; }
 .write-tools .type-move { width: 150px; }
+/* Tags in the corner of a square: the move numbers of a written puzzle line. */
+.square-labels { position: absolute; inset: 0; z-index: 4; pointer-events: none; container-type: inline-size; }
+.sq-label { position: absolute; width: 12.5%; height: 12.5%; }
+.sq-label > span {
+  position: absolute; top: 5%; left: 5%; font-family: inherit; font-weight: 700; font-size: max(10px, 2.3cqw); line-height: 1; color: #fff;
+  padding: 0.22em 0.38em; border-radius: 0.3em; background: #1f8a2b; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); letter-spacing: 0.02em;
+}
 .promo-overlay { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 10; }
 /* On the promotion square: a column of four squares toward the middle of the board. */
 .promo-column.cg-wrap { position: absolute; width: 12.5%; height: 50%; display: flex; flex-direction: column; }

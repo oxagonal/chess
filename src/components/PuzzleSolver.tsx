@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Board, type Arrow } from './Board';
+import { Board, type Arrow, type SquareLabel } from './Board';
 import { EnginePanel } from './EnginePanel';
 import { MaterialBalance } from './MaterialBalance';
 import { MoveTreeView } from './MoveTreeView';
@@ -213,13 +213,20 @@ export function PuzzleSolver({
     setCursor(id);
     bump();
   };
-  // Your line so far as numbered arrows on the still board: yours green, theirs blue.
-  const lineArrows: Arrow[] = blind
-    ? tree
-        .path(cursor)
-        .filter((n) => n.id !== startId && tree.isUnder(n.id, startId))
-        .map((n, i) => ({ uci: n.uci, brush: n.pos.turn === you ? 'blue' : 'green', label: String(i + 1) }))
-    : [];
+  // Your line so far as arrows on the still board — yours green, theirs blue — each numbered in the
+  // corner of the square it lands on.
+  const linePath = blind ? tree.path(cursor).filter((n) => n.id !== startId && tree.isUnder(n.id, startId)) : [];
+  const lineArrows: Arrow[] = linePath.map((n) => ({ uci: n.uci, brush: n.pos.turn === you ? 'blue' : 'green' }));
+  const lineLabels: SquareLabel[] = [];
+  linePath.forEach((n, i) => {
+    const square = n.uci.slice(2, 4);
+    const color = n.pos.turn === you ? '#2b5bb5' : '#1f8a2b';
+    const same = lineLabels.find((l) => l.square === square);
+    if (same) {
+      same.text += `·${i + 1}`;
+      same.color = color;
+    } else lineLabels.push({ square, text: String(i + 1), color });
+  });
   const shown = blind && !peeking ? tree.get(startId) : node;
   const giveUp = () => {
     addSolution();
@@ -334,6 +341,7 @@ export function PuzzleSolver({
           onMove={onMove}
           flash={flash}
           arrows={blind && !peeking && settings.puzzleArrows ? lineArrows : undefined}
+          squareLabels={blind && !peeking && settings.puzzleArrows ? lineLabels : undefined}
           circles={blind && picked ? [{ square: picked, brush: 'yellow' }] : undefined}
           onSquareClick={blind && !peeking ? tap : undefined}
         />

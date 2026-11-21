@@ -21,8 +21,14 @@ function watchTwoFingerDraw() {
 export interface Arrow {
   uci: string;
   brush?: 'green' | 'red' | 'blue' | 'yellow' | 'paleBlue' | 'paleGreen' | 'paleGrey';
-  /** A small label on the arrow (e.g. the move's number in a line). */
-  label?: string;
+}
+
+/** A small tag in the corner of a square (e.g. the number of the move that lands there). */
+export interface SquareLabel {
+  square: string;
+  text: string;
+  /** Its background (a CSS colour). */
+  color?: string;
 }
 
 interface BoardProps {
@@ -42,6 +48,7 @@ interface BoardProps {
   coordinates?: boolean;
   /** Circles on squares (e.g. the square you picked). */
   circles?: { square: string; brush?: Arrow['brush'] }[];
+  squareLabels?: SquareLabel[];
   /**
    * Enter moves by tapping squares instead of moving pieces: every tap on the board is passed on
    * (writing a puzzle's solution while the board stays still). The board itself takes no moves then.
@@ -53,7 +60,7 @@ interface BoardProps {
  * Chessground board driven entirely by a chessops Position.
  * After every user move we re-apply the props, so a move the parent rejects snaps back.
  */
-export function Board({ pos, orientation, interactive = false, lastMove, arrows, onMove, flash, markSquare, coordinates = true, circles, onSquareClick }: BoardProps) {
+export function Board({ pos, orientation, interactive = false, lastMove, arrows, onMove, flash, markSquare, coordinates = true, circles, squareLabels, onSquareClick }: BoardProps) {
   const el = useRef<HTMLDivElement>(null);
   const pendingShapes = useRef<DrawShape[] | null>(null);
   const api = useRef<Api | null>(null);
@@ -139,7 +146,7 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
     if (!cg) return;
     const shapes: DrawShape[] = (arrows ?? []).flatMap((a) => {
       const sq = uciSquares(a.uci);
-      return sq ? [{ orig: sq[0] as Key, dest: sq[1] as Key, brush: a.brush ?? 'green', ...(a.label ? { label: { text: a.label } } : {}) }] : [];
+      return sq ? [{ orig: sq[0] as Key, dest: sq[1] as Key, brush: a.brush ?? 'green' }] : [];
     });
     if (markSquare) shapes.push({ orig: markSquare as Key, brush: 'red' });
     for (const c of circles ?? []) shapes.push({ orig: c.square as Key, brush: c.brush ?? 'green' });
@@ -196,9 +203,25 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
       onContextMenu={(e) => e.preventDefault()}
     />
   );
+  const labels = squareLabels?.length ? (
+    <div className="square-labels" aria-hidden>
+      {squareLabels.map((l, i) => {
+        const file = 'abcdefgh'.indexOf(l.square[0]);
+        const rank = Number(l.square[1]);
+        const col = orientation === 'white' ? file : 7 - file;
+        const row = orientation === 'white' ? 8 - rank : rank - 1;
+        return (
+          <span key={`${l.square}${i}`} className="sq-label" style={{ left: `${col * 12.5}%`, top: `${row * 12.5}%` }}>
+            <span style={l.color ? { background: l.color } : undefined}>{l.text}</span>
+          </span>
+        );
+      })}
+    </div>
+  ) : null;
   return (
     <div className={`board-wrap ${flash ? `flash-${flash}` : ''}`}>
       <div ref={el} className="cg-wrap-host" />
+      {labels}
       {squareInput}
       {promoColumn}
     </div>
