@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
-import type { ProbabilitySource } from '../lib/types';
+import type { ProbabilitySource, StudyTopic, Third } from '../lib/types';
 import type { RatingPool } from '../lib/ratings';
 import type { TimeClass } from '../lib/importers/common';
 import type { GameRange } from '../lib/gameRange';
@@ -95,6 +95,31 @@ export interface AppSettings {
   explorerColumns: ExplorerColumn[];
   /** Game review: "work on" tags you've added yourself (offered after the built-in ones). */
   workOnTags: string[];
+  /**
+   * Each chapter also covers the positions reached in at least 1 in this many of its own games (the
+   * games reaching its opening), where that goes deeper than the overall goal; 0 = off.
+   */
+  chapterOneInN: number;
+  /** Plan: chess training a week, in minutes (split into thirds: tactics, your games, study). */
+  weeklyMinutes: number;
+  /** Plan: what the study third works on now — one thing at a time. */
+  studyFocus: StudyTopic;
+  /** Plan: your week's training slots. */
+  planSlots: PlanSlot[];
+  /** Plan: the speeds whose games count as training games (time spent playing). */
+  trainingSpeeds: string[];
+}
+
+/** A slot in your weekly plan: a day, a time, a third and the exact task (Studer: plan it beforehand). */
+export interface PlanSlot {
+  id: string;
+  /** 0 = Monday … 6 = Sunday. */
+  day: number;
+  /** "18:30". */
+  time: string;
+  minutes: number;
+  third: Third;
+  task: string;
 }
 
 function yearAgo(): string {
@@ -144,6 +169,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   opponentRange: '1y',
   explorerColumns: ['games', 'share', 'reach', 'result', 'last'],
   workOnTags: [],
+  chapterOneInN: 100,
+  weeklyMinutes: 420,
+  studyFocus: 'openings',
+  planSlots: [],
+  trainingSpeeds: ['blitz', 'rapid', 'classical'],
 };
 
 const KEY = 'settings';

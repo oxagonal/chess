@@ -27,7 +27,7 @@ import { formatLine, START_KEY } from '../lib/chess';
 import { DEEPER, oneIn } from '../lib/coverage';
 import { STRENGTH_LABEL, strengthOf } from '../lib/map';
 import { weakestMoves } from '../lib/insights';
-import type { Chapter, Collection } from '../lib/types';
+import type { Chapter, Collection, GapBoost } from '../lib/types';
 import { href, navigate, openScope } from '../router';
 import { ChapterMenu, ChapterPanelView, RepertoireActions, RepertoireSets, type ChapterPanel } from './RepertoireHome';
 import { ImportWizard } from '../components/ImportWizard';
@@ -299,6 +299,13 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 /* ------------------------------------------------------------------ to-dos */
 
+const BOOST_LABEL: Record<GapBoost, string> = { deeper: '⚡ sharp line', sharp: '⚡ sharp', chapter: 'chapter goal' };
+const BOOST_HINT: Record<GapBoost, string> = {
+  deeper: `Rarer than your goal, but in a line you marked to prepare ${DEEPER}× deeper (⚡ in the builder)`,
+  sharp: "Rarer than your goal, but only one or two of your moves hold after it: a sharp line, prepared until it's quiet",
+  chapter: "Rarer than your overall goal, but common within its chapter: each chapter covers at least 1 in N of its own games (Settings)",
+};
+
 /** What's due and what's new here (db/training's counts) — Review it, or Learn today's share. */
 function TrainCard({ scope, counts, newLeft }: { scope: Scope; counts?: TrainCounts; newLeft: number }) {
   return (
@@ -331,7 +338,7 @@ function GapsCard({ data, gaps, onOpen }: { data: MapData; gaps: ScopeGap[]; onO
         <>
           <p className="muted small">
             Met at least 1 in {Math.round(1 / run.threshold)} games
-            {gaps.some((g) => g.boost) && <> — or 1 in {Math.round(DEEPER / run.threshold)} in sharp lines you prepare deeper (⚡)</>}, with no answer in your lines.
+            {gaps.some((g) => g.boost) && <> (or deeper: sharp lines, and each chapter's own goal)</>}, with no answer in your lines.
           </p>
           <ul className="todo-list">
             {shown.map((g) => (
@@ -341,9 +348,9 @@ function GapsCard({ data, gaps, onOpen }: { data: MapData; gaps: ScopeGap[]; onO
                   <span className="muted small">
                     {g.san ? 'no answer' : 'your move'} · {oneIn(g.prob)}
                     {g.boost && (
-                      <span className="sharp-tag" title="Rarer than your goal, but in a sharp line you prepare deeper (⚡ in the builder)">
+                      <span className="sharp-tag" title={BOOST_HINT[g.boost]}>
                         {' '}
-                        · ⚡ sharp line
+                        · {BOOST_LABEL[g.boost]}
                       </span>
                     )}
                   </span>

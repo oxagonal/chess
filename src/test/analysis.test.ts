@@ -95,6 +95,40 @@ describe('coverage (1 in N)', () => {
     expect(plain.gaps.map((x) => x.san)).toEqual(['g3']);
   });
 
+  it("covers each chapter to its own goal too: a rare opening goes deeper than the overall goal", async () => {
+    // 1.b3 is 4% of games; a 1.b3 chapter starts at 1.b3 e5. After it, 2.e3 is 10% of that chapter's
+    // games — 0.4% of all games, far rarer than 1 in 20 — but more than 1 in 100 of the chapter's own.
+    const lines = movesFromLines('b', 'black', ['e4 c5 Nf3 d6', 'b3 e5 Bb2 Nc6']);
+    const stats: Record<string, PositionStats> = {
+      [START_KEY]: stat([['e4', 'e2e4', 90], ['g3', 'g2g3', 6], ['b3', 'b2b3', 4]]),
+      [keyAfter('e4 c5')]: stat([['Nf3', 'g1f3', 97], ['a3', 'a2a3', 3]]),
+      [keyAfter('b3 e5')]: stat([['Bb2', 'c1b2', 90], ['e3', 'e2e3', 10]]),
+    };
+    const run = (anchors: string[]) =>
+      computeCoverage(new RepGraph('black', lines), async (k) => stats[k], {
+        repId: 'b',
+        threshold: 1 / 20,
+        source: 'lichess',
+        paramsLabel: 't',
+        chapters: { anchors, threshold: 1 / 100 },
+      });
+    const res = await run([keyAfter('b3 e5')]);
+    expect(res.gaps.map((x) => [x.san, x.boost])).toEqual([['g3', undefined], ['e3', 'chapter']]);
+    expect(res.chapterOneInN).toBe(100);
+    // The Sicilian (90% of games): 1 in 100 of its games is still deeper than 1 in 20 overall, so its
+    // 2.a3 (3% of the chapter's games) needs an answer too; with a 1-in-20 own goal it wouldn't.
+    const sicilian = await run([keyAfter('e4 c5')]);
+    expect(sicilian.gaps.map((x) => [x.san, x.boost])).toEqual([['g3', undefined], ['a3', 'chapter']]);
+    const shallow = await computeCoverage(new RepGraph('black', lines), async (k) => stats[k], {
+      repId: 'b',
+      threshold: 1 / 20,
+      source: 'lichess',
+      paramsLabel: 't',
+      chapters: { anchors: [keyAfter('e4 c5')], threshold: 1 / 20 },
+    });
+    expect(shallow.gaps.map((x) => x.san)).toEqual(['g3']);
+  });
+
   it('splits the covered games into your lines and rare sidelines', async () => {
     // 1.b3 (4%) is rarer than 1 in 20, 1.g3 (6%) is a gap; after 1.e4 c5, 2.a3 (3% of those games) is rare.
     const g3 = new RepGraph('black', movesFromLines('b', 'black', ['e4 c5 Nf3 d6']));

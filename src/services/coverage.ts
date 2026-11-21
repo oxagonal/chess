@@ -9,7 +9,9 @@ import { moveGames, type CoverageResult, type PositionStats, type Repertoire } f
 import { turnOfKey, type Color } from '../lib/chess';
 import { estimateDepth, type DepthProfile } from '../lib/depth';
 import { gamesInRange, rangeLabel } from '../lib/gameRange';
-import type { RepGraph } from '../lib/graph';
+import { RepGraph } from '../lib/graph';
+import { chapterPosition, trainable } from '../lib/chapters';
+import { loadOpeningIndex } from '../lib/openingNames';
 import { fetchExplorer, paramsLabel, type ExplorerParams, type Priority } from './explorer';
 
 export function effectiveBands(s: AppSettings): number[] {
@@ -115,11 +117,29 @@ export async function runCoverageForGraph(
     source: s.probabilitySource,
     paramsLabel: sourceLabel(s),
     sharp: sharpProvider({ local: !!opts.localEngine, signal: opts.signal }),
+    chapters: s.chapterOneInN > 0 ? { anchors: await chapterAnchors(repId, graph.color), threshold: 1 / s.chapterOneInN } : undefined,
     signal: opts.signal,
     onProgress: (q) => opts.onProgress?.(q),
   });
   if (!opts.signal?.aborted) await db.coverage.put(result);
   return result;
+}
+
+/** Where each chapter of a scope starts (its opening's position), for the chapters' own goal. */
+async function chapterAnchors(scopeId: string, color: Color): Promise<string[]> {
+  const scope = await loadScope(scopeId);
+  const ids = scope?.chapterIds ?? [];
+  if (!ids.length) return [];
+  const [chapters, moves, names] = await Promise.all([db.repertoires.bulkGet(ids), db.moves.where('repId').anyOf(ids).toArray(), loadOpeningIndex().catch(() => undefined)]);
+  const out: string[] = [];
+  for (const c of chapters) {
+    if (!c) continue;
+    const g = new RepGraph(color, trainable(color, moves.filter((m) => m.repId === c.id)));
+    if (!g.size) continue;
+    const key = chapterPosition(g, names, c.name).key;
+    if (key !== g.root) out.push(key);
+  }
+  return out;
 }
 
 export type StatsProvider = (key: string) => Promise<PositionStats | undefined>;
@@ -188,6 +208,7 @@ export function isCoverageFresh(result: CoverageResult | undefined, rep: Pick<Re
     result.algo === COVERAGE_ALGO &&
     result.computedAt >= rep.updatedAt &&
     result.paramsLabel === sourceLabel(s) &&
-    Math.abs(result.threshold - 1 / repTarget(rep, s)) < 1e-12
+    Math.abs(result.threshold - 1 / repTarget(rep, s)) < 1e-12 &&
+    (result.chapterOneInN ?? 0) === (s.chapterOneInN || 0)
   );
 }

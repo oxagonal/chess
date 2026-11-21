@@ -9,14 +9,15 @@
  */
 import { isPromotion, legalDests, playUci, posFromFen } from './chess';
 import type { RepGraph } from './graph';
-import { moveGames, type CoverageGap, type CoverageNode, type CoverageResult, type PositionStats, type ProbabilitySource } from './types';
+import { moveGames, type CoverageGap, type CoverageNode, type CoverageResult, type GapBoost, type PositionStats, type ProbabilitySource } from './types';
 
 /**
  * Bump when the analysis changes so stored results are recalculated. 2 = follows unsaved
- * transpositions; 3 = finds sharp lines with the engine and prepares them deeper (SHARP_STRETCH).
+ * transpositions; 3 = finds sharp lines with the engine and prepares them deeper (SHARP_STRETCH);
+ * 4 = each chapter also covers 1 in N of its own games (ChapterGoals).
  * (Marking a move "prepare deeper" makes its chapters' runs stale on its own — see setDeeper.)
  */
-export const COVERAGE_ALGO = 3;
+export const COVERAGE_ALGO = 4;
 
 /**
  * How much deeper a sharp line is prepared: after a move marked "prepare deeper" a position needs an
@@ -47,8 +48,21 @@ export interface CoverageOptions {
   paramsLabel: string;
   /** Find sharp lines with the engine and prepare them deeper (see SHARP_STRETCH). */
   sharp?: SharpProvider;
+  /** Each chapter's own goal (see ChapterGoals). */
+  chapters?: ChapterGoals;
   onProgress?: (queried: number, current: string) => void;
   signal?: AbortSignal;
+}
+
+/**
+ * Each chapter covers at least 1 in N of its own games too: under a chapter's opening position (an
+ * `anchors` key) a position needs an answer when it comes up in `threshold` of the games reaching that
+ * opening — or by the overall goal, whichever goes deeper. A rare opening (the Traxler, say) is
+ * prepared well past the overall goal; a common one is no different.
+ */
+export interface ChapterGoals {
+  anchors: string[];
+  threshold: number;
 }
 
 export interface ForwardOptions {
@@ -62,6 +76,8 @@ export interface ForwardOptions {
   pickAll?: boolean;
   /** Find sharp lines with the engine and prepare them deeper (see SHARP_STRETCH). */
   sharp?: SharpProvider;
+  /** Each chapter's own goal (see ChapterGoals). */
+  chapters?: ChapterGoals;
   onProgress?: (queried: number, current: string) => void;
   signal?: AbortSignal;
 }
@@ -107,6 +123,10 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
   // every move order into it (the most from any).
   const boost = new Map<string, number>([[graph.root, 1]]);
   const raise = (key: string, b: number) => b > (boost.get(key) ?? 1) && boost.set(key, b);
+  // …and how much deeper because of a chapter's own goal (under its opening; see ChapterGoals).
+  const chapterBoost = new Map<string, number>();
+  const raiseChapter = (key: string, b: number) => b > (chapterBoost.get(key) ?? 1) && chapterBoost.set(key, b);
+  const anchors = new Set(opts.chapters?.anchors ?? []);
   // Positions in a sharp stretch (found by the engine): how many of your moves into it (from 0).
   const stretch = new Map<string, number>();
   const extend = (key: string, n: number) => n < (stretch.get(key) ?? Infinity) && stretch.set(key, n);
@@ -118,16 +138,21 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
     if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const p = prob.get(key) ?? 0;
     if (p <= 0) continue;
+    // A chapter starts here: from here on it covers 1 in N of its own games (if that's deeper).
+    if (anchors.has(key) && opts.chapters) raiseChapter(key, threshold / (opts.chapters.threshold * p));
     const manual = boost.get(key) ?? 1;
+    const ofChapter = chapterBoost.get(key) ?? 1;
     const inStretch = stretch.get(key);
-    const b = Math.max(manual, inStretch !== undefined ? DEEPER : 1);
+    const b = Math.max(manual, ofChapter, inStretch !== undefined ? DEEPER : 1);
     const kids = kidsOf(key);
+    /** Why something this rare (`x`, rarer than the goal) needs an answer. */
+    const why = (x: number, marked: number): GapBoost => (x * marked >= threshold ? 'deeper' : x * ofChapter >= threshold ? 'chapter' : 'sharp');
 
     if (graph.isMyTurn(key)) {
       if (!kids.length) {
         if (!isGameOver(key)) {
           const node: CoverageNode = { key, prob: p, path: pathSans(key), myTurn: true };
-          if (p * b >= threshold) unfinished.push(p >= threshold ? node : { ...node, boost: p * manual >= threshold ? 'deeper' : 'sharp' });
+          if (p * b >= threshold) unfinished.push(p >= threshold ? node : { ...node, boost: why(p, manual) });
           else keepMinor(minorUnfinished, node);
         }
         continue;
@@ -136,6 +161,7 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
       for (const m of kids) {
         add(m.toKey, opts.pickAll ? p : p / kids.length);
         raise(m.toKey, m.deeper ? DEEPER : manual);
+        raiseChapter(m.toKey, ofChapter);
         if (inStretch !== undefined) extend(m.toKey, inStretch);
       }
       continue;
@@ -157,7 +183,8 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
       const edge = kids.find((m) => m.san === ms.san);
       const q = p * freq;
       // The position after the reply is prepared as deep as this one — or deeper, after a marked move.
-      const bc = edge?.deeper ? DEEPER : manual;
+      const marked = edge?.deeper ? DEEPER : manual;
+      const bc = Math.max(marked, ofChapter);
       let needed = q * bc >= threshold;
       // Rarer than that, but in a line still worth knowing (this position needs an answer): if only
       // one or two of your moves hold after the reply, the line is sharp — prepare it deeper, until
@@ -176,14 +203,16 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
       const gap: CoverageGap = { fromKey: key, san: ms.san, uci: ms.uci, prob: q, freq, games, path: pathSans(key) };
       if (edge) {
         add(edge.toKey, q);
-        raise(edge.toKey, bc);
+        raise(edge.toKey, marked);
+        raiseChapter(edge.toKey, ofChapter);
         if (sharpFrom !== undefined) extend(edge.toKey, sharpFrom);
-      } else if (needed) gaps.push(q >= threshold ? gap : { ...gap, boost: sharpFrom !== undefined ? 'sharp' : 'deeper' });
+      } else if (needed) gaps.push(q >= threshold ? gap : { ...gap, boost: sharpFrom !== undefined ? 'sharp' : why(q, marked) });
       else keepMinor(minorGaps, gap);
     }
   }
-  // A sharp stretch is prepared as deep as a marked line.
+  // What the rest of the analysis reads: the deepest of the three.
   for (const k of stretch.keys()) raise(k, DEEPER);
+  for (const [k, v] of chapterBoost) raise(k, v);
   return { prob, gaps, unfinished, minorGaps, minorUnfinished, noData, queried, statsAt, kidsOf, order, boost, required };
 }
 
@@ -272,6 +301,7 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
     coverage: Object.fromEntries(cover),
     sidelines: Object.fromEntries([...rare].filter(([, v]) => v > 0)),
     boost: Object.fromEntries([...boost].filter(([k, v]) => v > 1 && prob.has(k))),
+    chapterOneInN: opts.chapters ? Math.round(1 / opts.chapters.threshold) : 0,
     algo: COVERAGE_ALGO,
   };
 }

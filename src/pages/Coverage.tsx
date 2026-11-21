@@ -11,12 +11,12 @@ import { GameRangeSelect } from '../components/GameRangeSelect';
 import { repertoireDepth } from '../lib/depth';
 import { useCoverage } from '../hooks';
 import { compareTargets, runCoverage, sourceLabel, effectiveBands, type TargetRow } from '../services/coverage';
-import { likelyPositions, oneIn, pct } from '../lib/coverage';
+import { COVERAGE_ALGO, likelyPositions, oneIn, pct } from '../lib/coverage';
 import { formatLine } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
 import { Stat, TableWrap, fmtDate } from '../components/ui';
 import { href } from '../router';
-import type { CoverageResult, ProbabilitySource } from '../lib/types';
+import type { CoverageResult, ProbabilitySource, GapBoost } from '../lib/types';
 import { bandLabel } from '../lib/ratings';
 
 /**
@@ -50,7 +50,12 @@ export function CoverageRunBar({ scopeId, within }: { scopeId: string; within?: 
   };
   const n = repTarget(scope, settings);
   const stale = !!result && scope.updatedAt > result.computedAt;
-  const paramsChanged = !!result && (result.paramsLabel !== sourceLabel(settings) || Math.abs(result.threshold - 1 / n) > 1e-12);
+  const paramsChanged =
+    !!result &&
+    (result.paramsLabel !== sourceLabel(settings) ||
+      Math.abs(result.threshold - 1 / n) > 1e-12 ||
+      (result.chapterOneInN ?? 0) !== (settings.chapterOneInN || 0) ||
+      result.algo !== COVERAGE_ALGO);
   const outdated = stale || paramsChanged;
 
   return (
@@ -86,7 +91,26 @@ export function CoverageRunBar({ scopeId, within }: { scopeId: string; within?: 
           </>
         )}
       </div>
-      {changing && <OneInNSlider value={n} onChange={(v) => void setScopeTarget(scope, v)} label={`Coverage target for ${scope.name}`} color={scope.color} />}
+      {changing && (
+        <>
+          <OneInNSlider value={n} onChange={(v) => void setScopeTarget(scope, v)} label={`Coverage target for ${scope.name}`} color={scope.color} />
+          <label
+            className="small inline-field"
+            title="A rare opening (the Traxler, say) gets prepared well past the overall target: each chapter also covers the positions reached in at least 1 in this many of its own games — the games reaching its opening. Common openings are covered deeper by the overall target anyway."
+          >
+            Each chapter, at least 1 in
+            <input
+              type="number"
+              min={0}
+              step={10}
+              value={settings.chapterOneInN}
+              onChange={(e) => void updateSettings({ chapterOneInN: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
+              style={{ width: 70 }}
+            />
+            of its own games <span className="muted">(0 = off)</span>
+          </label>
+        </>
+      )}
       {error && <div className="error">{error}</div>}
       {outdated && !running && (
         <div className="note">
@@ -113,7 +137,7 @@ export interface ScopeGap {
   san?: string;
   prob: number;
   /** Needs an answer only because the line is prepared deeper (a sharp line). */
-  boost?: 'deeper' | 'sharp';
+  boost?: GapBoost;
 }
 
 /** A run's gaps and unprepared positions, likeliest first — those under `under` (a chapter's opening). */

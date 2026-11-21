@@ -14,7 +14,7 @@ import type { Color } from './chess';
 import type { RepMove } from './types';
 import { cardIdOf, migrateCardRows } from './chapters';
 
-export const SYNC_TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players', 'collections', 'puzzleLog'] as const;
+export const SYNC_TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players', 'collections', 'puzzleLog', 'activity'] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
 export type Row = Record<string, any>;
@@ -84,6 +84,8 @@ export function rowVersion(table: SyncTable, row: Row): number {
       return row.computedAt ?? 0;
     case 'puzzleLog':
       return row.startedAt ?? 0;
+    case 'activity':
+      return row.start ?? 0;
     default:
       return 0;
   }

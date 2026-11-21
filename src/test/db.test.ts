@@ -185,8 +185,10 @@ describe('coverage target per repertoire', () => {
     expect(updated.updatedAt).toBe(rep.updatedAt); // the moves didn't change
 
     const { sourceLabel } = await import('../services/coverage');
-    const result = { repId: rep.id, computedAt: Date.now(), threshold: 1 / 200, source: s.probabilitySource, paramsLabel: sourceLabel(s), probs: {}, gaps: [], unfinished: [], noData: [], queried: 0, coverage: {}, algo: COVERAGE_ALGO };
+    const result = { repId: rep.id, computedAt: Date.now(), threshold: 1 / 200, source: s.probabilitySource, paramsLabel: sourceLabel(s), probs: {}, gaps: [], unfinished: [], noData: [], queried: 0, coverage: {}, algo: COVERAGE_ALGO, chapterOneInN: s.chapterOneInN };
     expect(isCoverageFresh(result, rep, s)).toBe(true);
+    // Each chapter's own goal changed: run again.
+    expect(isCoverageFresh(result, rep, { ...s, chapterOneInN: 300 })).toBe(false);
     expect(isCoverageFresh(result, updated, s)).toBe(false);
     expect(isCoverageFresh({ ...result, threshold: 1 / 300 }, updated, s)).toBe(true);
   });

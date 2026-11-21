@@ -192,9 +192,14 @@ export interface CoverageGap {
   freq: number;
   games: number;
   path: string[];
-  /** Needs an answer only because the line goes deeper here: marked so ('deeper'), or sharp. */
-  boost?: 'deeper' | 'sharp';
+  /**
+   * Needs an answer only because the line goes deeper here: marked so ('deeper'), sharp, or its
+   * chapter's own goal (1 in N of the chapter's games) goes deeper than the overall one ('chapter').
+   */
+  boost?: GapBoost;
 }
+
+export type GapBoost = 'deeper' | 'sharp' | 'chapter';
 
 export interface CoverageNode {
   key: string;
@@ -202,7 +207,7 @@ export interface CoverageNode {
   path: string[];
   myTurn: boolean;
   /** As for gaps: needs a move only because the line goes deeper here. */
-  boost?: 'deeper' | 'sharp';
+  boost?: GapBoost;
 }
 
 export interface CoverageResult {
@@ -244,6 +249,8 @@ export interface CoverageResult {
    * by there (see coverage DEEPER) — after a move marked "prepare deeper". Missing on older results.
    */
   boost?: Record<string, number>;
+  /** The chapters' own goal it was run with (1 in N of each chapter's games; 0 = none). */
+  chapterOneInN?: number;
   /** Version of the analysis that produced this result. */
   algo?: number;
   /** Set automatically on every write; the newer copy wins when devices sync. */
@@ -272,6 +279,31 @@ export interface PuzzleAttempt {
   reported?: boolean;
   rated?: boolean;
   ratingDiff?: number;
+  modifiedAt?: number;
+}
+
+/** The thirds of your training time (Noël Studer's 1/3 rule): tactics, your games, and study. */
+export type Third = 'tactics' | 'games' | 'study';
+/** The study third works on one of these at a time. */
+export type StudyTopic = 'openings' | 'endgames' | 'positional' | 'other';
+
+/** Time spent on your training: recorded as you use the app, or logged by hand (the Plan tab). */
+export interface Activity {
+  id: string;
+  third: Third;
+  /** For study: what it was (openings in the app's training and builder). */
+  topic?: StudyTopic;
+  /** Where: 'train', 'builder', 'review' (a game), 'puzzles', 'log' (by hand). */
+  what: string;
+  start: number;
+  /** Active time: the app on screen and you using it (or the minutes you logged). */
+  ms: number;
+  /** Logged by hand: time spent away from the app (a book, a course, games over the board). */
+  manual?: boolean;
+  note?: string;
+  /** The game reviewed. */
+  refId?: string;
+  /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;
 }
 
