@@ -3,7 +3,7 @@ import { keyOf, playSan, playUci, posFromFen, START_KEY, startPos, formatLine, k
 import { RepGraph } from '../lib/graph';
 import { movesFromLines } from '../lib/lines';
 import { graphToPgn, pgnToEdges, tokenizeMoveText } from '../lib/pgn';
-import { planLine, orderCards } from '../lib/trainer';
+import { newMovesQuiz, planLine, orderCards } from '../lib/trainer';
 import { newCard, grade, isDue, Rating, State } from '../lib/srs';
 
 describe('chess helpers', () => {
@@ -233,6 +233,20 @@ describe('trainer planning', () => {
     expect(planLine(lg, bb5, new Set([bb5.id]), 'review', { leadIn: true }).map((s) => s.kind)).toEqual([
       'practice', 'auto', 'practice', 'auto', 'quiz', 'auto', 'practice',
     ]);
+  });
+
+  it('in a review, teaches a move you never learned where the line meets it, then replays just the new moves', () => {
+    const lm = movesFromLines('r', 'white', ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4']);
+    const lg = new RepGraph('white', lm);
+    const nf3 = lm.find((m) => m.san === 'Nf3')!;
+    const bb5 = lm.find((m) => m.san === 'Bb5')!;
+    // Nf3 is due; Bb5 was never learned; e4 and Ba4 you know.
+    const steps = planLine(lg, nf3, new Set([nf3.id]), 'review', { leadIn: true, teach: new Set([bb5.id]) });
+    expect(steps.map((s) => s.kind)).toEqual(['practice', 'auto', 'quiz', 'auto', 'show', 'auto', 'practice']);
+    expect(newMovesQuiz(steps).map((s) => s.kind)).toEqual(['auto', 'auto', 'auto', 'auto', 'quiz', 'auto', 'auto']);
+    // A drill of a move you never learned teaches it too; Learn is unchanged.
+    expect(planLine(lg, bb5, new Set([bb5.id]), 'review', { teach: new Set([bb5.id]) })[4].kind).toBe('show');
+    expect(planLine(lg, bb5, new Set([bb5.id]), 'learn', { teach: new Set([bb5.id]) }).map((s) => s.kind)).toEqual(['auto', 'auto', 'auto', 'auto', 'show']);
   });
 
   it('with lead-in, asks your earlier moves from the starting position too', () => {

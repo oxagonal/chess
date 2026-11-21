@@ -156,7 +156,8 @@ function TodayPanel({ train }: { train: Training }) {
         <p className="muted small" style={{ margin: 0 }}>
           <b>Learn</b> shows you new moves line by line, then has you replay them from memory — moves you already know are played for
           you. <b>Review</b> quizzes moves that are due: you play the whole line from move 1 to the end of the branch, so you meet them
-          as they arise in a game. <b>Drill</b> practices a chapter, a line or your weakest moves whenever you like. Scheduling uses
+          as they arise in a game — and a move on the way you haven't learned yet is taught right there (shown, then replayed from
+          memory at the line's end, like Learn). <b>Drill</b> practices a chapter, a line or your weakest moves whenever you like. Scheduling uses
           FSRS; the answer timer (⚙ in a session) makes slow answers Hard and instant ones on well-known moves Easy.
         </p>
       )}

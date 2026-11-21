@@ -3,7 +3,7 @@ import type { Chess } from 'chessops/chess';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { getSettings, updateSettings, useSettings, type AppSettings } from '../db/settings';
-import { gradeAnswer, markKnown } from '../db/repertoire';
+import { gradeAnswer } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
 import { AnswerTimerInput } from '../components/AnswerTimerInput';
 import { Board, type Arrow } from '../components/Board';
@@ -15,11 +15,11 @@ import { mapLine } from '../lib/map';
 import { colorName, loadScopeGraph, scopeIdsFor, useChaptersAndSets, type Scope } from '../db/scopes';
 import { coverageFor, learnedTodayCount, trainedCards } from '../db/training';
 import { EXTRA_BATCH } from '../components/SessionButtons';
-import { cardIdOf, cardsOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
+import { cardsOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
 import { href, navigate, scopeHref } from '../router';
 import { compactLine, formatLine, playUci, startPos } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
-import { asQuiz, moveOrders, orderCards, planLine, type PlannedStep } from '../lib/trainer';
+import { asQuiz, moveOrders, newMovesQuiz, orderCards, planLine, type PlannedStep } from '../lib/trainer';
 import { Builder } from './Repertoire';
 import { computeInsights, movesForLine, movesUnder, weakestMoves } from '../lib/insights';
 import { formatInterval, isDue, isNew, Rating, type Grade } from '../lib/srs';
@@ -63,6 +63,8 @@ interface SessionSetup {
   notes: string[];
   /** Each repertoire's last coverage run: how often positions come up (orders move orders). */
   probs: Map<string, Record<string, number>>;
+  /** Your moves never learned (card ids = scope move ids): a review or drill line teaches them where it meets them. */
+  unlearned: Set<string>;
 }
 
 const WEAK_DRILL_SIZE = 20;
@@ -78,6 +80,7 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
       const probs = new Map<string, Record<string, number>>();
       const queue: ReviewCard[] = [];
       const notes: string[] = [];
+      const unlearned = new Set<string>();
       const now = Date.now();
       const runs = await db.coverage.toArray();
       for (const id of scopeIdsFor(repParam)) {
@@ -88,6 +91,7 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
         graphs.set(rep.id, graph);
         const colorCards = await db.cards.where('color').equals(rep.color).toArray();
         const cards = cardsOf(graph, colorCards);
+        for (const c of cards) if (isNew(c)) unlearned.add(c.id);
         const cov = coverageFor(rep, runs);
         if (cov) probs.set(rep.id, cov.probs);
         if (mode === 'drill') {
@@ -121,7 +125,7 @@ function SessionLoader({ mode, repParam, under, at, extra }: { mode: SessionMode
         const left = extra ?? Math.max(0, s.newPerDay - (await learnedTodayCount()));
         finalQueue = queue.slice(0, left);
       }
-      if (!cancelled) setSetup({ mode, reps: new Map(reps.map((r) => [r.id, r])), graphs, queue: finalQueue, settings: s, notes, probs });
+      if (!cancelled) setSetup({ mode, reps: new Map(reps.map((r) => [r.id, r])), graphs, queue: finalQueue, settings: s, notes, probs, unlearned });
     })();
     return () => {
       cancelled = true;
@@ -155,6 +159,8 @@ interface LineState {
   order?: { index: number; count: number };
   /** A missed position again, at the end of the session (practice only: it was graded already). */
   repeat?: boolean;
+  /** The replay after a review line that taught you new moves: just those, from memory (graded as learning them). */
+  newMoves?: boolean;
 }
 
 /** A random order (Fisher–Yates). */
@@ -226,6 +232,8 @@ function Session({ setup }: { setup: SessionSetup }) {
   // Cards are per color; each color has one scope in a session.
   const scopeIdOf = useMemo(() => new Map([...reps.values()].map((r) => [r.color, r.id])), [reps]);
   const pendingRef = useRef(new Set(queue.map((c) => c.id)));
+  // Moves you've never learned, until a line teaches them (then they're learning, like any other).
+  const teachRef = useRef(new Set(setup.unlearned));
   const [line, setLine] = useState<LineState | null>(null);
   const [idx, setIdx] = useState(0);
   const [pos, setPos] = useState<Chess>(startPos);
@@ -314,7 +322,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       // Review and drills: every line is played from move 1 (your earlier moves too) to the end of the
       // branch — with Skip repeats, minus what you've already played this session. Learn: only the new
       // moves are asked; the moves you already know are played for you.
-      const steps = planLine(graph, move, pending, learn ? 'learn' : 'review', { leadIn: !learn, via: orders[index], seen });
+      const steps = planLine(graph, move, pending, learn ? 'learn' : 'review', { leadIn: !learn, via: orders[index], seen, teach: learn ? undefined : teachRef.current });
       if (!steps.some((s) => s.kind === 'quiz' || s.kind === 'show')) {
         pending.delete(card.id);
         continue;
@@ -381,7 +389,10 @@ function Session({ setup }: { setup: SessionSetup }) {
   // A finished line waits for Continue (so you can edit it or its note) — unless Auto-advance is on,
   // which still stops after a missed move so you can write down why.
   // (Missed positions again go straight on when you get them right.)
-  const holdAtEnd = !!line && line.phase === 'quiz' && idx >= line.steps.length && ((!live.trainAutoNext && !line.repeat) || !!noteMove);
+  // A review line that taught you new moves isn't over: their replay comes next.
+  const teaching = !!line && line.phase === 'quiz' && !line.repeat && !line.newMoves && line.steps.some((s) => s.kind === 'show');
+  const holdAtEnd =
+    !!line && line.phase === 'quiz' && idx >= line.steps.length && (teaching ? !!noteMove : (!live.trainAutoNext && !line.repeat) || !!noteMove);
   // The lines you played (with the moves you missed), for the cards at the end of the session.
   const playedRef = useRef(new Map<string, { scopeId: string; path: RepMove[]; missed: Set<string> }>());
   const missedRef = useRef(new Set<string>());
@@ -395,7 +406,20 @@ function Session({ setup }: { setup: SessionSetup }) {
     const had = playedRef.current.get(key);
     playedRef.current.set(key, { scopeId: line.repId, path, missed: new Set([...(had?.missed ?? []), ...missedRef.current]) });
   };
+  /** The new moves a review line just taught you, from memory: the line again from move 1, quizzing only them. */
+  const replayNewMoves = () => {
+    if (!line) return;
+    recordLine();
+    setLine({ ...line, steps: newMovesQuiz(line.steps), newMoves: true });
+    setIdx(0);
+    setPos(startPos());
+    setLastMove(undefined);
+    setWrong(0);
+    setHint(false);
+    setFeedback({ kind: 'info', text: 'Now the new moves from memory — the rest is played for you.' });
+  };
   const continueAfterLine = () => {
+    if (teaching) return replayNewMoves();
     recordLine();
     setStats((s) => ({ ...s, lines: s.lines + 1 }));
     nextLine();
@@ -427,6 +451,8 @@ function Session({ setup }: { setup: SessionSetup }) {
           setPos(startPos());
           setLastMove(undefined);
           setFeedback({ kind: 'info', text: 'Now play the line from memory.' });
+        } else if (teaching) {
+          replayNewMoves();
         } else {
           recordLine();
           setStats((s) => ({ ...s, lines: s.lines + 1 }));
@@ -464,6 +490,7 @@ function Session({ setup }: { setup: SessionSetup }) {
     waiting &&
     line.phase === 'quiz' &&
     !line.repeat &&
+    !line.newMoves &&
     mode !== 'learn' &&
     (step.kind === 'quiz' || (mode === 'drill' && step.kind === 'practice' && !gradedRef.current.has(step.move.id)));
   const rep = line ? reps.get(line.repId) : undefined;
@@ -484,7 +511,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       setIdx(idx + 1);
       setWrong(0);
       setHint(false);
-      if (line.phase !== 'quiz') {
+      if (line.phase !== 'quiz' || step.kind === 'show') {
         setFeedback({ kind: 'good', text: <b>✓ {expected.san}</b> });
         return;
       }
@@ -512,24 +539,6 @@ function Session({ setup }: { setup: SessionSetup }) {
             ),
           });
         show();
-        // A move of yours you never learned, played right in a review line: you know it — it counts
-        // as learned now (no more being asked it here without credit, and it's out of Learn).
-        if (!graded && !missed && mode === 'review' && !line.repeat) {
-          void markKnown([cardIdOf(expected)]).then(
-            (n) =>
-              n > 0 &&
-              token === feedbackToken.current &&
-              setFeedback({
-                kind: 'good',
-                text: (
-                  <>
-                    <b>✓ {expected.san}</b>
-                    <span className="muted"> · you knew it — counts as learned now</span>
-                  </>
-                ),
-              }),
-          );
-        }
         if (graded) {
           gradedRef.current.add(expected.id);
           setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (missed ? 0 : 1), failed: s.failed + (missed ? 1 : 0) }));
@@ -557,8 +566,10 @@ function Session({ setup }: { setup: SessionSetup }) {
       );
       const token = ++feedbackToken.current;
       setFeedback({ kind: failed ? 'hint' : 'good', text: body() });
-      const { card: updated, rating } = await gradeAnswer(expected.id, { missed: failed, ms, limitMs }, mode === 'learn' ? 'learn' : 'review', {
-        ahead: mode === 'drill',
+      // The new moves' replay is learning them, as in Learn.
+      if (line.newMoves) teachRef.current.delete(expected.id);
+      const { card: updated, rating } = await gradeAnswer(expected.id, { missed: failed, ms, limitMs }, mode === 'learn' || line.newMoves ? 'learn' : 'review', {
+        ahead: mode === 'drill' && !line.newMoves,
       });
       if (updated && token === feedbackToken.current) {
         setFeedback({ kind: failed ? 'hint' : 'good', text: body(rating, formatInterval(updated.due - Date.now())) });
@@ -572,7 +583,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       return;
     }
     flashFor('bad');
-    if (line.phase === 'show') {
+    if (line.phase === 'show' || step.kind === 'show') {
       setFeedback({ kind: 'hint', text: `Play ${expected.san} (follow the arrow).` });
       return;
     }
@@ -608,7 +619,7 @@ function Session({ setup }: { setup: SessionSetup }) {
 
   const arrows: Arrow[] = useMemo(() => {
     if (!step || !waiting) return [];
-    if (line?.phase === 'show' || hint) return [{ uci: step.move.uci, brush: 'green' }];
+    if (line?.phase === 'show' || step.kind === 'show' || hint) return [{ uci: step.move.uci, brush: 'green' }];
     return [];
   }, [step, line?.phase, hint]);
 
@@ -782,7 +793,7 @@ function Session({ setup }: { setup: SessionSetup }) {
     <PositionTools pos={viewed?.pos ?? pos} ply={view ?? pathSoFar.length} orientation={rep?.color ?? 'white'} />
   );
   const note = noteMove && <MoveNote key={noteMove.id} id={noteMove.id} san={noteMove.san} label="(missed)" prompt compact={phone} />;
-  const lineLabel = <h3 style={{ margin: 0 }}>{line?.phase === 'show' ? 'New line' : 'Line'}</h3>;
+  const lineLabel = <h3 style={{ margin: 0 }}>{line?.phase === 'show' ? 'New line' : line?.newMoves ? 'New moves, from memory' : 'Line'}</h3>;
   const orderBadge = line?.order && (
     <span
       className="badge"
@@ -799,15 +810,15 @@ function Session({ setup }: { setup: SessionSetup }) {
   ));
   const feedbackBox = (
     <div className={`feedback ${waiting && !feedback ? '' : feedback?.kind ?? ''}`}>
-      {waiting && line?.phase === 'show' && (
+      {waiting && (line?.phase === 'show' || step?.kind === 'show') && (
         <div>
-          <b>Play {step!.move.san}</b>
+          <b>{line?.phase === 'quiz' ? `New move — you haven't learned this one yet. Play ${step!.move.san}` : `Play ${step!.move.san}`}</b>
           {step!.move.comment && <div style={{ marginTop: 4 }}>{step!.move.comment}</div>}
         </div>
       )}
-      {feedback && <div style={{ marginBottom: 4, marginTop: waiting && line?.phase === 'show' ? 6 : 0 }}>{feedback.text}</div>}
+      {feedback && <div style={{ marginBottom: 4, marginTop: waiting && (line?.phase === 'show' || step?.kind === 'show') ? 6 : 0 }}>{feedback.text}</div>}
       {timed && <AnswerClock key={`${line?.steps.map((x) => x.move.id).join()}|${idx}`} limitMs={limitMs} elapsed={answerMs} />}
-      {waiting && line?.phase === 'quiz' && feedback?.kind !== 'bad' && <b>Your move — what's your prep here?</b>}
+      {waiting && line?.phase === 'quiz' && step?.kind !== 'show' && feedback?.kind !== 'bad' && <b>Your move — what's your prep here?</b>}
       {waiting && prevStep && !prevStep.move.mine && prevStep.move.comment && (
         <div className="muted small" style={{ marginTop: 6 }}>
           After {prevStep.move.san}: {prevStep.move.comment}
@@ -837,7 +848,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       ) : (
         <>
           {line?.phase === 'quiz' && (
-            <button onClick={showAnswer} disabled={!waiting || hint}>
+            <button onClick={showAnswer} disabled={!waiting || hint || step?.kind === 'show'}>
               Show move
             </button>
           )}

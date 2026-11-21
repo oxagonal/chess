@@ -3,8 +3,9 @@ import type { RepMove, ReviewCard } from './types';
 import { State } from './srs';
 
 /**
- * quiz: graded (review) · show: shown then quizzed (learn) · auto: played for you ·
- * practice: you play it, but it isn't graded (your known moves in a review line; Learn never asks them).
+ * quiz: graded (review) · show: shown then quizzed (learn; in a review, a move you never learned) ·
+ * auto: played for you · practice: you play it, but it isn't graded (your known moves in a review
+ * line; Learn never asks them).
  */
 export type StepKind = 'quiz' | 'show' | 'auto' | 'practice';
 
@@ -77,10 +78,15 @@ export interface PlanOptions {
    * asked (unless due), and the rest of the branch heads for moves you haven't played yet.
    */
   seen?: ReadonlySet<string>;
+  /**
+   * Review: your moves you never learned (move ids). Met in the line, they're taught right there —
+   * shown, then replayed from memory at the line's end, like Learn — instead of asked cold.
+   */
+  teach?: ReadonlySet<string>;
 }
 
 export function planLine(graph: RepGraph, target: RepMove, pending: ReadonlySet<string>, mode: TrainMode, opts: PlanOptions = {}): PlannedStep[] {
-  const { leadIn = false, via, seen } = opts;
+  const { leadIn = false, via, seen, teach } = opts;
   const prefix = via ?? graph.pathTo(target.fromKey);
   if (!prefix) return [];
   const line: RepMove[] = [...prefix, target];
@@ -156,6 +162,11 @@ export function planLine(graph: RepGraph, target: RepMove, pending: ReadonlySet<
   const targetIndex = prefix.length;
   const asked = new Set<string>();
   return line.map((move, i) => {
+    // Review: a move you never learned is taught where you meet it (even one being drilled).
+    if (mode === 'review' && move.mine && teach?.has(move.id) && !asked.has(move.id)) {
+      asked.add(move.id);
+      return { move, kind: 'show' };
+    }
     if (move.mine && pending.has(move.id) && !asked.has(move.id)) {
       asked.add(move.id);
       return { move, kind: mode === 'learn' ? 'show' : 'quiz' };
@@ -175,6 +186,14 @@ export function planLine(graph: RepGraph, target: RepMove, pending: ReadonlySet<
 /** Turn a learned line into the immediate test of the same line. */
 export function asQuiz(steps: PlannedStep[]): PlannedStep[] {
   return steps.map((s) => (s.kind === 'show' ? { ...s, kind: 'quiz' } : s));
+}
+
+/**
+ * After a review line that taught you new moves: the same line from move 1, quizzing just those
+ * (from memory, like Learn's replay) — everything else is played for you.
+ */
+export function newMovesQuiz(steps: PlannedStep[]): PlannedStep[] {
+  return steps.map((s) => ({ move: s.move, kind: s.kind === 'show' ? 'quiz' : 'auto' }));
 }
 
 /**
