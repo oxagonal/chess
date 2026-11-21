@@ -7,7 +7,7 @@ import { easyAllowed, grade, gradeAhead, gradeForAnswer, newCard, Rating } from 
 import { START_KEY, type Color } from '../lib/chess';
 import type { Collection, Repertoire, RepMove, ReviewCard, ReviewSource } from '../lib/types';
 import type { Grade } from 'ts-fsrs';
-import { cardIdOf, chapterOfMoveId, routeLine, sourcesOf, type LineRoute } from '../lib/chapters';
+import { cardIdOf, catchAllName, chapterOfMoveId, routeLine, sourcesOf, type LineRoute } from '../lib/chapters';
 import { loadOpeningIndex } from '../lib/openingNames';
 import { cleanAnnotation, type MoveAnnotation } from '../lib/annotations';
 
@@ -109,7 +109,7 @@ export async function splitOff(
       targetId = t.id;
     } else {
       targetId = uid();
-      await db.repertoires.add({ id: targetId, name: target.name.trim() || `${chapter.name} — ${starts.map((m) => m!.san).join(', ')}`, color: chapter.color, createdAt: now, updatedAt: now });
+      await db.repertoires.add({ id: targetId, name: target.name.trim() || (starts.length > 1 ? catchAllName(chapter.name) : `${chapter.name}${chapter.name.includes(':') ? ', ' : ': '}${starts[0]!.san}`), color: chapter.color, createdAt: now, updatedAt: now });
     }
     const copies = [...take.values()].map(({ modifiedAt: _m, ...m }) => ({ ...m, id: moveId(targetId, m.fromKey, m.san), repId: targetId }));
     const have = new Set((await db.moves.bulkGet(copies.map((c) => c.id))).filter((x): x is RepMove => !!x).map((x) => x.id));

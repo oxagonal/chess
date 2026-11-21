@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db, openDb } from '../db/db';
 import { addLine, chapterForNewLine, createRepertoire, deleteMove, deleteRepertoire, deleteUnionMove, loadGraph, mergeChapter, setMoveComment, setNoTrain, splitChapter, splitOff } from '../db/repertoire';
 import { loadScopeGraph, repertoireScopeId } from '../db/scopes';
-import { cardIdOf, cardsOf, chapterConflicts, chapterForLine, chapterGap, chapterPosition, chapterTrunk, matchChapter, migrateCardRows, routeLine, trainable, unionGraph } from '../lib/chapters';
+import { cardIdOf, cardsOf, catchAllName, catchAllOf, chapterConflicts, chapterForLine, chapterGap, chapterPosition, chapterTrunk, matchChapter, migrateCardRows, routeLine, trainable, unionGraph } from '../lib/chapters';
 import openings from '../data/openings.json';
 import { buildOpeningIndex } from '../lib/openingNames';
 import { RepGraph } from '../lib/graph';
@@ -137,7 +137,8 @@ describe('splitting a line off by hand', () => {
     const { graph } = (await loadGraph(ch.id))!;
     const at = keyAfter(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4']);
     const rare = ['h6', 'Be7', 'g6'].map((san) => graph.edge(at, san)!.id);
-    const id = await splitOff(ch.id, rare, { name: 'Italian: rare 3rd moves' });
+    const id = await splitOff(ch.id, rare, { name: '' });
+    expect((await loadGraph(id))!.rep.name).toBe('Italian: Other lines');
     const moved = (await loadGraph(id))!.graph;
     expect(moved.childrenOf(at).map((m) => m.san).sort()).toEqual(['Be7', 'g6', 'h6']);
     expect(moved.size).toBe(5 + 6);
@@ -236,6 +237,27 @@ describe('which chapter a line belongs in', () => {
     expect(routeLine(['e4', 'c5', 'Nc3'], [botvinnik, other, alapin], names)).toEqual({ kind: 'one', id: 'oth' });
     const alapin2 = ch('ala2', 'Sicilian Defense: Alapin Variation', ['e4 c5 c3 Nf6 e5 Nd5']);
     expect(routeLine(['e4', 'c5', 'c3', 'e6'], [alapin, alapin2], names)).toEqual({ kind: 'tie', ids: ['ala', 'ala2'] });
+  });
+
+  it('sends new lines of an opening to its "Other lines" chapter, and lines already in a chapter there', () => {
+    const italian = ch('it', 'Italian Game', ['e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6', 'e4 e5 Nf3 Nc6 Bc4 Nf6 d3']);
+    // Mostly Hungarian Defense, but a catch-all is anchored at its opening, after 3.Bc4.
+    const other = ch('ot', 'Italian Game: Other lines', ['e4 e5 Nf3 Nc6 Bc4 Be7 d4 d6', 'e4 e5 Nf3 Nc6 Bc4 Be7 d4 exd4', 'e4 e5 Nf3 Nc6 Bc4 h6 d4']);
+    expect(chapterPosition(other.graph, names, other.name).key).toBe(keyAfter(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4']));
+    const route = (line: string) => routeLine(line.split(' '), [italian, other], names);
+    expect(route('e4 e5 Nf3 Nc6 Bc4 d6 d4')).toEqual({ kind: 'one', id: 'ot' });
+    expect(route('e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4')).toEqual({ kind: 'one', id: 'it' });
+    expect(route('e4 e5 Nf3 Nc6 Bc4 h6 d4 exd4 O-O')).toEqual({ kind: 'one', id: 'ot' });
+  });
+
+  it('names catch-alls like other chapters', () => {
+    expect(catchAllName('Italian Game')).toBe('Italian Game: Other lines');
+    expect(catchAllName('Sicilian Defense: Najdorf Variation')).toBe('Sicilian Defense: Najdorf Variation, Other lines');
+    expect(catchAllOf('Italian Game: Other lines')).toBe('Italian Game');
+    expect(catchAllOf('Sicilian Defense: Najdorf Variation, other lines')).toBe('Sicilian Defense: Najdorf Variation');
+    expect(catchAllOf('Other lines')).toBe('');
+    expect(catchAllOf('Italian Game')).toBeUndefined();
+    expect(catchAllOf('Brother lines')).toBeUndefined();
   });
 });
 

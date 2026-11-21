@@ -4,7 +4,7 @@ import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { addEdges, chapterForNewLine, deleteMove, deleteUnionMove, setMoveAnnotation, setNoTrain, splitOff } from '../db/repertoire';
 import { loadOpeningIndex, nameParts } from '../lib/openingNames';
-import { chapterGap, chapterOfMoveId, chapterPosition, chapterTerritory, entersOtherChapter, sourcesOf, trainable } from '../lib/chapters';
+import { catchAllName, catchAllOf, chapterGap, chapterOfMoveId, chapterPosition, chapterTerritory, entersOtherChapter, sourcesOf, trainable } from '../lib/chapters';
 import { useOpeningIndex } from '../components/ChapterTree';
 import { ChaptersPanel, ChapterSwitcher } from '../components/ChaptersPanel';
 import { repTarget, useSettings, updateSettings } from '../db/settings';
@@ -1351,7 +1351,7 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
           path: line.map((m) => m.san),
           ply: before.length,
           siblings: g.childrenOf(move.fromKey).filter((m) => m.id !== move.id),
-          oneName: deepestName(keys) ?? `${chapter.name} — ${move.san}`,
+          oneName: deepestName(keys) ?? `${chapter.name}${chapter.name.includes(':') ? ', ' : ': '}${move.san}`,
           // Several moves: after the position they're played from.
           branchName: deepestName(before.map((m) => m.toKey)) ?? chapter.name,
         });
@@ -1369,7 +1369,8 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
     );
   const label = (m: RepMove) => `${moveNumberPrefix(info?.ply ?? 0, true)}${m.san}`;
   const chosen = [move, ...(info?.siblings ?? []).filter((m) => also.includes(m.id))];
-  const suggested = !info ? '' : chosen.length > 1 ? `${info.branchName} — ${chosen.map(label).join(', ')}` : info.oneName;
+  // Several replies: a catch-all for the opening's other lines ("Italian Game: Other lines").
+  const suggested = !info ? '' : chosen.length > 1 ? catchAllName(info.branchName) : info.oneName;
   const newName = name ?? suggested;
   const go = async () => {
     setError(null);
@@ -1416,6 +1417,12 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
         ))}
       </select>
       {into === 'new' && <input value={newName} onChange={(e) => setName(e.target.value)} placeholder="New chapter's name" onKeyDown={(e) => e.stopPropagation()} />}
+      {into === 'new' && catchAllOf(newName) !== undefined && (
+        <div className="muted small">
+          Catch-all: when you add from All {chapter ? colorName(chapter.color) : ''} chapters, {catchAllOf(newName) ? `${catchAllOf(newName)} lines` : 'lines'} that no other
+          chapter has go here.
+        </div>
+      )}
       <label className="check small">
         <input type="checkbox" checked={keepCopy} onChange={(e) => setKeepCopy(e.target.checked)} /> Keep a copy in “{chapter?.name}”
       </label>

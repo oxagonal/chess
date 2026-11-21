@@ -174,6 +174,23 @@ export function matchChapter(incoming: RepGraph, candidates: readonly { id: stri
 }
 
 /**
+ * The opening a catch-all chapter is for, from its name: "Italian Game: Other lines" → "Italian Game",
+ * "Sicilian Defense: Najdorf Variation, Other lines" → "Sicilian Defense: Najdorf Variation", plain
+ * "Other lines" → "" (the whole color). Undefined for any other chapter. A catch-all takes the new
+ * lines of its opening that no other chapter has (see routeLine).
+ */
+export function catchAllOf(name: string): string | undefined {
+  const m = /^(.*?)[\s:,]*\bother lines$/i.exec(name.trim());
+  return m ? m[1].trim() : undefined;
+}
+
+/** A catch-all chapter's name for an opening ("Italian Game" → "Italian Game: Other lines"). */
+export function catchAllName(opening: string): string {
+  if (!opening) return 'Other lines';
+  return `${opening}${nameParts(opening).variation ? ', ' : ': '}Other lines`;
+}
+
+/**
  * The position that defines a chapter's opening — "1.e4 d6" for a Pirc chapter, "1.e4 c5 2.c3" for an
  * Alapin — even if the chapter only goes on one way for a while after it (a Black chapter's single
  * prepared reply isn't part of the opening's name). Along the chapter's trunk: the earliest position
@@ -187,6 +204,8 @@ export function chapterPosition(graph: RepGraph, names: OpeningIndex | undefined
     return p.variation ? `${p.family}: ${p.variation}` : p.family;
   };
   const named = [...graph.reachableKeys()].flatMap((k) => (names.has(k) ? [{ k, n: names.get(k)! }] : []));
+  // A catch-all ("Italian Game: Other lines") is anchored at its opening, whatever its lines are.
+  if (chapterName && catchAllOf(chapterName)) chapterName = catchAllOf(chapterName);
   // The chapter's opening: its own name when that's an opening it has (chapters made by splitting
   // are named that way); else the variation most of its lines end up in, if most do; else the opening.
   let match: (n: string) => boolean = () => false;
@@ -239,7 +258,8 @@ export type LineRoute = { kind: 'one'; id: string } | { kind: 'tie'; ids: string
  * Semi-Slav chapter just because it reaches the Semi-Slav by 1.Nf3 d5 — and the most specific claim
  * (the deepest opening position) wins. Failing that, a chapter named for the line's own opening;
  * then a chapter that branches at the start (a catch-all); else a new chapter named after the
- * opening. Two chapters that fit equally well are a tie, for you to choose.
+ * opening. Between chapters that fit equally well, the one that already has more of the line wins,
+ * then a catch-all chapter named "…: Other lines" (see catchAllOf); else it's a tie, for you to choose.
  */
 export function routeLine(sans: readonly string[], chapters: readonly { id: string; name: string; graph: RepGraph }[], names: OpeningIndex | undefined): LineRoute {
   // The line's positions, and its own opening's name.
@@ -264,8 +284,30 @@ export function routeLine(sans: readonly string[], chapters: readonly { id: stri
     const def = chapterPosition(c.graph, names, c.name);
     if (keys.has(def.key)) claims.push({ id: c.id, depth: def.moves.length });
   }
-  const pick = (list: { id: string }[]): LineRoute | undefined =>
-    list.length === 1 ? { kind: 'one', id: list[0].id } : list.length > 1 ? { kind: 'tie', ids: list.map((x) => x.id) } : undefined;
+  // How far along the line a chapter already goes.
+  const along = (c: { graph: RepGraph }) => {
+    let key = c.graph.root;
+    let n = 0;
+    for (const san of sans) {
+      const m = c.graph.edge(key, san);
+      if (!m) break;
+      key = m.toKey;
+      n++;
+    }
+    return n;
+  };
+  const byId = new Map(chapters.map((c) => [c.id, c]));
+  // Between chapters that fit equally well: the one that already has more of the line, then a
+  // catch-all ("…: Other lines"); still more than one is a tie.
+  const pick = (list: { id: string }[]): LineRoute | undefined => {
+    if (list.length <= 1) return list.length ? { kind: 'one', id: list[0].id } : undefined;
+    const far = list.map((x) => ({ id: x.id, n: along(byId.get(x.id)!) }));
+    const most = Math.max(...far.map((x) => x.n));
+    let tied = far.filter((x) => x.n === most);
+    const catchAlls = tied.filter((x) => catchAllOf(byId.get(x.id)!.name) !== undefined);
+    if (tied.length > 1 && catchAlls.length === 1) tied = catchAlls;
+    return tied.length === 1 ? { kind: 'one', id: tied[0].id } : { kind: 'tie', ids: tied.map((x) => x.id) };
+  };
   const specific = claims.filter((c) => c.depth > 0);
   if (specific.length) {
     const top = Math.max(...specific.map((c) => c.depth));
