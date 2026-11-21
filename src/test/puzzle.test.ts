@@ -138,6 +138,18 @@ describe('writing a puzzle solution', () => {
     // An answer that isn't taking back on that square doesn't count as obvious.
     expect(gradeWritten(written().tree, 'root', ['d2d7', 'e6d7', 'g1f1']).win).toBe(false);
   });
+  it('a piece that blocks a check and is simply taken counts as obvious too — unless taking it gives material back', () => {
+    // 1.Rd8+ and the queen blocks on f8: 2.Rxf8+ takes it (a rook for a queen).
+    const blockQ = new MoveTree(posFromFen('6k1/4qppp/8/8/8/8/5PPP/3R2K1 w - - 0 1')!);
+    const rd8 = blockQ.add(blockQ.root, 'd1d8', 'mine')!;
+    blockQ.add(blockQ.add(rd8, 'e7d8', 'mine')!, 'g1f1', 'mine');
+    expect(gradeWritten(blockQ, 'root', ['d1d8', 'e7f8', 'd8f8']).win).toBe(true);
+    // 1.Qd8+ Bf8 2.Qxf8+: the queen for a bishop the king takes back — not obvious.
+    const blockB = new MoveTree(posFromFen('6k1/4bppp/8/8/8/8/5PPP/3Q2K1 w - - 0 1')!);
+    const qd8 = blockB.add(blockB.root, 'd1d8', 'mine')!;
+    blockB.add(blockB.add(qd8, 'e7d8', 'mine')!, 'g1f1', 'mine');
+    expect(gradeWritten(blockB, 'root', ['d1d8', 'e7f8', 'd8f8']).win).toBe(false);
+  });
   it("doesn't ask for other replies when theirs is the only legal move", () => {
     // Rh1+: the king on f6 covers g7, so Kg8 is Black's only move. After Rg1+ (pinning nothing), two.
     const tree = new MoveTree(posFromFen('7k/8/5K2/8/8/8/8/6R1 w - - 0 1')!);

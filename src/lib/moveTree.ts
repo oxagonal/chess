@@ -4,7 +4,7 @@
  * one tree, each move tagged by where it came from. Pure (mutable, cheap to copy by reference).
  */
 import type { Chess } from 'chessops/chess';
-import { makeSquare, squareRank } from 'chessops/util';
+import { makeSquare, parseSquare, squareRank } from 'chessops/util';
 import { keyOf, playSan, playUci, startPos } from './chess';
 import { judgeMove } from './puzzle';
 
@@ -171,25 +171,39 @@ export interface WrittenGrade {
   /** Where it went wrong: the position, and the solution's move there. */
   wrongAt?: { nodeId: string; expected: string; yours: boolean };
   /**
-   * Their capture you didn't write, let off: the solution ends with you simply taking back on that
-   * square — obvious enough that writing it out would be busywork.
+   * Their reply you didn't write, let off: the solution ends with you simply taking the piece they just
+   * moved — a recapture, a blocking piece, a piece left hanging — obvious enough that writing it out
+   * would be busywork.
    */
   recapture?: { nodeId: string; reply: string; answer: string };
 }
 
-/** Is `answer` (after their `reply` from `pos`) taking back on the square they just captured on? */
-function isRecapture(pos: Chess, reply: string, answer: string): boolean {
+const VALUE: Record<string, number> = { pawn: 1, knight: 3, bishop: 3, rook: 5, queen: 9, king: 100 };
+
+/**
+ * Is `answer` (after their `reply` from `pos`) simply taking the piece they just moved, on its square —
+ * without giving material back (what you take is worth at least what you take it with, or they can't
+ * take back)?
+ */
+export function isObviousCapture(pos: Chess, reply: string, answer: string): boolean {
   const theirs = playUci(pos, reply);
-  if (!theirs || !theirs.san.includes('x')) return false;
+  if (!theirs) return false;
+  const square = parseSquare(theirs.uci.slice(2, 4));
   const yours = playUci(theirs.pos, answer);
-  return !!yours && yours.san.includes('x') && yours.uci.slice(2, 4) === theirs.uci.slice(2, 4);
+  if (square === undefined || !yours || yours.uci.slice(2, 4) !== theirs.uci.slice(2, 4)) return false;
+  const taken = theirs.pos.board.get(square);
+  const taker = theirs.pos.board.get(parseSquare(answer.slice(0, 2))!);
+  if (!taken || !taker || taken.color === taker.color) return false;
+  if (VALUE[taken.role] >= VALUE[taker.role]) return true;
+  for (const dests of yours.pos.allDests().values()) if (dests.has(square)) return false;
+  return true;
 }
 
 /**
  * Check your written solution against the puzzle's: along the solution, at each of your turns one of
  * your written moves must be right (the solution's, or any move that mates, as on Lichess), and at each
- * of theirs you must have written their move — except a capture the solution simply ends by taking back
- * (29…Qxd8 30.Rxd8): nobody needs to write down that they'd recapture.
+ * of theirs you must have written their move — except one the solution simply ends by taking (29…Qxd8
+ * 30.Rxd8, or a piece that blocks a check): nobody needs to write down that they'd take it.
  */
 export function gradeWritten(tree: MoveTree, startId: string, solution: readonly string[]): WrittenGrade {
   let id = startId;
@@ -204,7 +218,7 @@ export function gradeWritten(tree: MoveTree, startId: string, solution: readonly
     } else {
       const reply = written.find((k) => k.uci === solution[step]);
       if (!reply) {
-        if (step + 2 === solution.length && isRecapture(node.pos, solution[step], solution[step + 1]))
+        if (step + 2 === solution.length && isObviousCapture(node.pos, solution[step], solution[step + 1]))
           return { win: true, recapture: { nodeId: id, reply: solution[step], answer: solution[step + 1] } };
         return { win: false, wrongAt: { nodeId: id, expected: solution[step], yours: false } };
       }

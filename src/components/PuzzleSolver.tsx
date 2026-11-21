@@ -164,7 +164,7 @@ export function PuzzleSolver({
           <>
             ✓ Right — you didn't write {moveNumberPrefix(at.ply, true)}
             {reply?.san}, but {moveNumberPrefix(at.ply + 1, true)}
-            {answer?.san} is the obvious recapture, so it counts.
+            {answer?.san}, simply taking it, is obvious — so it counts.
           </>
         ),
       });

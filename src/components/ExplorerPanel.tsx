@@ -204,9 +204,11 @@ interface Props {
   onOpening?: (name: string | undefined) => void;
   /** Share of your games that reach this position — enables the per-move Reach column on the opponent's turn. */
   reachHere?: number;
+  /** The move that led here (for "your usual answer" to it). */
+  lastSan?: string;
 }
 
-export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay, onAdd, onDelete, onOpening, reachHere }: Props) {
+export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay, onAdd, onDelete, onOpening, reachHere, lastSan }: Props) {
   const settings = useSettings();
   const cols = new Set(settings.explorerColumns);
   // On your own turn every move you choose is reached as often as the position itself, so it's only useful for replies.
@@ -289,10 +291,22 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   const theirTurn = turnOfKey(fenKey) !== color;
   const usual = useUsualMoves(color);
   const usualElsewhere = (san: string) => {
-    const at = usual?.get(san);
+    const at = usual?.moves.get(san);
     return (at?.size ?? 0) - (at?.has(fenKey) ? 1 : 0);
   };
-  const wantUsual = !theirTurn && rows.some((r, i) => i < MAX_EVAL_MOVES && !r.rep && usualElsewhere(r.san) >= 2);
+  // Their move that led here (the line's, else the repertoire's moves into this position).
+  const theirLast = lastSan ? [bareSan(lastSan)] : [...(usual?.into.get(fenKey) ?? [])];
+  /** How many other positions you answer their move here with `san` (…Bg4 → h3 elsewhere too). */
+  const answeredElsewhere = (san: string) => {
+    let n = 0;
+    for (const t of theirLast) {
+      const at = usual?.answers.get(t)?.get(bareSan(san));
+      if (at) n = Math.max(n, at.size - (at.has(fenKey) ? 1 : 0));
+    }
+    return n;
+  };
+  const wantUsual =
+    !theirTurn && rows.some((r, i) => (i < MAX_EVAL_MOVES || r.rep) && (answeredElsewhere(r.san) >= 1 || (!r.rep && usualElsewhere(r.san) >= 2)));
   const evals = useMoveEvals(fenKey, evalMoves, (showEval || wantUsual) && settings.loaded);
   const sign = turnOfKey(fenKey) === 'white' ? 1 : -1;
   const moverScores = [...evals.values()].map((e) => evalScore(e) * sign);
@@ -301,19 +315,23 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   // The opponent's turn: replies after which only one or two of your moves hold (⚡ sharp).
   const sharpTargets = theirTurn ? visibleRows.slice(0, SHARP_ROWS).map(rowUci).filter((u): u is string => !!u).join(',') : '';
   const holding = useHoldingAfterReplies(fenKey, sharpTargets);
-  // The usual move: the one you play in the most other positions (at least 2), among those rated about
-  // as good as the best here — just one, or the badge would say nothing.
+  // The usual move, among those rated about as good as the best here — just one, or the badge would
+  // say nothing: first your usual answer to their move (what you play after it elsewhere, even if it's
+  // already your move here), else the move you play in the most other positions (at least 2).
   const usualSan = (() => {
     if (theirTurn || evals.size < 2) return undefined;
-    let pick: { san: string; n: number; score: number } | undefined;
+    let pick: { san: string; n: number; answer: boolean; rank: number; score: number } | undefined;
     for (const r of rows) {
       const u = rowUci(r);
       const e = u ? evals.get(u) : undefined;
-      if (r.rep || !e) continue;
+      if (!e) continue;
       const score = evalScore(e) * sign;
-      const n = usualElsewhere(r.san);
-      if (n < 2 || best - score > EQUAL_MARGIN) continue;
-      if (!pick || n > pick.n || (n === pick.n && score > pick.score)) pick = { san: r.san, n, score };
+      if (best - score > EQUAL_MARGIN) continue;
+      const a = answeredElsewhere(r.san);
+      const n = r.rep ? 0 : usualElsewhere(r.san);
+      const rank = a >= 1 ? 1000 + a : n >= 2 ? n : 0;
+      if (!rank) continue;
+      if (!pick || rank > pick.rank || (rank === pick.rank && score > pick.score)) pick = { san: r.san, n: a >= 1 ? a : n, answer: a >= 1, rank, score };
     }
     return pick;
   })();
@@ -455,7 +473,11 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                     {usualSan?.san === san && (
                       <span
                         className="move-badge usual"
-                        title={`Your usual move: you play ${san} in ${usualSan.n} other positions, and here it's about as good as the best — one less thing to remember`}
+                        title={
+                          usualSan.answer
+                            ? `Your usual answer to ${theirLast[0]}: you play ${san} after ${theirLast[0]} in ${usualSan.n === 1 ? 'another position' : `${usualSan.n} other positions`}, and here it's about as good as the best — one less thing to remember`
+                            : `Your usual move: you play ${san} in ${usualSan.n} other positions, and here it's about as good as the best — one less thing to remember`
+                        }
                       >
                         ↻
                       </span>
@@ -587,18 +609,42 @@ function useHoldingAfterReplies(fenKey: string, targets: string): Map<string, nu
 }
 const EMPTY = new Map<string, number>();
 
-/** Where you play each move (SAN → the positions), over all your chapters of a color. */
-function useUsualMoves(color: Color): Map<string, Set<string>> | undefined {
+/** A move without its check or mate sign (…Bg4 and …Bg4+ are the same idea for "your usual answer"). */
+const bareSan = (san: string) => san.replace(/[+#]$/, '');
+
+/**
+ * Over all your chapters of a color: where you play each move (SAN → the positions), their moves into
+ * each position, and what you answer each of their moves with (their SAN → your SAN → the positions).
+ */
+function useUsualMoves(color: Color) {
   return useLiveQuery(async () => {
     const reps = await db.repertoires.where('color').equals(color).primaryKeys();
-    const moves = reps.length ? await db.moves.where('repId').anyOf(reps).toArray() : [];
-    const by = new Map<string, Set<string>>();
-    for (const m of moves) {
-      if (!m.mine || m.noTrain) continue;
-      const at = by.get(m.san) ?? new Set<string>();
-      at.add(m.fromKey);
-      by.set(m.san, at);
+    const all = reps.length ? await db.moves.where('repId').anyOf(reps).toArray() : [];
+    const moves = new Map<string, Set<string>>();
+    const into = new Map<string, Set<string>>();
+    for (const m of all) {
+      if (m.noTrain) continue;
+      if (m.mine) {
+        const at = moves.get(m.san) ?? new Set<string>();
+        at.add(m.fromKey);
+        moves.set(m.san, at);
+      } else {
+        const at = into.get(m.toKey) ?? new Set<string>();
+        at.add(bareSan(m.san));
+        into.set(m.toKey, at);
+      }
     }
-    return by;
+    const answers = new Map<string, Map<string, Set<string>>>();
+    for (const m of all) {
+      if (!m.mine || m.noTrain) continue;
+      for (const theirs of into.get(m.fromKey) ?? []) {
+        const byMine = answers.get(theirs) ?? new Map<string, Set<string>>();
+        const at = byMine.get(bareSan(m.san)) ?? new Set<string>();
+        at.add(m.fromKey);
+        byMine.set(bareSan(m.san), at);
+        answers.set(theirs, byMine);
+      }
+    }
+    return { moves, into, answers };
   }, [color]);
 }

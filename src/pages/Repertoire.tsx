@@ -825,6 +825,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     <ExplorerPanel
       fenKey={key}
       color={rep.color}
+      lastSan={cursor > 0 ? line[cursor - 1].san : undefined}
       title={myTurn ? 'Your move' : "Opponent's replies"}
       saved={children.map((c) => {
         const card = cardById.get(cardIdOf(c));

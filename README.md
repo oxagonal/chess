@@ -66,6 +66,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
 - **Explorer columns** — the explorer's ⚙ picks its columns (games, %, 1 in N, Stockfish eval, result, last
   played; saved with your settings, so they sync). In *My games* and *Players* each move shows when it was
   last played, and 🔍 lists the games behind a move or the position (any move order) on the Games tab.
+  Badges: ⚡ on a reply after which only one or two of your moves hold (a sharp line), and ↻ on your usual
+  move — what you answer their last move with elsewhere (…Bg4 → h3), else a move you play in several
+  other positions — when it's about as good as the best here.
 - **Spaced repetition** — every one of your moves is a card scheduled with [FSRS](https://github.com/open-spaced-repetition/ts-fsrs),
   trained from the Repertoire tab (everything, a color, a repertoire or a chapter's row: Review, Learn, Drill).
   *Learn* shows new lines and then has you replay them from memory; *Review* plays each due position out
@@ -101,8 +104,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   with what you enter after it as arrows from there, and one answer to many replies ("any king move, then Qxa8")
   is two clicks: "same answer to every king move / every other reply". Before you can check it every reply
   on your main line needs another one considered (or "only one sensible reply", unless it's their only legal
-  move) — then it's checked against Lichess's solution (any mate counts, as on Lichess, and a capture you
-  didn't write is let off when the solution simply ends by taking back: 29…Qxd8 30.Rxd8). Afterwards the puzzle is a small study: the game from move 1 with the players'
+  move) — then it's checked against Lichess's solution (any mate counts, as on Lichess, and a reply you
+  didn't write is let off when the solution simply ends by taking the piece they just moved without giving
+  material back: a recapture like 29…Qxd8 30.Rxd8, or a piece that blocks a check). Afterwards the puzzle is a small study: the game from move 1 with the players'
   names, titles and ratings, step back and forth, play any move, Stockfish with clickable lines. Unchecking
   "Write the solution first" gives the usual move-by-move solving. Puzzles come in blocks whose size you pick
   before you start (10 by default), against tilt: your rating stays hidden until the block ends; after a miss
