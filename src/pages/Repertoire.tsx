@@ -30,7 +30,7 @@ import { EnginePanel } from '../components/EnginePanel';
 import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
 import { href, navigate } from '../router';
 import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
-import { compactLine, formatLine, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
+import { compactLine, formatLine, moveNumberPrefix, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
 import { oneIn } from '../lib/coverage';
 import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
 import type { AppSettings } from '../db/settings';
@@ -1304,18 +1304,21 @@ function RepAnnotationMenu({ target, onClose, onDelete }: { target: RepAnnotatio
 }
 
 /**
- * Split a chapter by hand: this move and everything after it go to a new chapter (named after the
- * opening it reaches) or an existing one; the moves leading to it come along so it starts from move 1.
+ * Split a chapter by hand: this move — and, ticked, other moves from the same position (a few rare
+ * replies, say, to keep together) — and everything after them go to a new chapter (named after the
+ * opening) or an existing one; the moves leading there come along so it starts from move 1.
  */
 function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
   const chapterId = chapterOfMoveId(move.id);
   const [open, setOpen] = useState(false);
   const chapter = useLiveQuery(() => db.repertoires.get(chapterId), [chapterId]);
   const others = useLiveQuery(async () => (chapter ? (await db.repertoires.where('color').equals(chapter.color).toArray()).filter((c) => c.id !== chapterId) : []), [chapter]);
-  const [name, setName] = useState('');
+  // null until you type one: the suggested name, which follows the moves ticked.
+  const [name, setName] = useState<string | null>(null);
   const [into, setInto] = useState('new');
   const [keepCopy, setKeepCopy] = useState(false);
-  const [path, setPath] = useState<string[]>([]);
+  const [info, setInfo] = useState<{ path: string[]; ply: number; siblings: RepMove[]; oneName: string; branchName: string }>();
+  const [also, setAlso] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!open || !chapter) return;
@@ -1323,10 +1326,19 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
     void (async () => {
       const moves = await db.moves.where('repId').equals(chapterId).toArray();
       const g = new RepGraph(chapter.color, moves);
-      const line = [...(g.pathTo(move.fromKey) ?? []), move];
+      const before = g.pathTo(move.fromKey) ?? [];
+      const line = [...before, move];
       const names = await loadOpeningIndex();
-      let suggested = `${chapter.name} — ${move.san}`;
-      // Name it after the deepest named position on the way, or just after (its first branch).
+      const deepestName = (keys: string[]) => {
+        for (let i = keys.length - 1; i >= 0; i--) {
+          const n = names.get(keys[i]);
+          if (n) {
+            const p = nameParts(n);
+            return p.variation ? `${p.family}: ${p.variation}` : p.family;
+          }
+        }
+      };
+      // One line: named after the deepest named position on the way, or just after (its first branch).
       const keys = [...line.map((m) => m.toKey)];
       for (let k = move.toKey, i = 0; i < 6; i++) {
         const next = g.childrenOf(k)[0];
@@ -1334,18 +1346,15 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
         keys.push(next.toKey);
         k = next.toKey;
       }
-      for (let i = keys.length - 1; i >= 0; i--) {
-        const n = names.get(keys[i]);
-        if (n) {
-          const p = nameParts(n);
-          suggested = p.variation ? `${p.family}: ${p.variation}` : p.family;
-          break;
-        }
-      }
-      if (!off) {
-        setPath(line.map((m) => m.san));
-        setName((cur) => cur || suggested);
-      }
+      if (!off)
+        setInfo({
+          path: line.map((m) => m.san),
+          ply: before.length,
+          siblings: g.childrenOf(move.fromKey).filter((m) => m.id !== move.id),
+          oneName: deepestName(keys) ?? `${chapter.name} — ${move.san}`,
+          // Several moves: after the position they're played from.
+          branchName: deepestName(before.map((m) => m.toKey)) ?? chapter.name,
+        });
     })();
     return () => {
       off = true;
@@ -1358,19 +1367,46 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
         ✂ Move to another chapter…
       </button>
     );
+  const label = (m: RepMove) => `${moveNumberPrefix(info?.ply ?? 0, true)}${m.san}`;
+  const chosen = [move, ...(info?.siblings ?? []).filter((m) => also.includes(m.id))];
+  const suggested = !info ? '' : chosen.length > 1 ? `${info.branchName} — ${chosen.map(label).join(', ')}` : info.oneName;
+  const newName = name ?? suggested;
   const go = async () => {
     setError(null);
     try {
-      const id = await splitOff(chapterId, move.id, into === 'new' ? { name } : { chapterId: into }, { keepCopy });
+      const id = await splitOff(
+        chapterId,
+        chosen.map((m) => m.id),
+        into === 'new' ? { name: newName } : { chapterId: into },
+        { keepCopy },
+      );
       onDone();
-      navigate(`repertoire/${id}`, { line: path.join(' ') });
+      navigate(`repertoire/${id}`, { line: (info?.path ?? []).join(' ') });
     } catch (e) {
       setError((e as Error).message);
     }
   };
   return (
     <div className="split-off col" style={{ gap: 6 }}>
-      <div className="anno-label">Move {move.san} and everything after it</div>
+      {/* Not the uppercase label: "3...h6" mustn't read "3...H6". */}
+      <div className="split-off-title">
+        Move {chosen.map(label).join(', ')} and everything after {chosen.length > 1 ? 'them' : 'it'}
+      </div>
+      {!!info?.siblings.length && (
+        <div className="split-off-also">
+          <span className="muted small">Together with (other moves from this position):</span>
+          {info.siblings.map((m) => (
+            <label key={m.id} className="check small">
+              <input
+                type="checkbox"
+                checked={also.includes(m.id)}
+                onChange={(e) => setAlso((a) => (e.target.checked ? [...a, m.id] : a.filter((x) => x !== m.id)))}
+              />
+              {label(m)}
+            </label>
+          ))}
+        </div>
+      )}
       <select value={into} onChange={(e) => setInto(e.target.value)} aria-label="To">
         <option value="new">to a new chapter</option>
         {[...(others ?? [])].sort(byName).map((c) => (
@@ -1379,7 +1415,7 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
           </option>
         ))}
       </select>
-      {into === 'new' && <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New chapter's name" onKeyDown={(e) => e.stopPropagation()} />}
+      {into === 'new' && <input value={newName} onChange={(e) => setName(e.target.value)} placeholder="New chapter's name" onKeyDown={(e) => e.stopPropagation()} />}
       <label className="check small">
         <input type="checkbox" checked={keepCopy} onChange={(e) => setKeepCopy(e.target.checked)} /> Keep a copy in “{chapter?.name}”
       </label>
@@ -1389,7 +1425,7 @@ function SplitOffForm({ move, onDone }: { move: RepMove; onDone: () => void }) {
           Cancel
         </button>
         <span className="spacer" />
-        <button className="small primary" onClick={go} disabled={into === 'new' && !name.trim()}>
+        <button className="small primary" onClick={go} disabled={into === 'new' && !newName.trim()}>
           {keepCopy ? 'Copy' : 'Move'}
         </button>
       </div>

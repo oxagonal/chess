@@ -516,6 +516,9 @@ table.data tr.current-row td { background: var(--panel2); }
 /* Splitting a line off by hand (in the builder's right-click menu). */
 .split-off-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }
 .split-off { border-top: 1px solid var(--border-soft); padding-top: 8px; }
+.split-off-title { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.split-off-also { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; }
+.split-off-also > span { flex-basis: 100%; }
 
 /* Repertoire page header: actions as buttons, help on demand. */
 .rep-head { gap: 10px; }

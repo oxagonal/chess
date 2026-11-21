@@ -130,6 +130,21 @@ describe('splitting a line off by hand', () => {
     expect((await loadGraph(other.id))!.graph.size).toBe(8);
     expect((await loadGraph(ch.id))!.graph.size).toBe(8);
   });
+
+  it('moves several replies at one position into one chapter together', async () => {
+    const ch = await createRepertoire('Italian', 'white');
+    for (const reply of ['Bc5 c3', 'Nf6 Ng5', 'h6 d4', 'Be7 d4', 'g6 d4']) await addLine(ch.id, ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', ...reply.split(' ')]);
+    const { graph } = (await loadGraph(ch.id))!;
+    const at = keyAfter(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4']);
+    const rare = ['h6', 'Be7', 'g6'].map((san) => graph.edge(at, san)!.id);
+    const id = await splitOff(ch.id, rare, { name: 'Italian: rare 3rd moves' });
+    const moved = (await loadGraph(id))!.graph;
+    expect(moved.childrenOf(at).map((m) => m.san).sort()).toEqual(['Be7', 'g6', 'h6']);
+    expect(moved.size).toBe(5 + 6);
+    const left = (await loadGraph(ch.id))!.graph;
+    expect(left.childrenOf(at).map((m) => m.san).sort()).toEqual(['Bc5', 'Nf6']);
+    expect(left.size).toBe(5 + 4);
+  });
 });
 
 describe('a chapter at a glance', () => {

@@ -72,23 +72,30 @@ export async function splitChapter(chapterId: string, parts: { name: string; mov
 }
 
 /**
- * Split a line off by hand: `startId` (a move) and everything after it go to another chapter (a new one named
- * `target.name`, or an existing one), with the moves leading to it copied so it starts from move 1.
- * The original chapter loses what only that move led to (positions it reaches another way stay);
- * with `keepCopy` it keeps everything. Progress is untouched. Returns the target chapter's id.
+ * Split lines off by hand: `startId` (a move, or several — say a few rare replies at one position)
+ * and everything after it go to another chapter (a new one named `target.name`, or an existing one),
+ * with the moves leading to it copied so it starts from move 1. The original chapter loses what only
+ * those moves led to (positions it reaches another way stay); with `keepCopy` it keeps everything.
+ * Progress is untouched. Returns the target chapter's id.
  */
-export async function splitOff(chapterId: string, startId: string, target: { name: string } | { chapterId: string }, opts: { keepCopy?: boolean } = {}): Promise<string> {
+export async function splitOff(
+  chapterId: string,
+  startId: string | readonly string[],
+  target: { name: string } | { chapterId: string },
+  opts: { keepCopy?: boolean } = {},
+): Promise<string> {
+  const startIds = typeof startId === 'string' ? [startId] : [...new Set(startId)];
   let targetId = '';
   await db.transaction('rw', [db.repertoires, db.moves, db.cards], async () => {
     const chapter = await db.repertoires.get(chapterId);
     if (!chapter) throw new Error('Chapter not found');
     const moves = await db.moves.where('repId').equals(chapterId).toArray();
     const graph = new RepGraph(chapter.color, moves);
-    const start = graph.byId.get(startId);
-    if (!start) throw new Error('Move not found');
-    // The line: the moves to it, the move, and everything that follows.
-    const take = new Map<string, RepMove>((graph.pathTo(start.fromKey) ?? []).map((m) => [m.id, m]));
-    const stack = [start];
+    const starts = startIds.map((id) => graph.byId.get(id));
+    if (!starts.length || starts.some((m) => !m)) throw new Error('Move not found');
+    // The lines: the moves to each, the move, and everything that follows.
+    const take = new Map<string, RepMove>(starts.flatMap((start) => (graph.pathTo(start!.fromKey) ?? []).map((m) => [m.id, m] as const)));
+    const stack = [...(starts as RepMove[])];
     while (stack.length) {
       const m = stack.pop()!;
       if (take.has(m.id)) continue;
@@ -102,16 +109,16 @@ export async function splitOff(chapterId: string, startId: string, target: { nam
       targetId = t.id;
     } else {
       targetId = uid();
-      await db.repertoires.add({ id: targetId, name: target.name.trim() || `${chapter.name} — ${start.san}`, color: chapter.color, createdAt: now, updatedAt: now });
+      await db.repertoires.add({ id: targetId, name: target.name.trim() || `${chapter.name} — ${starts.map((m) => m!.san).join(', ')}`, color: chapter.color, createdAt: now, updatedAt: now });
     }
     const copies = [...take.values()].map(({ modifiedAt: _m, ...m }) => ({ ...m, id: moveId(targetId, m.fromKey, m.san), repId: targetId }));
     const have = new Set((await db.moves.bulkGet(copies.map((c) => c.id))).filter((x): x is RepMove => !!x).map((x) => x.id));
     await db.moves.bulkAdd(copies.filter((c) => !have.has(c.id)));
     await db.repertoires.update(targetId, { updatedAt: now });
     if (opts.keepCopy) return;
-    // From the original: the move and whatever only it led to.
-    let rest = moves.filter((m) => m.id !== startId);
-    const gone = [startId];
+    // From the original: the moves and whatever only they led to.
+    let rest = moves.filter((m) => !startIds.includes(m.id));
+    const gone = [...startIds];
     for (;;) {
       const orphans = new RepGraph(chapter.color, rest).orphanMoves();
       if (!orphans.length) break;
