@@ -17,7 +17,8 @@ import { ConnectLichessButton } from '../components/LichessConnect';
 import { Stat, TableWrap, fmtDate } from '../components/ui';
 import { startOfToday, useChapterGraphs } from '../hooks';
 import { chapterPosition } from '../lib/chapters';
-import { playUci, type Color } from '../lib/chess';
+import { opposite, playUci, type Color } from '../lib/chess';
+import { MaterialBalance } from '../components/MaterialBalance';
 import { nameParts } from '../lib/openingNames';
 import { judgeMove, openingAngle, PUZZLE_DIFFICULTIES, PUZZLE_THEMES, puzzleStart, type LichessPuzzle, type PuzzleDifficulty, type PuzzleStart } from '../lib/puzzle';
 import type { PuzzleAttempt } from '../lib/types';
@@ -368,10 +369,21 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
 
   const p = cur.puzzle.puzzle;
   const yourTurn = !cur.done && cur.pos.turn === cur.start.color && cur.pos !== cur.start.before;
+  // Above and below the board, as in a game review: whose side it is, and the material balance.
+  const side = (c: Color) => (
+    <div className={`player-strip ${!cur.done && cur.pos.turn === c ? 'to-move' : ''}`}>
+      <span className={`strip-dot ${c}`} />
+      <span className="strip-name">{c === cur.start.color ? 'You' : 'Opponent'}</span>
+      <span className="muted small">{c === 'white' ? 'White' : 'Black'}</span>
+      <MaterialBalance pos={cur.pos} color={c} />
+    </div>
+  );
   return (
     <div className="board-layout puzzle-layout">
-      <div className="board-col col">
+      <div className="board-col col puzzle-board">
+        {side(opposite(cur.start.color))}
         <Board pos={cur.pos} orientation={cur.start.color} interactive={yourTurn} lastMove={cur.lastMove} onMove={onMove} flash={flash} />
+        {side(cur.start.color)}
       </div>
       <div className="col" style={{ gap: 10 }}>
         <div className={`feedback ${feedback?.kind ?? ''}`}>

@@ -27,7 +27,7 @@ import {
   type SavedLine,
 } from '../lib/annotations';
 import { clocksAt, formatClock, formatMoveTime, moveTimes } from '../lib/clocks';
-import { MATERIAL_ROLES, materialBalance, type MaterialRole } from '../lib/material';
+import { MaterialBalance } from '../components/MaterialBalance';
 import { Board, type Arrow } from '../components/Board';
 import { PhoneStudio } from '../components/PhoneStudio';
 import { EvalBar } from '../components/EvalBar';
@@ -47,7 +47,6 @@ import { href, navigate } from '../router';
 import type { GameSource, StoredGame } from '../lib/types';
 
 /** Outline piece symbols for the material balance (text presentation, never emoji). */
-const OUTLINE: Record<MaterialRole, string> = { queen: '♕\uFE0E', rook: '♖\uFE0E', bishop: '♗\uFE0E', knight: '♘\uFE0E', pawn: '♙\uFE0E' };
 
 const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
 
@@ -238,23 +237,13 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
     const e = review?.evals[i + 1];
     return e && !replay.sans[i].endsWith('#') ? formatEvalShort(e) : undefined;
   };
-  // Like Lichess: the pieces each side is up (shown as the captured pieces) and +points for the side ahead.
-  const material = materialBalance(pos);
   const strip = (color: 'white' | 'black') => (
     <div className={`player-strip ${pos.turn === color && cur < last ? 'to-move' : ''}`}>
       <span className={`strip-dot ${color}`} />
       <span className="keep-case strip-name">{color === 'white' ? game.white : game.black}</span>
       {(color === 'white' ? game.whiteElo : game.blackElo) ? <span className="muted small">{color === 'white' ? game.whiteElo : game.blackElo}</span> : null}
-      {(material[color].up.length > 0 || material[color].plus > 0) && (
-        <span className="material" title={material[color].plus ? `Up ${material[color].plus} in material` : 'Material'}>
-          {MATERIAL_ROLES.filter((role) => material[color].up.includes(role)).map((role) => (
-            <span key={role} className="mat-pieces" aria-hidden="true">
-              {OUTLINE[role].repeat(material[color].up.filter((r) => r === role).length)}
-            </span>
-          ))}
-          {material[color].plus > 0 && <span className="mat-plus">+{material[color].plus}</span>}
-        </span>
-      )}
+      {/* Like Lichess: the pieces each side is up, and +points for the side ahead. */}
+      <MaterialBalance pos={pos} color={color} />
       <span className="spacer" />
       {shownClocks[color] !== undefined && <span className="strip-clock">{formatClock(shownClocks[color]!)}</span>}
     </div>

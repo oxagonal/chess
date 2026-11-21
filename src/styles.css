@@ -431,6 +431,9 @@ button.chip { border: none; min-height: 0; padding: 1px 8px; font-weight: 400; f
 button.chip:hover:not(:disabled) { background: var(--border); }
 /* ---------- the Puzzles tab ---------- */
 .puzzle-picker { gap: 10px 16px; align-items: flex-end; }
+/* The players' strips around the puzzle board: always there, so the board doesn't move as material changes. */
+.puzzle-board { gap: 6px; }
+.puzzle-board > .player-strip { min-height: 30px; }
 @media (max-width: 700px) {
   /* The puzzle first: board and feedback right under the title, the choices after. */
   .puzzles > .puzzle-layout { order: 1; }
@@ -440,7 +443,7 @@ button.chip:hover:not(:disabled) { background: var(--border); }
   .puzzle-layout > :last-child { order: -1; }
   .puzzle-note { display: none; }
   /* The whole board above the tab bar: no taller than the screen leaves (title, feedback, buttons). */
-  .puzzle-layout > .board-col { width: min(100%, calc(100dvh - 62px - env(safe-area-inset-bottom) - 290px)); justify-self: center; }
+  .puzzle-layout > .board-col { width: min(100%, calc(100dvh - 62px - env(safe-area-inset-bottom) - 350px)); justify-self: center; }
   .puzzle-picker > .field { flex: 1 1 140px; }
   .puzzle-picker select { width: 100%; }
 }
