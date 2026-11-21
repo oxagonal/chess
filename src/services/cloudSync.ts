@@ -335,9 +335,13 @@ function onChange() {
   schedule(Math.max(0, Math.min(DEBOUNCE_MS, dirtySince + MAX_WAIT_MS - now)));
 }
 
-/** Load the sync settings and keep syncing in the background. Call once at startup. */
-export async function startAutoSync() {
-  if (started) return;
+/**
+ * Load the sync settings and keep syncing in the background. Call once at startup. Resolves after the
+ * first sync: true if this device is up to date with the others (or doesn't sync), false if that
+ * sync failed (offline…) — so one-time fixes don't run on stale data and overwrite newer rows.
+ */
+export async function startAutoSync(): Promise<boolean> {
+  if (started) return false;
   started = true;
   config = await getState<SyncConfig>(appDb, CONFIG);
   const book = await getState<SyncBook>(appDb, BOOK);
@@ -350,7 +354,9 @@ export async function startAutoSync() {
   });
   window.addEventListener('online', () => void checkRemote());
   setInterval(() => document.visibilityState === 'visible' && void checkRemote(), POLL_MS);
-  if (config) void runSync();
+  if (!config) return true;
+  await runSync();
+  return status.state === 'idle';
 }
 
 // ───────────────────────── connecting ─────────────────────────

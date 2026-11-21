@@ -7,6 +7,7 @@ import './styles.css';
 import { App } from './App';
 import { completeLichessLogin } from './services/lichessAuth';
 import { startAutoSync } from './services/cloudSync';
+import { creditPracticedMoves } from './services/practiceCredit';
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
@@ -15,8 +16,10 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 completeLichessLogin();
 // Ask the browser not to evict our IndexedDB data when the device is low on space.
 navigator.storage?.persist?.().catch(() => {});
-// Sync with your other devices (if connected in Settings).
-void startAutoSync();
+// Sync with your other devices (if connected in Settings) — then, up to date, one-time fixes.
+void startAutoSync()
+  .then((upToDate) => (upToDate ? creditPracticedMoves() : undefined))
+  .catch(() => {});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

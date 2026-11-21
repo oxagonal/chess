@@ -1,5 +1,6 @@
 import type { RepGraph } from './graph';
 import type { RepMove, ReviewCard } from './types';
+import { State } from './srs';
 
 /**
  * quiz: graded (review) · show: shown then quizzed (learn) · auto: played for you ·
@@ -199,4 +200,31 @@ export function orderCards(cards: ReviewCard[], graph: RepGraph, probs?: Record<
 export function filterByProbability(cards: ReviewCard[], probs: Record<string, number> | undefined, threshold: number): ReviewCard[] {
   if (!probs || threshold <= 0) return cards;
   return cards.filter((c) => (probs[c.fromKey] ?? 0) >= threshold);
+}
+
+/**
+ * Your moves you never learned that review lines have had you play anyway: a review carries on past
+ * the due move to the end of its branch, with your later moves as ungraded practice — new ones too.
+ * Rebuilt from the graph (those answers weren't saved): each move reviewed (`lastReviewed`, when you
+ * last reviewed it) planned as a review line would be, and the new moves among its practice ones
+ * that already existed then. Card ids (via `cardIdOf`).
+ */
+export function practicedUnlearned(
+  graph: RepGraph,
+  cardOf: (move: RepMove) => ReviewCard | undefined,
+  lastReviewed: (cardId: string) => number | undefined,
+): Set<string> {
+  const out = new Set<string>();
+  for (const move of graph.byId.values()) {
+    if (!move.mine) continue;
+    const card = cardOf(move);
+    const at = card && lastReviewed(card.id);
+    if (!card || !at) continue;
+    for (const step of planLine(graph, move, new Set([move.id]), 'review', { leadIn: true })) {
+      if (step.kind !== 'practice') continue;
+      const c = cardOf(step.move);
+      if (c && c.state === State.New && c.createdAt < at) out.add(c.id);
+    }
+  }
+  return out;
 }

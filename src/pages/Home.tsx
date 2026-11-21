@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { PracticeCreditNote } from '../components/PracticeCreditNote';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { useSettings } from '../db/settings';
@@ -56,6 +57,7 @@ export function HomePage() {
 
   return (
     <div className="col" style={{ gap: 16 }}>
+      <PracticeCreditNote />
       <div className="hero">
         <div className="row">
           <div>

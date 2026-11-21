@@ -8,6 +8,7 @@
  * It took over the Coverage and Insights tabs (their old addresses lead here) and the Repertoire's map.
  */
 import { useState, type ReactNode } from 'react';
+import { PracticeCreditNote } from '../components/PracticeCreditNote';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { colorName, scopeOf, useChaptersAndSets, type Scope } from '../db/scopes';
@@ -107,6 +108,7 @@ function TodayPanel({ train }: { train: Training }) {
   const [how, setHow] = useState(false);
   return (
     <div className="panel col today" style={{ gap: 8 }}>
+      <PracticeCreditNote />
       <div className="row">
         <h2 style={{ margin: 0 }}>Today</h2>
         <span className="muted small">

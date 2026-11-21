@@ -3,7 +3,7 @@ import type { Chess } from 'chessops/chess';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { getSettings, updateSettings, useSettings, type AppSettings } from '../db/settings';
-import { gradeAnswer } from '../db/repertoire';
+import { gradeAnswer, markKnown } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
 import { AnswerTimerInput } from '../components/AnswerTimerInput';
 import { Board, type Arrow } from '../components/Board';
@@ -15,7 +15,7 @@ import { mapLine } from '../lib/map';
 import { colorName, loadScopeGraph, scopeIdsFor, useChaptersAndSets, type Scope } from '../db/scopes';
 import { coverageFor, learnedTodayCount, trainedCards } from '../db/training';
 import { EXTRA_BATCH } from '../components/SessionButtons';
-import { cardsOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
+import { cardIdOf, cardsOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
 import { href, navigate } from '../router';
 import { compactLine, formatLine, playUci, startPos } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
@@ -512,6 +512,24 @@ function Session({ setup }: { setup: SessionSetup }) {
             ),
           });
         show();
+        // A move of yours you never learned, played right in a review line: you know it — it counts
+        // as learned now (no more being asked it here without credit, and it's out of Learn).
+        if (!graded && !missed && mode === 'review' && !line.repeat) {
+          void markKnown([cardIdOf(expected)]).then(
+            (n) =>
+              n > 0 &&
+              token === feedbackToken.current &&
+              setFeedback({
+                kind: 'good',
+                text: (
+                  <>
+                    <b>✓ {expected.san}</b>
+                    <span className="muted"> · you knew it — counts as learned now</span>
+                  </>
+                ),
+              }),
+          );
+        }
         if (graded) {
           gradedRef.current.add(expected.id);
           setStats((s) => ({ ...s, done: s.done + 1, correct: s.correct + (missed ? 0 : 1), failed: s.failed + (missed ? 1 : 0) }));

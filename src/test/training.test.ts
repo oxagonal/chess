@@ -1,12 +1,17 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../db/db';
-import { addLine, createRepertoire, gradeAnswer, setNoTrain } from '../db/repertoire';
+import { addLine, createRepertoire, gradeAnswer, markKnown, setNoTrain } from '../db/repertoire';
 import { getSettings, updateSettings } from '../db/settings';
 import { loadScopeGraph } from '../db/scopes';
-import { loadDueCount, loadTrainCounts, trainedCards } from '../db/training';
+import { learnedTodayCount, loadDueCount, loadTrainCounts, trainedCards } from '../db/training';
+import { creditPracticedMoves, findPracticedUnlearned } from '../services/practiceCredit';
+import { cardIdOf } from '../lib/chapters';
+import { playSan, START_KEY, startPos } from '../lib/chess';
 import { isDue, Rating, State } from '../lib/srs';
 import type { CoverageResult } from '../lib/types';
+
+const keyAfter = (sans: string[]) => sans.reduce((acc, s) => playSan(acc.pos, s)!, { pos: startPos(), key: START_KEY } as { pos: ReturnType<typeof startPos>; key: string }).key;
 
 beforeEach(async () => {
   await Promise.all(db.tables.map((t) => t.clear()));
@@ -119,5 +124,47 @@ describe('comparing coverage targets', () => {
     expect(at50.sidelines).toBeCloseTo(0);
     expect(at50.open).toBe(3);
     expect(at50.moves).toBeGreaterThanOrEqual(at10.moves);
+  });
+});
+
+describe('moves you never learned that reviews had you play', () => {
+  it('get credit once, if they existed when you reviewed the line', async () => {
+    const ch = await createRepertoire('Italian', 'white');
+    await addLine(ch.id, ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3']);
+    const at = (sans: string[], san: string) => cardIdOf({ fromKey: keyAfter(sans), san });
+    const [e4, nf3, bc4, c3] = [at([], 'e4'), at(['e4', 'e5'], 'Nf3'), at(['e4', 'e5', 'Nf3', 'Nc6'], 'Bc4'), at(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5'], 'c3')];
+    // You learned the first three and reviewed 2.Nf3 — a review line that went on to 4.c3, never learned.
+    for (const id of [e4, nf3, bc4]) await gradeAnswer(id, { missed: false }, 'learn');
+    const reviewedAt = Date.now() + 1000;
+    await db.reviewLog.add({ cardId: nf3, color: 'white', rating: Rating.Good, state: State.Review, reviewedAt, source: 'review' });
+    // A move added after that review was never asked: no credit for it.
+    await addLine(ch.id, ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6', 'd4']);
+    const d4 = at(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6'], 'd4');
+    await db.cards.update(d4, { createdAt: reviewedAt + 1000 });
+    const learnedBefore = await learnedTodayCount();
+
+    expect(await findPracticedUnlearned()).toEqual([c3]);
+    const done = await creditPracticedMoves();
+    expect(done?.count).toBe(1);
+    expect((await db.cards.get(c3))!.state).not.toBe(State.New);
+    expect((await db.cards.get(d4))!.state).toBe(State.New);
+    // Not today's learning: it doesn't use up the day's new moves.
+    expect(await learnedTodayCount()).toBe(learnedBefore);
+    // Once.
+    expect(await creditPracticedMoves()).toBeUndefined();
+  });
+
+  it('a move you never learned counts as learned once marked known; learned moves are left alone', async () => {
+    const ch = await createRepertoire('Italian', 'white');
+    await addLine(ch.id, ['e4', 'e5', 'Nf3']);
+    const e4 = cardIdOf({ fromKey: keyAfter([]), san: 'e4' });
+    const nf3 = cardIdOf({ fromKey: keyAfter(['e4', 'e5']), san: 'Nf3' });
+    await gradeAnswer(e4, { missed: false }, 'learn');
+    const before = await db.cards.get(e4);
+    expect(await markKnown([e4, nf3])).toBe(1);
+    expect(await db.cards.get(e4)).toEqual(before);
+    const known = (await db.cards.get(nf3))!;
+    expect(known.state).toBe(State.Review);
+    expect(known.due).toBeGreaterThan(Date.now() + 86_400_000);
   });
 });

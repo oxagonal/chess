@@ -3,7 +3,7 @@ import { getSettings, type AppSettings } from './settings';
 import { moveId, RepGraph } from '../lib/graph';
 import { toRepMove, edgesForLine } from '../lib/lines';
 import { graphToPgn, pgnToEdges, type ImportedEdge } from '../lib/pgn';
-import { easyAllowed, grade, gradeAhead, gradeForAnswer, newCard, Rating } from '../lib/srs';
+import { easyAllowed, grade, gradeAhead, gradeForAnswer, newCard, Rating, State } from '../lib/srs';
 import { START_KEY, type Color } from '../lib/chess';
 import type { Collection, Repertoire, RepMove, ReviewCard, ReviewSource } from '../lib/types';
 import type { Grade } from 'ts-fsrs';
@@ -471,6 +471,22 @@ export async function gradeAnswer(
   const last = await db.reviewLog.where('cardId').equals(cardId).last();
   const rating = gradeForAnswer(answer.missed, answer.ms, answer.limitMs, !!card && easyAllowed(card, last?.rating));
   return { card: await gradeCard(cardId, rating, source, undefined, opts), rating };
+}
+
+/**
+ * Count moves you never learned as learned: you've shown you know them (played them right in a review
+ * line). Graded like Play from memory's known moves (Easy, straight into reviews), and not logged as
+ * learned today, so they don't use up the day's new moves. Only new cards change; returns how many.
+ */
+export async function markKnown(cardIds: readonly string[]): Promise<number> {
+  const settings = await getSettings();
+  const srs = { requestRetention: settings.requestRetention, maximumIntervalDays: settings.maxIntervalDays };
+  return db.transaction('rw', db.cards, async () => {
+    const now = Date.now();
+    const cards = (await db.cards.bulkGet([...new Set(cardIds)])).filter((c): c is ReviewCard => !!c && c.state === State.New);
+    await db.cards.bulkPut(cards.map((c) => grade(c, Rating.Easy, srs, now)));
+    return cards.length;
+  });
 }
 
 /** Make cards due right now (e.g. after forgetting them in a real game). */
