@@ -1,5 +1,5 @@
 /**
- * About & credits (Settings). Chess Prep uses GPL-3.0 libraries, so the app is GPL-3.0-or-later too:
+ * About & credits (Settings). Tabiya uses GPL-3.0 libraries, so the app is GPL-3.0-or-later too:
  * this panel is its "Appropriate Legal Notices" — copyright, no warranty, the license and the source.
  */
 const REPO = 'https://github.com/oxagonal/chess';
@@ -23,7 +23,7 @@ export function AboutPanel() {
     <div className="panel col about">
       <h2>About &amp; credits</h2>
       <p className="small" style={{ margin: 0 }}>
-        <b>Chess Prep</b> · Copyright © 2026 oxagonal
+        <b>Tabiya</b> · Copyright © 2026 oxagonal
       </p>
       <p className="small" style={{ margin: 0 }}>
         Designed by oxagonal and built together with{' '}
@@ -33,7 +33,7 @@ export function AboutPanel() {
         , Anthropic's AI coding assistant.
       </p>
       <p className="muted small" style={{ margin: 0 }}>
-        Chess Prep is free software: you can use, share and change it under the terms of the GNU General Public License, version 3 or
+        Tabiya is free software: you can use, share and change it under the terms of the GNU General Public License, version 3 or
         (at your option) any later version. It comes with <b>no warranty</b>, to the extent permitted by law.
       </p>
       <div className="row">

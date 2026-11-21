@@ -18,8 +18,8 @@ export function AppBadgeSetting() {
   if (state === 'denied')
     return (
       <p className="muted small">
-        Notifications are off for Chess Prep, so the icon can’t show how many moves are due. To get the number, allow them in the
-        phone’s Settings → Notifications → Chess Prep (it never sends any).
+        Notifications are off for Tabiya, so the icon can’t show how many moves are due. To get the number, allow them in the
+        phone’s Settings → Notifications → Tabiya (it never sends any).
       </p>
     );
   return (
@@ -35,7 +35,7 @@ export function AppBadgeSetting() {
         Show due moves on the app icon
       </button>
       <span className="muted small">
-        iPhone and iPad show an app’s number only if it may send notifications. Chess Prep never sends any — it only sets the number.
+        iPhone and iPad show an app’s number only if it may send notifications. Tabiya never sends any — it only sets the number.
       </span>
     </div>
   );

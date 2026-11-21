@@ -1,6 +1,6 @@
 # Over-the-board games database — export spec
 
-Chess Prep's **Players** tab can search a player by name and use their over-the-board games. The games
+Tabiya's **Players** tab can search a player by name and use their over-the-board games. The games
 come from **Lumbra's Gigabase** (OTB, CC BY-NC 4.0), exported on your computer into static files and
 deployed as a separate Cloudflare site, `https://otbdb.oxagon.workers.dev`.
 

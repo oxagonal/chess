@@ -36,7 +36,7 @@ export class GitHubError extends Error {
 
 const API = 'https://api.github.com';
 export const MANIFEST = 'chess-prep-sync.json';
-const DESCRIPTION = 'Chess Prep sync data — written by the app, please don’t edit';
+const DESCRIPTION = 'Tabiya (formerly Chess Prep) sync data — written by the app, please don’t edit';
 /** Gists return files up to 1 MB inline; stay well below. */
 const CHUNK_CHARS = 700_000;
 
@@ -141,7 +141,7 @@ export class GistTransport implements Transport {
     const mf = g.files[MANIFEST];
     if (!mf) return { version, doc: null };
     const manifest = JSON.parse(await fileText(mf)) as Manifest;
-    if (manifest.app !== 'chess-prep') throw new Error('The sync gist doesn’t contain Chess Prep data');
+    if (manifest.app !== 'chess-prep') throw new Error('The sync gist doesn’t contain Tabiya data');
     const doc = emptyDoc(manifest.savedAt ?? 0);
     doc.format = manifest.format;
     if (manifest.format > SYNC_FORMAT) return { version, doc };

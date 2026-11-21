@@ -1,6 +1,6 @@
 # Working on this repo
 
-Chess Prep: a local-first opening trainer (React + Vite + Dexie/IndexedDB), deployed as a static site on
+Tabiya (formerly Chess Prep): a local-first opening trainer (React + Vite + Dexie/IndexedDB), deployed as a static site on
 Cloudflare at https://chess.oxagon.workers.dev. See README.md for features and the project layout.
 
 ## Saving work — do it automatically, don't ask

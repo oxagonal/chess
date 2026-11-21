@@ -28,9 +28,9 @@ export async function exportBackup(): Promise<string> {
 
 export async function importBackup(json: string): Promise<void> {
   const data = JSON.parse(json) as Record<string, unknown[]>;
-  if ((data as unknown as { app?: string }).app !== 'chess-prep') throw new Error('Not a Chess Prep backup file');
+  if ((data as unknown as { app?: string }).app !== 'chess-prep') throw new Error('Not a Tabiya (or Chess Prep) backup file');
   const version = Number((data as unknown as { version?: number }).version ?? 1);
-  if (version > BACKUP_VERSION) throw new Error('This backup was made by a newer version of Chess Prep — reload the app to update.');
+  if (version > BACKUP_VERSION) throw new Error('This backup was made by a newer version of Tabiya — reload the app to update.');
   if (version < 2) {
     // From before chapters: cards per position and move; old per-repertoire coverage runs dropped.
     const next = migrateCardRows((data.cards ?? []) as Record<string, unknown>[], (data.reviewLog ?? []) as Record<string, unknown>[]);

@@ -1,4 +1,4 @@
-# Chess Prep
+# Tabiya
 
 A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps:
 
@@ -129,7 +129,7 @@ On the phone, open the site and install it:
 
 It then opens full-screen with its own icon and works offline for training (game sync, the explorer and
 coverage need a connection). Its icon can show how many moves are due (Settings → Training → *Show due moves on
-the app icon*): iPhone and iPad only show a web app's number once it may send notifications — Chess Prep
+the app icon*): iPhone and iPad only show a web app's number once it may send notifications — Tabiya
 never sends any, and the number is updated whenever the app is open.
 
 **Moving to a new address:** browsers keep the data per website, so the new
@@ -202,7 +202,7 @@ would plug into that viewer or a new `review` tab.
 Designed by oxagonal and built together with [Claude](https://claude.com/claude-code), Anthropic's AI coding
 assistant.
 
-Chess Prep is free software, licensed under the **GNU GPL v3 or later** (see `LICENSE`); the app shows the
+Tabiya is free software, licensed under the **GNU GPL v3 or later** (see `LICENSE`); the app shows the
 notice, the license and a link to this repository under Settings → About & credits.
 
 Board: [chessground](https://github.com/lichess-org/chessground); chess logic:

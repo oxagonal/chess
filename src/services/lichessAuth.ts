@@ -8,7 +8,8 @@ import { useSyncExternalStore } from 'react';
 import { getSettings, updateSettings } from '../db/settings';
 
 export const LICHESS = 'https://lichess.org';
-const CLIENT_ID = 'chess-prep';
+/** The app's name on Lichess's "allow access" page. */
+const CLIENT_ID = 'tabiya';
 const PENDING_KEY = 'chess-prep:lichess-login';
 /** What the login asks for: reading your studies (to import private ones), reading and recording puzzles. */
 export const LICHESS_SCOPES = 'study:read puzzle:read puzzle:write';

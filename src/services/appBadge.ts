@@ -1,7 +1,7 @@
 /**
  * The number of moves due on the installed app's icon (Badging API). It's set whenever the app is open
  * and the count changes, so it can be behind while the app is closed. iPhone, iPad and Mac web apps
- * only show a badge once the app may send notifications — Chess Prep never sends any.
+ * only show a badge once the app may send notifications — Tabiya never sends any.
  */
 export const badgeSupported = (): boolean => typeof navigator !== 'undefined' && 'setAppBadge' in navigator;
 

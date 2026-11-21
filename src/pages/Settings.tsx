@@ -245,7 +245,7 @@ export function SettingsPage() {
         <h2>Data</h2>
         <div className="row">
           <button
-            onClick={async () => download(`chess-prep-backup-${new Date().toISOString().slice(0, 10)}.json`, await exportBackup())}
+            onClick={async () => download(`tabiya-backup-${new Date().toISOString().slice(0, 10)}.json`, await exportBackup())}
           >
             Export backup
           </button>

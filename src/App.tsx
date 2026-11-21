@@ -109,7 +109,7 @@ export function App() {
   const tabHref = (t: Tab) => (t.path === 'games' && tab !== t && lastGames ? lastGames : href(t.path));
 
   useEffect(() => {
-    document.title = due ? `(${due}) Chess Prep` : 'Chess Prep';
+    document.title = due ? `(${due}) Tabiya` : 'Tabiya';
     // And on the installed app's icon, where the browser supports it.
     if (due !== undefined) setDueBadge(due);
   }, [due]);
@@ -118,7 +118,7 @@ export function App() {
     <div className="app">
       <header className="topbar">
         <a className="brand" href={href('')}>
-          ♞ Chess<span>Prep</span>
+          <span>♞</span> Tabiya
         </a>
         <nav className="nav row" style={{ flexWrap: 'nowrap' }}>
           {TABS.filter((t) => !t.under).map((t) => (

@@ -101,7 +101,7 @@ export function SyncPanel({ embedded = false }: { embedded?: boolean }) {
         </div>
         <p className="muted small">
           Connected to GitHub as <b>{st.login}</b>. Repertoires, notes, training progress, games and settings sync automatically when you open
-          the app, a few seconds after you change something, and when you switch away from it. To add another device, open Chess Prep there →
+          the app, a few seconds after you change something, and when you switch away from it. To add another device, open Tabiya there →
           Settings → Connections, and paste the same token. Your Lichess connection stays on each device — connect Lichess there too.
         </p>
       </div>
@@ -112,7 +112,7 @@ export function SyncPanel({ embedded = false }: { embedded?: boolean }) {
     <div className={box}>
       {heading}
       <p className="muted small">
-        Use Chess Prep on your phone and your computer with the same repertoires, notes, training progress, games and settings. The data is kept
+        Use Tabiya on your phone and your computer with the same repertoires, notes, training progress, games and settings. The data is kept
         in a secret gist in your own GitHub account — nothing goes anywhere else.
       </p>
       <ol className="steps small">
@@ -124,7 +124,7 @@ export function SyncPanel({ embedded = false }: { embedded?: boolean }) {
           click <i>Generate token</i> and copy it.
         </li>
         <li>Paste it here and connect.</li>
-        <li>On your other device, open Chess Prep → Settings and paste the same token.</li>
+        <li>On your other device, open Tabiya → Settings and paste the same token.</li>
       </ol>
       <div className="row">
         <input

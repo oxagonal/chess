@@ -282,7 +282,7 @@ function MyStudies({ busy, onPick }: { busy: boolean; onPick: (id: string) => vo
       <div className="wizard-studies col" style={{ gap: 6 }}>
         <b>Your Lichess studies</b>
         <div className="muted small">
-          Your Lichess connection was made before Chess Prep could read studies. Reconnect once and allow it (read-only — it can't change
+          Your Lichess connection was made before Tabiya could read studies. Reconnect once and allow it (read-only — it can't change
           anything on Lichess); then come back here.
         </div>
         <div>
