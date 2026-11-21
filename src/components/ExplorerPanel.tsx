@@ -6,7 +6,11 @@ import { fetchExplorer, onExplorerStatus, paramsLabel, type ExplorerParams } fro
 import { lichessParams, MASTERS } from '../services/coverage';
 import { GameStatsIndex } from '../lib/mygames';
 import { moveGames, type MoveStat, type PositionStats } from '../lib/types';
-import { opposite, turnOfKey, type Color } from '../lib/chess';
+import { opposite, playUci, posFromFen, turnOfKey, type Color } from '../lib/chess';
+import { EQUAL_MARGIN, QUIET_MOVES } from '../lib/sharp';
+import { holdingAfter } from '../services/sharpness';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db/db';
 import { PlayersBar, filterBySource, usePlayerGames, useScoutPlayerId, type ScoutSource } from './PlayersScout';
 import { useRecentGames } from '../hooks';
 import { GameRangeSelect } from './GameRangeSelect';
@@ -35,6 +39,8 @@ const TOP_ROWS = 12;
 const MAX_EVAL_MOVES = 10;
 /** Moves within this many centipawns of the best all count as best. */
 const TIE_CP = 10;
+/** The most played replies checked for sharpness (Lichess cloud analysis of the position after each). */
+const SHARP_ROWS = 6;
 
 /** The explorer table's optional columns, in table order. */
 const COLUMNS: { id: ExplorerColumn; label: string; hint: string; where?: string }[] = [
@@ -278,11 +284,39 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
 
   const rowUci = (r: (typeof rows)[number]) => r.stat?.uci ?? r.rep?.uci;
   const evalMoves = [...new Set(rows.filter((r, i) => i < MAX_EVAL_MOVES || r.rep).map(rowUci).filter((u): u is string => !!u))];
-  const evals = useMoveEvals(fenKey, evalMoves, showEval && settings.loaded);
+  // Your turn: a move you already play in other positions, as good as the best here (your usual move) —
+  // its evaluation is fetched for that even when the Eval column is hidden.
+  const theirTurn = turnOfKey(fenKey) !== color;
+  const usual = useUsualMoves(color);
+  const usualElsewhere = (san: string) => {
+    const at = usual?.get(san);
+    return (at?.size ?? 0) - (at?.has(fenKey) ? 1 : 0);
+  };
+  const wantUsual = !theirTurn && rows.some((r, i) => i < MAX_EVAL_MOVES && !r.rep && usualElsewhere(r.san) >= 2);
+  const evals = useMoveEvals(fenKey, evalMoves, (showEval || wantUsual) && settings.loaded);
   const sign = turnOfKey(fenKey) === 'white' ? 1 : -1;
   const moverScores = [...evals.values()].map((e) => evalScore(e) * sign);
   const best = Math.max(...moverScores);
   const bestCount = moverScores.filter((x) => best - x <= TIE_CP).length;
+  // The opponent's turn: replies after which only one or two of your moves hold (⚡ sharp).
+  const sharpTargets = theirTurn ? visibleRows.slice(0, SHARP_ROWS).map(rowUci).filter((u): u is string => !!u).join(',') : '';
+  const holding = useHoldingAfterReplies(fenKey, sharpTargets);
+  // The usual move: the one you play in the most other positions (at least 2), among those rated about
+  // as good as the best here — just one, or the badge would say nothing.
+  const usualSan = (() => {
+    if (theirTurn || evals.size < 2) return undefined;
+    let pick: { san: string; n: number; score: number } | undefined;
+    for (const r of rows) {
+      const u = rowUci(r);
+      const e = u ? evals.get(u) : undefined;
+      if (r.rep || !e) continue;
+      const score = evalScore(e) * sign;
+      const n = usualElsewhere(r.san);
+      if (n < 2 || best - score > EQUAL_MARGIN) continue;
+      if (!pick || n > pick.n || (n === pick.n && score > pick.score)) pick = { san: r.san, n, score };
+    }
+    return pick;
+  })();
 
   /** The games behind the table (all, or those that played `san` here), as a list on the Games page. */
   const gamesHref = (san?: string) =>
@@ -410,6 +444,22 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
                   <td>
                     <b className="san">{san}</b>
                     {rep && ' ✓'}
+                    {(() => {
+                      const n = uci ? holding.get(uci) : undefined;
+                      return n !== undefined && n < QUIET_MOVES ? (
+                        <span className="move-badge sharp" title={`Sharp: after ${san} only ${n === 1 ? 'one of your moves holds' : 'two of your moves hold'}`}>
+                          ⚡
+                        </span>
+                      ) : null;
+                    })()}
+                    {usualSan?.san === san && (
+                      <span
+                        className="move-badge usual"
+                        title={`Your usual move: you play ${san} in ${usualSan.n} other positions, and here it's about as good as the best — one less thing to remember`}
+                      >
+                        ↻
+                      </span>
+                    )}
                   </td>
                   {cols.has('games') && (
                     <td className="num" title={stat ? `${n.toLocaleString()} games` : undefined}>
@@ -502,4 +552,53 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
       )}
     </div>
   );
+}
+
+/**
+ * After each reply (UCI, comma-separated in `targets`) in position `fenKey`: how many of your moves
+ * hold (services/sharpness — Lichess's cloud analysis, cached). Asked a moment after you stop on a
+ * position, one reply at a time, so stepping through moves doesn't fire a burst of requests.
+ */
+function useHoldingAfterReplies(fenKey: string, targets: string): Map<string, number> {
+  const [found, setFound] = useState<{ key: string; by: Map<string, number> }>();
+  useEffect(() => {
+    if (!targets) return;
+    let off = false;
+    const t = setTimeout(async () => {
+      const pos = posFromFen(fenKey);
+      if (!pos) return;
+      const by = new Map<string, number>();
+      for (const uci of targets.split(',')) {
+        const next = playUci(pos, uci);
+        if (!next) continue;
+        const n = await holdingAfter(fenKey, uci, next.key).catch(() => undefined);
+        if (off) return;
+        if (n === undefined) continue;
+        by.set(uci, n);
+        setFound({ key: fenKey, by: new Map(by) });
+      }
+    }, 400);
+    return () => {
+      off = true;
+      clearTimeout(t);
+    };
+  }, [fenKey, targets]);
+  return found?.key === fenKey ? found.by : EMPTY;
+}
+const EMPTY = new Map<string, number>();
+
+/** Where you play each move (SAN → the positions), over all your chapters of a color. */
+function useUsualMoves(color: Color): Map<string, Set<string>> | undefined {
+  return useLiveQuery(async () => {
+    const reps = await db.repertoires.where('color').equals(color).primaryKeys();
+    const moves = reps.length ? await db.moves.where('repId').anyOf(reps).toArray() : [];
+    const by = new Map<string, Set<string>>();
+    for (const m of moves) {
+      if (!m.mine || m.noTrain) continue;
+      const at = by.get(m.san) ?? new Set<string>();
+      at.add(m.fromKey);
+      by.set(m.san, at);
+    }
+    return by;
+  }, [color]);
 }

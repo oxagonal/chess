@@ -9,7 +9,7 @@
  */
 import { playUci, posFromFen, turnOfKey, type Color } from './chess';
 import type { RepGraph } from './graph';
-import { reachProbabilities, DEEPER } from './coverage';
+import { reachProbabilities, DEEPER, type SharpProvider } from './coverage';
 import { moveGames, type PositionStats } from './types';
 
 export interface MemoryStep {
@@ -37,13 +37,15 @@ export async function nextMemoryTarget(opts: {
   provider: (key: string) => Promise<PositionStats | undefined>;
   /** Positions you said you don't know (skipped for this session). */
   skip: Set<string>;
+  /** Find sharp lines with the engine and go deeper there (as the coverage run does). */
+  sharp?: SharpProvider;
   signal?: AbortSignal;
 }): Promise<MemoryTarget | undefined> {
   const { graph, color, threshold, provider, skip, signal } = opts;
   const visited = new Set<string>();
   // Positions in the repertoire: probability over all move orders. Elsewhere (off-repertoire
   // positions, or a start position the repertoire doesn't reach) fall back to the line's own.
-  const { prob: total, boost } = await reachProbabilities(graph, provider, { threshold, signal });
+  const { prob: total, boost, required, statsAt } = await reachProbabilities(graph, provider, { threshold, signal, sharp: opts.sharp });
 
   // `b`: how much deeper this line is prepared (after a move marked "prepare deeper"; see DEEPER).
   const explore = async (key: string, path: MemoryStep[], linePr: number, b: number): Promise<MemoryTarget | undefined> => {
@@ -71,7 +73,8 @@ export async function nextMemoryTarget(opts: {
     for (const ms of replies) {
       const q = (p * moveGames(ms)) / stats.total;
       const bc = graph.edge(key, ms.san)?.deeper ? DEEPER : bk;
-      if (q * bc < threshold) continue;
+      // In your lines the coverage pass has already settled which replies need an answer (sharp ones too).
+      if (statsAt.has(key) ? !required.has(`${key}|${ms.san}`) : q * bc < threshold) continue;
       const next = playUci(pos, ms.uci);
       if (!next) continue;
       const r = await explore(next.key, [...path, { san: next.san, uci: next.uci, fromKey: key, key: next.key }], q, bc);

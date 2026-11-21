@@ -33,6 +33,7 @@ import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
 import { compactLine, formatLine, moveNumberPrefix, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
 import { DEEPER, oneIn, oneInShort } from '../lib/coverage';
 import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
+import { sharpProvider } from '../services/sharpness';
 import type { AppSettings } from '../db/settings';
 import { type CoverageResult, type PositionStats, type RepMove, type Repertoire } from '../lib/types';
 import { isDue, isNew } from '../lib/srs';
@@ -313,6 +314,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
           threshold: 1 / goalN,
           provider,
           skip: memSkip,
+          // Sharp lines go deeper here too (Lichess's cloud analysis only: the Stockfish box is in use).
+          sharp: sharpProvider({ local: false, signal: ctrl.signal }),
           signal: ctrl.signal,
         });
         if (ctrl.signal.aborted) return;

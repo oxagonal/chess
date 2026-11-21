@@ -532,6 +532,10 @@ table.data tr.current-row td { background: var(--panel2); }
 .ml-move.no-train, .ml-side .mv.no-train, .iv-move.no-train { opacity: 0.42; }
 /* A sharp line starts here: prepared deeper than the coverage goal. */
 .sharp-tag { color: var(--warn); font-weight: 600; }
+/* Explorer: a reply after which only one or two of your moves hold, and your usual move. */
+.move-badge { display: inline-flex; align-items: center; justify-content: center; margin-left: 5px; width: 17px; height: 17px; border-radius: 50%; font-size: 10.5px; font-weight: 800; vertical-align: 1px; cursor: help; }
+.move-badge.sharp { background: rgba(232, 161, 60, 0.18); color: var(--warn); }
+.move-badge.usual { background: rgba(147, 185, 232, 0.18); color: var(--theirs); }
 .ml-move.deeper::after, .ml-side .mv.deeper::after, .iv-move.deeper::after { content: '⚡'; font-size: 0.8em; margin-left: 2px; }
 .ml-move.current.no-train, .iv-move.current.no-train { opacity: 0.7; }
 .no-train-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }

@@ -9,6 +9,15 @@ export interface ExplorerCacheRow {
   data: PositionStats;
 }
 
+/** The engine's best lines in a position, kept for the coverage run's sharpness checks (a cache: not synced). */
+export interface EngineCacheRow {
+  key: string;
+  fetchedAt: number;
+  /** Each line's first move and evaluation (White's point of view). */
+  lines: { uci: string; cp?: number; mate?: number }[];
+  depth: number;
+}
+
 export interface KvRow {
   key: string;
   value: unknown;
@@ -36,6 +45,7 @@ export type ChessDB = Dexie & {
   playerGames: EntityTable<PlayerGame, 'id'>;
   collections: EntityTable<Collection, 'id'>;
   puzzleLog: EntityTable<PuzzleAttempt, 'id'>;
+  engineCache: EntityTable<EngineCacheRow, 'key'>;
 };
 
 export function openDb(name = 'chess-prep'): ChessDB {
@@ -82,6 +92,8 @@ export function openDb(name = 'chess-prep'): ChessDB {
     });
   // Puzzles you did (the Puzzles tab).
   db.version(5).stores({ puzzleLog: 'id, startedAt, puzzleId' });
+  // The engine's lines in positions checked for sharpness (a cache, like explorerCache).
+  db.version(6).stores({ engineCache: 'key, fetchedAt' });
   trackChanges(db);
   return db;
 }

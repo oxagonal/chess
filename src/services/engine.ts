@@ -242,6 +242,19 @@ export function analysePosition(key: string, depth: number, multiPv: number, rep
   };
 }
 
+/**
+ * Stockfish's best `multiPv` lines at `depth`, once (no cloud): for background work like the coverage
+ * run's sharpness checks. Resolves with [] if another search takes the engine over first.
+ */
+export async function analyseOnce(key: string, depth: number, multiPv: number): Promise<EngineLine[]> {
+  const cacheKey = `${key}|${depth}|${multiPv}`;
+  const cached = localCache.get(cacheKey);
+  if (cached) return cached;
+  const lines = await new Promise<EngineLine[]>((resolve) => void engine.analyse({ fen: `${key} 0 1`, multiPv, depth, resolve, onUpdate: () => {} }));
+  if (lines.length) localCache.set(cacheKey, lines);
+  return lines;
+}
+
 /* ------------------------------------------- the explorer's Stockfish column */
 
 const latestLines = new Map<string, EngineLine[]>();

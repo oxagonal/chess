@@ -61,6 +61,40 @@ describe('coverage (1 in N)', () => {
     expect(sharp.boost![START_KEY]).toBeUndefined();
   });
 
+  it('finds sharp lines with the engine: rarer than the goal, but only one or two of your moves hold', async () => {
+    // After 1.e4 c5: 2.a3 is rare (2.7% < 1 in 20). Where 2.a3 is sharp for Black, it needs an answer;
+    // then the line goes on at the deeper goal while it stays sharp, and stops where it's quiet.
+    const lines = movesFromLines('b', 'black', ['e4 c5 Nf3 d6', 'e4 c5 a3 Nc6']);
+    const stats: Record<string, PositionStats> = {
+      [START_KEY]: stat([['e4', 'e2e4', 90], ['g3', 'g2g3', 6], ['b3', 'b2b3', 4]]),
+      [keyAfter('e4 c5')]: stat([['Nf3', 'g1f3', 97], ['a3', 'a2a3', 3]]),
+      [keyAfter('e4 c5 a3 Nc6')]: stat([['b4', 'b2b4', 60], ['Nf3', 'g1f3', 40]]),
+    };
+    const sharpAfter = new Set([keyAfter('e4 c5 a3'), keyAfter('e4 c5 a3 Nc6 b4')]);
+    const asked: string[] = [];
+    const sharp = async (_from: string, _uci: string, to: string) => (asked.push(to), sharpAfter.has(to));
+    const res = await computeCoverage(new RepGraph('black', lines), async (k) => stats[k], {
+      repId: 'b',
+      threshold: 1 / 20,
+      source: 'lichess',
+      paramsLabel: 't',
+      sharp,
+    });
+    // 2.a3 is answered (1...Nc6), so no gap there; 3.b4 is sharp and unanswered: a gap; 3.Nf3 is quiet.
+    expect(res.gaps.map((x) => [x.path.concat(x.san).join(' '), x.boost])).toEqual([
+      ['g3', undefined],
+      ['e4 c5 a3 Nc6 b4', 'sharp'],
+    ]);
+    expect(res.boost![keyAfter('e4 c5 a3')]).toBe(DEEPER);
+    expect(res.boost![keyAfter('e4 c5')]).toBeUndefined();
+    // Only the rare replies that could matter were asked about — not 1.b3 (its position needs no answer) or 2.Nf3.
+    expect(asked).not.toContain(keyAfter('e4 c5 Nf3'));
+    expect(asked).toContain(keyAfter('e4 c5 a3 Nc6 Nf3'));
+    // Without the engine: as before.
+    const plain = await computeCoverage(new RepGraph('black', lines), async (k) => stats[k], { repId: 'b', threshold: 1 / 20, source: 'lichess', paramsLabel: 't' });
+    expect(plain.gaps.map((x) => x.san)).toEqual(['g3']);
+  });
+
   it('splits the covered games into your lines and rare sidelines', async () => {
     // 1.b3 (4%) is rarer than 1 in 20, 1.g3 (6%) is a gap; after 1.e4 c5, 2.a3 (3% of those games) is rare.
     const g3 = new RepGraph('black', movesFromLines('b', 'black', ['e4 c5 Nf3 d6']));

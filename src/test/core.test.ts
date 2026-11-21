@@ -4,6 +4,7 @@ import { RepGraph } from '../lib/graph';
 import { movesFromLines } from '../lib/lines';
 import { graphToPgn, pgnToEdges, tokenizeMoveText } from '../lib/pgn';
 import { newMovesQuiz, planLine, orderCards } from '../lib/trainer';
+import { isSharp, movesThatHold } from '../lib/sharp';
 import { newCard, grade, isDue, Rating, State } from '../lib/srs';
 
 describe('chess helpers', () => {
@@ -328,5 +329,28 @@ describe('SRS', () => {
     const failed = grade(c, Rating.Again, undefined, c.due);
     expect(failed.lapses).toBe(1);
     expect(failed.due - failed.lastReview!).toBeLessThan(24 * 3600 * 1000);
+  });
+});
+
+describe('sharp positions', () => {
+  const at = (...cps: number[]) => cps.map((cp) => ({ eval: { cp } }));
+  it('a quiet position has about three moves roughly as good as the best', () => {
+    expect(movesThatHold(at(20, 10, -5, -200), 'white', 30)).toBe(3);
+    expect(isSharp(at(20, 10, -5, -200), 'white', 30)).toBe(false);
+    // Only two hold: sharp.
+    expect(movesThatHold(at(50, 25, -40), 'white', 30)).toBe(2);
+    expect(isSharp(at(50, 25, -40), 'white', 30)).toBe(true);
+  });
+  it("reads the evaluation from the side to move's point of view", () => {
+    // Black to move: −0.5 is Black's best; −0.1 and +0.6 are much worse for Black.
+    expect(movesThatHold(at(-50, -10, 60), 'black', 30)).toBe(1);
+  });
+  it("can't tell from too few lines unless there are that few moves", () => {
+    expect(movesThatHold(at(10, 0), 'white', 25)).toBeUndefined();
+    expect(movesThatHold(at(10, 0), 'white', 2)).toBe(2);
+  });
+  it('is more lenient once the position is decided, and counts mates as best', () => {
+    expect(movesThatHold(at(520, 480, 470), 'white', 30)).toBe(3);
+    expect(movesThatHold([{ eval: { mate: 2 } }, { eval: { cp: 300 } }, { eval: { cp: 290 } }], 'white', 30)).toBe(1);
   });
 });

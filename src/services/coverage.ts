@@ -1,4 +1,5 @@
 import { db } from '../db/db';
+import { sharpProvider } from './sharpness';
 import { getSettings, repTarget, type AppSettings } from '../db/settings';
 import { loadScope, loadScopeGraph } from '../db/scopes';
 import { computeCoverage, COVERAGE_ALGO, likelyPositions } from '../lib/coverage';
@@ -40,7 +41,8 @@ export async function runCoverage(
 ): Promise<CoverageResult> {
   const loaded = await loadScopeGraph(scopeId);
   if (!loaded) throw new Error('Not found');
-  return runCoverageForGraph(scopeId, loaded.graph, { oneInN: repTarget(loaded.scope, await getSettings()), ...opts });
+  // A full run may ask Stockfish about positions Lichess's cloud doesn't know (to find sharp lines).
+  return runCoverageForGraph(scopeId, loaded.graph, { oneInN: repTarget(loaded.scope, await getSettings()), localEngine: true, ...opts });
 }
 
 /** What a coverage run at 1 in `n` games would say about a scope (Map → Details → compare targets). */
@@ -96,7 +98,13 @@ export async function compareTargets(
 export async function runCoverageForGraph(
   repId: string,
   graph: RepGraph,
-  opts: { signal?: AbortSignal; onProgress?: (queried: number) => void; oneInN?: number } = {},
+  opts: {
+    signal?: AbortSignal;
+    onProgress?: (queried: number) => void;
+    oneInN?: number;
+    /** Ask Stockfish where Lichess's cloud analysis can't tell if a line is sharp (not while the Stockfish box is in use). */
+    localEngine?: boolean;
+  } = {},
 ): Promise<CoverageResult> {
   const s = await getSettings();
   const n = opts.oneInN ?? repTarget(await loadScope(repId), s);
@@ -106,6 +114,7 @@ export async function runCoverageForGraph(
     threshold: 1 / n,
     source: s.probabilitySource,
     paramsLabel: sourceLabel(s),
+    sharp: sharpProvider({ local: !!opts.localEngine, signal: opts.signal }),
     signal: opts.signal,
     onProgress: (q) => opts.onProgress?.(q),
   });

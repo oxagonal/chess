@@ -13,10 +13,10 @@ import { moveGames, type CoverageGap, type CoverageNode, type CoverageResult, ty
 
 /**
  * Bump when the analysis changes so stored results are recalculated. 2 = follows unsaved
- * transpositions. (Preparing deeper after marked moves needs no bump: without marks results are the
- * same, and marking a move makes its chapters' runs stale — see setDeeper.)
+ * transpositions; 3 = finds sharp lines with the engine and prepares them deeper (SHARP_STRETCH).
+ * (Marking a move "prepare deeper" makes its chapters' runs stale on its own — see setDeeper.)
  */
-export const COVERAGE_ALGO = 2;
+export const COVERAGE_ALGO = 3;
 
 /**
  * How much deeper a sharp line is prepared: after a move marked "prepare deeper" a position needs an
@@ -25,6 +25,16 @@ export const COVERAGE_ALGO = 2;
  * it only changes what needs an answer, never how often a position is said to come up.
  */
 export const DEEPER = 10;
+
+/**
+ * Sharp lines, found by the engine: a reply rarer than the goal still needs an answer when only one
+ * or two of your moves hold after it (lib/sharp) — and the line goes on at the DEEPER goal until a
+ * position of yours is quiet (about three moves roughly as good), for at most this many of your moves.
+ */
+export const SHARP_STRETCH = 6;
+
+/** Is the position after the opponent's reply `uci` (from → to) sharp for you? Undefined: can't tell. */
+export type SharpProvider = (fromKey: string, uci: string, toKey: string) => Promise<boolean | undefined>;
 
 export type StatsProvider =(key: string) => Promise<PositionStats | undefined>;
 
@@ -35,6 +45,8 @@ export interface CoverageOptions {
   queryCutoff?: number;
   source: ProbabilitySource;
   paramsLabel: string;
+  /** Find sharp lines with the engine and prepare them deeper (see SHARP_STRETCH). */
+  sharp?: SharpProvider;
   onProgress?: (queried: number, current: string) => void;
   signal?: AbortSignal;
 }
@@ -48,6 +60,8 @@ export interface ForwardOptions {
    * splitting it evenly — for an import, before you've picked between its alternatives.
    */
   pickAll?: boolean;
+  /** Find sharp lines with the engine and prepare them deeper (see SHARP_STRETCH). */
+  sharp?: SharpProvider;
   onProgress?: (queried: number, current: string) => void;
   signal?: AbortSignal;
 }
@@ -93,6 +107,9 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
   // every move order into it (the most from any).
   const boost = new Map<string, number>([[graph.root, 1]]);
   const raise = (key: string, b: number) => b > (boost.get(key) ?? 1) && boost.set(key, b);
+  // Positions in a sharp stretch (found by the engine): how many of your moves into it (from 0).
+  const stretch = new Map<string, number>();
+  const extend = (key: string, n: number) => n < (stretch.get(key) ?? Infinity) && stretch.set(key, n);
   const required = new Set<string>();
   const pathSans = (key: string) => (graph.pathTo(key) ?? []).map((m) => m.san);
   const statsAt = new Map<string, PositionStats>();
@@ -101,14 +118,16 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
     if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const p = prob.get(key) ?? 0;
     if (p <= 0) continue;
-    const b = boost.get(key) ?? 1;
+    const manual = boost.get(key) ?? 1;
+    const inStretch = stretch.get(key);
+    const b = Math.max(manual, inStretch !== undefined ? DEEPER : 1);
     const kids = kidsOf(key);
 
     if (graph.isMyTurn(key)) {
       if (!kids.length) {
         if (!isGameOver(key)) {
           const node: CoverageNode = { key, prob: p, path: pathSans(key), myTurn: true };
-          if (p * b >= threshold) unfinished.push(p >= threshold ? node : { ...node, boost: 'deeper' });
+          if (p * b >= threshold) unfinished.push(p >= threshold ? node : { ...node, boost: p * manual >= threshold ? 'deeper' : 'sharp' });
           else keepMinor(minorUnfinished, node);
         }
         continue;
@@ -116,7 +135,8 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
       // Several prepared moves: assume you pick between them evenly (or, for an import, play each).
       for (const m of kids) {
         add(m.toKey, opts.pickAll ? p : p / kids.length);
-        raise(m.toKey, m.deeper ? DEEPER : b);
+        raise(m.toKey, m.deeper ? DEEPER : manual);
+        if (inStretch !== undefined) extend(m.toKey, inStretch);
       }
       continue;
     }
@@ -137,17 +157,33 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
       const edge = kids.find((m) => m.san === ms.san);
       const q = p * freq;
       // The position after the reply is prepared as deep as this one — or deeper, after a marked move.
-      const bc = edge?.deeper ? DEEPER : b;
-      const needed = q * bc >= threshold;
+      const bc = edge?.deeper ? DEEPER : manual;
+      let needed = q * bc >= threshold;
+      // Rarer than that, but in a line still worth knowing (this position needs an answer): if only
+      // one or two of your moves hold after the reply, the line is sharp — prepare it deeper, until
+      // a position of yours is quiet again.
+      let sharpFrom: number | undefined;
+      const next = inStretch === undefined ? 0 : inStretch + 1;
+      if (!needed && opts.sharp && p * b >= threshold && q * DEEPER >= threshold && next < SHARP_STRETCH) {
+        const toKey = edge?.toKey ?? afterUci(key, ms.uci);
+        if (toKey && (await opts.sharp(key, ms.uci, toKey))) {
+          needed = true;
+          sharpFrom = next;
+        }
+        if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      }
       if (needed) required.add(`${key}|${ms.san}`);
       const gap: CoverageGap = { fromKey: key, san: ms.san, uci: ms.uci, prob: q, freq, games, path: pathSans(key) };
       if (edge) {
         add(edge.toKey, q);
         raise(edge.toKey, bc);
-      } else if (needed) gaps.push(q >= threshold ? gap : { ...gap, boost: 'deeper' });
+        if (sharpFrom !== undefined) extend(edge.toKey, sharpFrom);
+      } else if (needed) gaps.push(q >= threshold ? gap : { ...gap, boost: sharpFrom !== undefined ? 'sharp' : 'deeper' });
       else keepMinor(minorGaps, gap);
     }
   }
+  // A sharp stretch is prepared as deep as a marked line.
+  for (const k of stretch.keys()) raise(k, DEEPER);
   return { prob, gaps, unfinished, minorGaps, minorUnfinished, noData, queried, statsAt, kidsOf, order, boost, required };
 }
 
@@ -238,6 +274,12 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
     boost: Object.fromEntries([...boost].filter(([k, v]) => v > 1 && prob.has(k))),
     algo: COVERAGE_ALGO,
   };
+}
+
+/** The position after a move (UCI) — for a reply that isn't in your lines. */
+function afterUci(key: string, uci: string): string | undefined {
+  const pos = posFromFen(key);
+  return pos ? playUci(pos, uci)?.key : undefined;
 }
 
 interface Edge {
