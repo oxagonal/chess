@@ -89,7 +89,11 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
   const nav = useRef({ back: () => {}, forward: () => {}, start: () => {}, end: () => {} });
   const closeMenu = useCallback(() => setMenu(null), []);
 
-  const result = useMemo(() => (game && graphs ? analyzeGame(game, graphs) : undefined), [game, graphs]);
+  // Redone when the game's moves (or your repertoire) change — not when its notes, side lines or
+  // computer review are saved, which happens as you go.
+  const movesKey = game ? `${game.id}|${game.userColor}|${game.sans.join(' ')}` : '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const result = useMemo(() => (game && graphs ? analyzeGame(game, graphs) : undefined), [movesKey, graphs]);
   const replay = useMemo(() => {
     if (!game) return undefined;
     let pos: Chess = startPos();
@@ -105,7 +109,8 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
       pos = r.pos;
     }
     return { positions, ucis, sans };
-  }, [game]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movesKey]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -389,6 +389,17 @@ function ChapterStrips({
     return () => window.removeEventListener('keydown', esc);
   }, [open]);
 
+  // Each chapter's opening, worked out once (not again whenever a line's popover opens or closes).
+  const openings = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const m of maps) {
+      const g = allGraphs?.get(m.chapter.id);
+      if (g) out.set(m.chapter.id, compactLine(chapterPosition(g, names, m.chapter.name).moves.map((x) => x.san)));
+    }
+    return out;
+    // (`maps` is re-sorted on every render: keyed by its chapters instead.)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maps.map((m) => `${m.chapter.id}|${m.chapter.name}`).join(), allGraphs, names]);
   // Each strip is as long as its chapter is common: the most common one fills the row.
   const longest = Math.max(0, ...maps.map((m) => m.games ?? 0));
   const strip = ({ chapter, lines, weights, ready, uncovered, uncoveredWeight, rare, rareWeight, games }: ChapterMap, label: string) => {
@@ -396,8 +407,7 @@ function ChapterStrips({
     const length = games !== undefined && longest > 0 ? { width: `${(100 * games) / longest}%` } : undefined;
     const dueCount = lines.filter((l) => l.due).length;
     const fresh = lines.some((l) => l.strength === 'new');
-    const g = allGraphs?.get(chapter.id);
-    const opening = g ? compactLine(chapterPosition(g, names, chapter.name).moves.map((m) => m.san)) : '';
+    const opening = openings.get(chapter.id) ?? '';
     const practice = () =>
       navigate('train', { rep: chapter.id, mode: dueCount ? 'review' : fresh ? 'learn' : 'drill', t: String(Date.now()) });
     return (

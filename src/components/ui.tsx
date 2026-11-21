@@ -91,8 +91,10 @@ export function fmtPct(p: number): string {
   return `${x.toPrecision(2)}%`;
 }
 
+// One formatter for every date (making one per call is slow — a table of games calls it per row).
+const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 export function fmtDate(ts: number): string {
-  return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return DATE_FORMAT.format(new Date(ts));
 }
 
 export function timeAgo(ts: number): string {

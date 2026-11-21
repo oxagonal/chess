@@ -219,7 +219,11 @@ export function ExplorerPanel({ fenKey, color, saved = [], notes, title, onPlay,
   const [loading, setLoading] = useState(false);
   const [waitUntil, setWaitUntil] = useState<number | undefined>();
   const games = useRecentGames('opponentRange');
-  const mine = useMemo(() => (games ? new GameStatsIndex(games, { color }) : undefined), [games, color]);
+  // Rebuilt only when the games' moves or results change — not whenever a game's notes, side lines or
+  // computer review are saved (a review saves as it goes; replaying every game again each time lags).
+  const gamesKey = games?.map((g) => `${g.id}:${g.sans.length}:${g.result}:${g.userColor}:${g.playedAt}`).join('|');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const mine = useMemo(() => (games ? new GameStatsIndex(games, { color }) : undefined), [gamesKey, color]);
   // Players tab: what a scouted player plays here — by default with the color your opponents have.
   const [playerId, setPlayerId] = useScoutPlayerId();
   const [playerAs, setPlayerAs] = useState<Color>(opposite(color));

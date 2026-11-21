@@ -33,20 +33,28 @@ export function ChaptersPanel({ color, line, current, onPicked }: { color: Color
   const [filter, setFilter] = useState('');
   const key = useMemo(() => keyAfter(line), [line]);
   const groups = useMemo(() => (chapters && graphs ? organize(chapters, graphs, names, color) : []), [chapters, graphs, names, color]);
+  // Each chapter's opening (its moves): worked out once, not again at every move you step through.
+  const openings = useMemo(() => {
+    const out = new Map<string, string[]>();
+    for (const ch of chapters ?? []) {
+      const g = ch.color === color ? graphs?.get(ch.id) : undefined;
+      if (g) out.set(ch.id, chapterPosition(g, names, ch.name).moves.map((m) => m.san));
+    }
+    return out;
+  }, [chapters, graphs, names, color]);
   if (!chapters || !graphs) return null;
 
   const open = (ch: Chapter) => {
     const g = graphs.get(ch.id);
     const here = !!key && !!g && line.length > 0 && g.has(key);
-    const sans = here ? [...line] : g ? chapterPosition(g, names, ch.name).moves.map((m) => m.san) : [];
+    const sans = here ? [...line] : (openings.get(ch.id) ?? []);
     onPicked?.();
     navigate(`repertoire/${ch.id}`, sans.length ? { line: sans.join(' ') } : undefined);
   };
   const alsoHere = line.length && key ? chapters.filter((c) => c.color === color && c.id !== current && graphs.get(c.id)?.has(key)) : [];
   const q = filter.trim().toLowerCase();
   const item = (ch: Chapter, label: string) => {
-    const g = graphs.get(ch.id);
-    const opening = g ? compactLine(chapterPosition(g, names, ch.name).moves.map((m) => m.san)) : '';
+    const opening = compactLine(openings.get(ch.id) ?? []);
     return (
       <button key={ch.id} className={`cp-item ${ch.id === current ? 'current' : ''}`} onClick={() => open(ch)} title={ch.name}>
         <span className="cp-name">{label}</span>
