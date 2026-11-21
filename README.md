@@ -94,8 +94,11 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
 
 - **Puzzles** — Lichess puzzles, the tactics third of the 1/3 rule (openings · games and their review ·
   tactics): a healthy mix, from your own openings, or by theme (forks, pins, mates, endgames…), at the
-  difficulty you pick. By default you write the whole solution first, branches included: play your moves
-  and the replies you expect, and before you can check it every reply on your main line needs another one
+  difficulty you pick. By default you write the whole solution first, branches included, without moving the
+  pieces: the board stays on the puzzle while you tap a piece's square and where it goes as things stand in
+  your line (or type the move), your line shows as numbered arrows (or none, all in your head), and holding
+  "peek" shows the position you've reached but makes the puzzle a miss. Before you can check it every reply
+  on your main line needs another one
   considered (or "only one sensible reply") — then it's checked against Lichess's solution (any mate
   counts, as on Lichess). Afterwards the puzzle is a small study: the game from move 1 with the players'
   names, titles and ratings, step back and forth, play any move, Stockfish with clickable lines. Unchecking

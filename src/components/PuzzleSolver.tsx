@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Board } from './Board';
+import { Board, type Arrow } from './Board';
 import { EnginePanel } from './EnginePanel';
 import { MaterialBalance } from './MaterialBalance';
 import { MoveTreeView } from './MoveTreeView';
-import { moveNumberPrefix, opposite, playUci, type Color } from '../lib/chess';
+import { isPromotion, legalDests, moveNumberPrefix, opposite, playUci, type Color } from '../lib/chess';
+import { updateSettings, useSettings } from '../db/settings';
 import { gradeWritten, MoveTree, unconsidered } from '../lib/moveTree';
 import { judgeMove, type LichessPuzzle } from '../lib/puzzle';
 import { tokenizeMoveText } from '../lib/pgn';
@@ -72,6 +73,19 @@ export function PuzzleSolver({
   // Play mode: where the solution has got to, and whether a wrong move was played.
   const [tip, setTip] = useState(startId);
   const failed = useRef(false);
+  // Writing: the board stays on the puzzle's position. A square you picked, a promotion to choose,
+  // a word about a move that isn't legal, what you're typing, and a peek (which makes it a miss).
+  const settings = useSettings();
+  const [picked, setPicked] = useState<string>();
+  const [promoAsk, setPromoAsk] = useState<{ from: string; to: string }>();
+  const [notice, setNotice] = useState<string>();
+  const [typed, setTyped] = useState('');
+  const [peeking, setPeeking] = useState(false);
+  const peeked = useRef(false);
+  useEffect(() => {
+    setPicked(undefined);
+    setPromoAsk(undefined);
+  }, [cursor]);
   // After a miss, the next puzzle waits until you've been through the solution, move by move.
   const [won, setWon] = useState<boolean>();
   const [solutionIds, setSolutionIds] = useState<string[]>([]);
@@ -90,8 +104,9 @@ export function PuzzleSolver({
         text:
           mode === 'write' ? (
             <>
-              Your turn ({you === 'white' ? 'White' : 'Black'}). <b>Write your solution</b> on the board — your move, their best reply, your answer…
-              — and at each of their turns their other sensible replies too. Nothing is checked until you say so.
+              Your turn ({you === 'white' ? 'White' : 'Black'}). <b>Write your solution without moving the pieces</b>: tap a piece's square, then
+              where it goes — as things stand in your line (the board stays on the puzzle). Your move, their best reply, your answer… and at each
+              of their turns their other sensible replies too. Nothing is checked until you say so.
             </>
           ) : (
             <>Your turn — find the best move for {you === 'white' ? 'White' : 'Black'}.</>
@@ -130,7 +145,9 @@ export function PuzzleSolver({
   const check = () => {
     const g = gradeWritten(tree, startId, solution);
     addSolution();
-    if (g.win) {
+    if (g.win && peeked.current) {
+      setFeedback({ kind: 'hint', text: <>Right — but you peeked, so it counts as missed. Next time, all in your head.</> });
+    } else if (g.win) {
       setFeedback({ kind: 'good', text: <>✓ Right — your lines have the solution, their best defence included.</> });
       flashFor('good');
     } else if (g.wrongAt) {
@@ -154,8 +171,56 @@ export function PuzzleSolver({
       setCursor(at.id);
       flashFor('bad');
     }
-    finish(g.win);
+    finish(g.win && !peeked.current);
   };
+
+  /* ---- writing without moving the pieces ---- */
+  const blind = mode === 'write' && phase === 'solve' && tree.isUnder(cursor, startId);
+  const write = (uci: string) => {
+    const id = tree.add(cursor, uci, 'mine');
+    if (id) {
+      setCursor(id);
+      bump();
+    }
+  };
+  const sideName = (c: Color) => (c === 'white' ? 'White' : 'Black');
+  /** A tap on a square: pick a piece (as it stands in your line), then where it goes. */
+  const tap = (sq: string) => {
+    setNotice(undefined);
+    const pos = node.pos;
+    const dests = legalDests(pos);
+    if (picked && sq === picked) return setPicked(undefined);
+    if (picked && dests.get(picked)?.includes(sq)) {
+      setPicked(undefined);
+      if (isPromotion(pos, picked, sq)) return setPromoAsk({ from: picked, to: sq });
+      return write(picked + sq);
+    }
+    if (dests.has(sq)) return setPicked(sq);
+    setNotice(
+      picked
+        ? `${picked}–${sq} isn't legal as things stand in your line.`
+        : `No ${sideName(pos.turn)} piece on ${sq} can move, as things stand in your line (${sideName(pos.turn)} to play).`,
+    );
+    setPicked(undefined);
+  };
+  const typeMove = () => {
+    const san = typed.trim();
+    if (!san) return;
+    const id = tree.addSan(cursor, san, 'mine');
+    if (!id) return setNotice(`${san} isn't legal as things stand in your line (${sideName(node.pos.turn)} to play).`);
+    setTyped('');
+    setNotice(undefined);
+    setCursor(id);
+    bump();
+  };
+  // Your line so far as numbered arrows on the still board: yours green, theirs blue.
+  const lineArrows: Arrow[] = blind
+    ? tree
+        .path(cursor)
+        .filter((n) => n.id !== startId && tree.isUnder(n.id, startId))
+        .map((n, i) => ({ uci: n.uci, brush: n.pos.turn === you ? 'blue' : 'green', label: String(i + 1) }))
+    : [];
+  const shown = blind && !peeking ? tree.get(startId) : node;
   const giveUp = () => {
     addSolution();
     setFeedback({ kind: 'hint', text: 'The solution is in green — step through it, try other moves, ask Stockfish.' });
@@ -261,7 +326,17 @@ export function PuzzleSolver({
     <div className="board-layout puzzle-layout">
       <div className="board-col col puzzle-board">
         {strip(opposite(you))}
-        <Board pos={node.pos} orientation={you} interactive={interactive} lastMove={node.uci || undefined} onMove={onMove} flash={flash} />
+        <Board
+          pos={shown.pos}
+          orientation={you}
+          interactive={interactive && !blind}
+          lastMove={shown.uci || undefined}
+          onMove={onMove}
+          flash={flash}
+          arrows={blind && !peeking && settings.puzzleArrows ? lineArrows : undefined}
+          circles={blind && picked ? [{ square: picked, brush: 'yellow' }] : undefined}
+          onSquareClick={blind && !peeking ? tap : undefined}
+        />
         {strip(you)}
         <div className="row puzzle-nav">
           <button onClick={() => setCursor(tree.root)} aria-label="Start of the game" title="Start of the game">
@@ -306,9 +381,66 @@ export function PuzzleSolver({
           <MoveTreeView tree={tree} cursor={cursor} onSelect={setCursor} wrong={wrong} />
           {mode === 'write' && phase === 'solve' && (
             <>
+              {blind && (
+                <div className="row write-tools">
+                  {promoAsk ? (
+                    <span className="row" style={{ gap: 6 }}>
+                      <span className="small">Promote to</span>
+                      {(['q', 'n', 'r', 'b'] as const).map((r) => (
+                        <button key={r} className="small" onClick={() => (setPromoAsk(undefined), write(promoAsk.from + promoAsk.to + r))}>
+                          {{ q: 'Queen', n: 'Knight', r: 'Rook', b: 'Bishop' }[r]}
+                        </button>
+                      ))}
+                    </span>
+                  ) : (
+                    <form
+                      className="row"
+                      style={{ gap: 6 }}
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        typeMove();
+                      }}
+                    >
+                      <input
+                        className="type-move"
+                        value={typed}
+                        onChange={(e) => setTyped(e.target.value)}
+                        placeholder="or type it: Qh5+"
+                        aria-label="Type a move"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      />
+                    </form>
+                  )}
+                  <label className="check small" title="Show your line as numbered arrows on the board (off: all in your head)">
+                    <input type="checkbox" checked={settings.puzzleArrows} onChange={(e) => void updateSettings({ puzzleArrows: e.target.checked })} />
+                    Arrows
+                  </label>
+                  <span className="spacer" />
+                  <button
+                    className={`small ghost ${peeking ? 'primary' : ''}`}
+                    title="Shows the position your line has reached while you hold it — the puzzle then counts as missed"
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      peeked.current = true;
+                      setPeeking(true);
+                    }}
+                    onPointerUp={() => setPeeking(false)}
+                    onPointerLeave={() => setPeeking(false)}
+                    onPointerCancel={() => setPeeking(false)}
+                    onContextMenu={(e) => e.preventDefault()}
+                  >
+                    👁 Hold to peek
+                  </button>
+                </div>
+              )}
+              {notice && <div className="small warn-text">{notice}</div>}
+              {peeked.current && <div className="muted small">You peeked: this puzzle counts as missed.</div>}
               {onOpen && (
                 <div className="note small">
-                  What else could they play here? Play it on the board — or{' '}
+                  What else could they play here? Enter it — or{' '}
                   <button className="small" onClick={() => setOnly(new Set(only).add(cursor))}>
                     Only one sensible reply
                   </button>

@@ -21,6 +21,8 @@ function watchTwoFingerDraw() {
 export interface Arrow {
   uci: string;
   brush?: 'green' | 'red' | 'blue' | 'yellow' | 'paleBlue' | 'paleGreen' | 'paleGrey';
+  /** A small label on the arrow (e.g. the move's number in a line). */
+  label?: string;
 }
 
 interface BoardProps {
@@ -38,13 +40,20 @@ interface BoardProps {
   markSquare?: string;
   /** Rank and file letters along the edges (off for a small preview). */
   coordinates?: boolean;
+  /** Circles on squares (e.g. the square you picked). */
+  circles?: { square: string; brush?: Arrow['brush'] }[];
+  /**
+   * Enter moves by tapping squares instead of moving pieces: every tap on the board is passed on
+   * (writing a puzzle's solution while the board stays still). The board itself takes no moves then.
+   */
+  onSquareClick?: (square: string) => void;
 }
 
 /**
  * Chessground board driven entirely by a chessops Position.
  * After every user move we re-apply the props, so a move the parent rejects snaps back.
  */
-export function Board({ pos, orientation, interactive = false, lastMove, arrows, onMove, flash, markSquare, coordinates = true }: BoardProps) {
+export function Board({ pos, orientation, interactive = false, lastMove, arrows, onMove, flash, markSquare, coordinates = true, circles, onSquareClick }: BoardProps) {
   const el = useRef<HTMLDivElement>(null);
   const pendingShapes = useRef<DrawShape[] | null>(null);
   const api = useRef<Api | null>(null);
@@ -124,15 +133,16 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
   }, [fen, orientation, turn, interactive, dests, lastMove, tick, pos]);
 
   // Arrows are compared by content so re-renders with a fresh array don't touch the board.
-  const shapesKey = JSON.stringify([arrows ?? [], markSquare ?? null]);
+  const shapesKey = JSON.stringify([arrows ?? [], markSquare ?? null, circles ?? []]);
   useEffect(() => {
     const cg = api.current;
     if (!cg) return;
     const shapes: DrawShape[] = (arrows ?? []).flatMap((a) => {
       const sq = uciSquares(a.uci);
-      return sq ? [{ orig: sq[0] as Key, dest: sq[1] as Key, brush: a.brush ?? 'green' }] : [];
+      return sq ? [{ orig: sq[0] as Key, dest: sq[1] as Key, brush: a.brush ?? 'green', ...(a.label ? { label: { text: a.label } } : {}) }] : [];
     });
     if (markSquare) shapes.push({ orig: markSquare as Key, brush: 'red' });
+    for (const c of circles ?? []) shapes.push({ orig: c.square as Key, brush: c.brush ?? 'green' });
     if (!el.current?.clientWidth) {
       pendingShapes.current = shapes;
       return;
@@ -170,9 +180,26 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
       </div>
     );
   })();
+  // Tapping squares: which square, from where the tap landed on the board.
+  const squareInput = onSquareClick && (
+    <div
+      className="square-input"
+      onClick={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        const fx = Math.floor(((e.clientX - r.left) / r.width) * 8);
+        const fy = Math.floor(((e.clientY - r.top) / r.height) * 8);
+        if (fx < 0 || fx > 7 || fy < 0 || fy > 7) return;
+        const file = orientation === 'white' ? fx : 7 - fx;
+        const rank = orientation === 'white' ? 8 - fy : fy + 1;
+        onSquareClick(`${'abcdefgh'[file]}${rank}`);
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+    />
+  );
   return (
     <div className={`board-wrap ${flash ? `flash-${flash}` : ''}`}>
       <div ref={el} className="cg-wrap-host" />
+      {squareInput}
       {promoColumn}
     </div>
   );

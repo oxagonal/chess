@@ -77,6 +77,8 @@ export interface AppSettings {
   twoFingerDraw: boolean;
   /** Puzzles: how many in a block, decided before you start (then a breather and your misses). */
   puzzleBlock: number;
+  /** Puzzles, writing the solution: show your line as numbered arrows on the still board. */
+  puzzleArrows: boolean;
   /** Builder: save every move played on the board straight into the repertoire. */
   builderAutoAdd: boolean;
   /** Show Stockfish evaluations next to each move in the builder. */
@@ -166,6 +168,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   puzzleWrite: true,
   twoFingerDraw: true,
   puzzleBlock: 10,
+  puzzleArrows: true,
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,
