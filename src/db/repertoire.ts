@@ -217,6 +217,20 @@ export async function setNoTrain(move: { fromKey: string; san: string }, off: bo
     });
 }
 
+/**
+ * Mark a move as the start of a sharp line — prepared deeper than the coverage goal from there on (see
+ * coverage DEEPER) — or not, in every chapter that has it (it's the same move).
+ */
+export async function setDeeper(move: { fromKey: string; san: string }, on: boolean) {
+  await db.transaction('rw', [db.moves, db.repertoires], async () => {
+    const moves = await db.moves.where('fromKey').equals(move.fromKey).filter((m) => m.san === move.san).toArray();
+    await db.moves.bulkPut(moves.map(({ deeper: _d, ...m }) => (on ? { ...m, deeper: true } : m)));
+    // What needs an answer changes: the chapters' coverage runs are out of date.
+    const now = Date.now();
+    for (const repId of new Set(moves.map((m) => m.repId))) await db.repertoires.update(repId, { updatedAt: now });
+  });
+}
+
 export async function renameRepertoire(id: string, name: string) {
   await db.repertoires.update(id, { name, updatedAt: Date.now() });
 }

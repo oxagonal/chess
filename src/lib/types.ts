@@ -39,6 +39,11 @@ export interface RepMove {
    * review): it and whatever only it leads to are left out of training, coverage and game checks.
    */
   noTrain?: boolean;
+  /**
+   * A sharp line: prepare deeper from here. After this move the coverage goal is DEEPER times
+   * stricter (1 in 800 becomes 1 in 8,000), for lines where not knowing a rare move loses at once.
+   */
+  deeper?: boolean;
   createdAt: number;
   /** Set automatically on every write; the newer copy wins when devices sync. */
   modifiedAt?: number;
@@ -187,6 +192,8 @@ export interface CoverageGap {
   freq: number;
   games: number;
   path: string[];
+  /** Needs an answer only because the line goes deeper here: marked so ('deeper'), or sharp. */
+  boost?: 'deeper' | 'sharp';
 }
 
 export interface CoverageNode {
@@ -194,6 +201,8 @@ export interface CoverageNode {
   prob: number;
   path: string[];
   myTurn: boolean;
+  /** As for gaps: needs a move only because the line goes deeper here. */
+  boost?: 'deeper' | 'sharp';
 }
 
 export interface CoverageResult {
@@ -230,6 +239,11 @@ export interface CoverageResult {
    * field also counted the games past your lines' end, so it isn't used).
    */
   sidelines?: Record<string, number>;
+  /**
+   * Positions prepared deeper than the goal (only where it isn't 1): the factor the goal is stricter
+   * by there (see coverage DEEPER) — after a move marked "prepare deeper". Missing on older results.
+   */
+  boost?: Record<string, number>;
   /** Version of the analysis that produced this result. */
   algo?: number;
   /** Set automatically on every write; the newer copy wins when devices sync. */

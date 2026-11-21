@@ -11,8 +11,20 @@ import { isPromotion, legalDests, playUci, posFromFen } from './chess';
 import type { RepGraph } from './graph';
 import { moveGames, type CoverageGap, type CoverageNode, type CoverageResult, type PositionStats, type ProbabilitySource } from './types';
 
-/** Bump when the analysis changes so stored results are recalculated. 2 = follows unsaved transpositions. */
+/**
+ * Bump when the analysis changes so stored results are recalculated. 2 = follows unsaved
+ * transpositions. (Preparing deeper after marked moves needs no bump: without marks results are the
+ * same, and marking a move makes its chapters' runs stale — see setDeeper.)
+ */
 export const COVERAGE_ALGO = 2;
+
+/**
+ * How much deeper a sharp line is prepared: after a move marked "prepare deeper" a position needs an
+ * answer when it's reached DEEPER times less often than the goal (1 in 800 → 1 in 8,000) — for lines
+ * where not knowing a rare move loses on the spot. A position's `boost` is this factor (1 elsewhere);
+ * it only changes what needs an answer, never how often a position is said to come up.
+ */
+export const DEEPER = 10;
 
 export type StatsProvider =(key: string) => Promise<PositionStats | undefined>;
 
@@ -53,6 +65,10 @@ export interface ForwardResult {
   statsAt: Map<string, PositionStats>;
   kidsOf: (key: string) => Edge[];
   order: string[];
+  /** Each position's boost (see DEEPER): how much deeper it's prepared. Missing = 1. */
+  boost: Map<string, number>;
+  /** The opponent's replies that need an answer (`${fromKey}|${san}`), saved or not. */
+  required: Set<string>;
 }
 
 /**
@@ -73,6 +89,11 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
   let queried = 0;
 
   const add = (key: string, p: number) => prob.set(key, (prob.get(key) ?? 0) + p);
+  // How much deeper each position is prepared: after a move marked "prepare deeper", DEEPER — through
+  // every move order into it (the most from any).
+  const boost = new Map<string, number>([[graph.root, 1]]);
+  const raise = (key: string, b: number) => b > (boost.get(key) ?? 1) && boost.set(key, b);
+  const required = new Set<string>();
   const pathSans = (key: string) => (graph.pathTo(key) ?? []).map((m) => m.san);
   const statsAt = new Map<string, PositionStats>();
 
@@ -80,22 +101,27 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
     if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const p = prob.get(key) ?? 0;
     if (p <= 0) continue;
+    const b = boost.get(key) ?? 1;
     const kids = kidsOf(key);
 
     if (graph.isMyTurn(key)) {
       if (!kids.length) {
         if (!isGameOver(key)) {
-          if (p >= threshold) unfinished.push({ key, prob: p, path: pathSans(key), myTurn: true });
-          else keepMinor(minorUnfinished, { key, prob: p, path: pathSans(key), myTurn: true });
+          const node: CoverageNode = { key, prob: p, path: pathSans(key), myTurn: true };
+          if (p * b >= threshold) unfinished.push(p >= threshold ? node : { ...node, boost: 'deeper' });
+          else keepMinor(minorUnfinished, node);
         }
         continue;
       }
       // Several prepared moves: assume you pick between them evenly (or, for an import, play each).
-      for (const m of kids) add(m.toKey, opts.pickAll ? p : p / kids.length);
+      for (const m of kids) {
+        add(m.toKey, opts.pickAll ? p : p / kids.length);
+        raise(m.toKey, m.deeper ? DEEPER : b);
+      }
       continue;
     }
 
-    if (p < cutoff) continue;
+    if (p * b < cutoff) continue;
     opts.onProgress?.(queried, key);
     const stats = await provider(key);
     queried++;
@@ -109,20 +135,31 @@ export async function reachProbabilities(graph: RepGraph, provider: StatsProvide
       if (!games) continue;
       const freq = games / stats.total;
       const edge = kids.find((m) => m.san === ms.san);
-      if (edge) add(edge.toKey, p * freq);
-      else if (p * freq >= threshold) {
-        gaps.push({ fromKey: key, san: ms.san, uci: ms.uci, prob: p * freq, freq, games, path: pathSans(key) });
-      } else keepMinor(minorGaps, { fromKey: key, san: ms.san, uci: ms.uci, prob: p * freq, freq, games, path: pathSans(key) });
+      const q = p * freq;
+      // The position after the reply is prepared as deep as this one — or deeper, after a marked move.
+      const bc = edge?.deeper ? DEEPER : b;
+      const needed = q * bc >= threshold;
+      if (needed) required.add(`${key}|${ms.san}`);
+      const gap: CoverageGap = { fromKey: key, san: ms.san, uci: ms.uci, prob: q, freq, games, path: pathSans(key) };
+      if (edge) {
+        add(edge.toKey, q);
+        raise(edge.toKey, bc);
+      } else if (needed) gaps.push(q >= threshold ? gap : { ...gap, boost: 'deeper' });
+      else keepMinor(minorGaps, gap);
     }
   }
-  return { prob, gaps, unfinished, minorGaps, minorUnfinished, noData, queried, statsAt, kidsOf, order };
+  return { prob, gaps, unfinished, minorGaps, minorUnfinished, noData, queried, statsAt, kidsOf, order, boost, required };
 }
 
 export async function computeCoverage(graph: RepGraph, provider: StatsProvider, opts: CoverageOptions): Promise<CoverageResult> {
   const { threshold } = opts;
   // Stamp with the start time: an edit made while this runs must make the result look stale.
   const startedAt = Date.now();
-  const { prob, gaps, unfinished, minorGaps, minorUnfinished, noData, queried, statsAt, kidsOf, order } = await reachProbabilities(graph, provider, opts);
+  const { prob, gaps, unfinished, minorGaps, minorUnfinished, noData, queried, statsAt, kidsOf, order, boost, required } = await reachProbabilities(
+    graph,
+    provider,
+    opts,
+  );
 
   // Backward pass: coverage of each position = share of games reaching it that stay in book until
   // they get rarer than the threshold. Consistent with the forward pass: at the root it equals
@@ -136,7 +173,7 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
   for (let i = order.length - 1; i >= 0; i--) {
     const key = order[i];
     const p = prob.get(key) ?? 0;
-    if (p < threshold) {
+    if (p * (boost.get(key) ?? 1) < threshold) {
       cover.set(key, 1); // too rare to require anything from here on
       continue;
     }
@@ -160,7 +197,8 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
     }
     // Games that end here or continue with moves too rare to be listed count as covered.
     const freqOf = (ms: (typeof stats.moves)[number]) => moveGames(ms) / stats.total;
-    const atDepth = !stats.moves.some((ms) => p * freqOf(ms) >= threshold);
+    const needed = (ms: (typeof stats.moves)[number]) => required.has(`${key}|${ms.san}`);
+    const atDepth = !stats.moves.some(needed);
     let c = 1;
     let r = 0;
     for (const ms of stats.moves) {
@@ -170,7 +208,7 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
       if (edge) {
         c -= freq * (1 - childCover(edge.toKey));
         r += freq * childRare(edge.toKey);
-      } else if (p * freq >= threshold) c -= freq;
+      } else if (needed(ms)) c -= freq;
       else if (!atDepth) r += freq;
     }
     cover.set(key, Math.max(0, Math.min(1, c)));
@@ -197,6 +235,7 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
     queried,
     coverage: Object.fromEntries(cover),
     sidelines: Object.fromEntries([...rare].filter(([, v]) => v > 0)),
+    boost: Object.fromEntries([...boost].filter(([k, v]) => v > 1 && prob.has(k))),
     algo: COVERAGE_ALGO,
   };
 }
@@ -204,6 +243,8 @@ export async function computeCoverage(graph: RepGraph, provider: StatsProvider, 
 interface Edge {
   san: string;
   toKey: string;
+  /** A move marked "prepare deeper" (see DEEPER). */
+  deeper?: boolean;
 }
 
 /** How many sub-threshold holes a run keeps (the likeliest). */

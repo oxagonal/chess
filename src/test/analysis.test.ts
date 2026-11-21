@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RepGraph } from '../lib/graph';
 import { movesFromLines } from '../lib/lines';
-import { computeCoverage, oneIn, oneInShort, likelyPositions } from '../lib/coverage';
+import { computeCoverage, oneIn, oneInShort, likelyPositions, DEEPER } from '../lib/coverage';
 import { analyzeGame, summarize } from '../lib/prep';
 import { parseLichessGame } from '../lib/importers/lichess';
 import { parseChessComGame, archiveMonthIndex } from '../lib/importers/chesscom';
@@ -41,6 +41,24 @@ describe('coverage (1 in N)', () => {
     // c4 and Nf3 on move 1 (10% each), 2.c3 (10%), and 3.c4 after 1.d4 Nf6 (30%)
     expect(gaps).toEqual(['d4 Nf6 c4 0.30', ' c4 0.10', ' Nf3 0.10', 'e4 c5 c3 0.10']);
     expect(res.unfinished).toEqual([]);
+  });
+
+  it('prepares deeper after a move marked so: replies 10× rarer than the goal need an answer there', async () => {
+    const lines = movesFromLines('b', 'black', ['e4 c5 Nf3 d6']);
+    const stats: Record<string, PositionStats> = {
+      [START_KEY]: stat([['e4', 'e2e4', 90], ['g3', 'g2g3', 6], ['b3', 'b2b3', 4]]),
+      [keyAfter('e4 c5')]: stat([['Nf3', 'g1f3', 97], ['a3', 'a2a3', 3]]),
+    };
+    const run = (ms: typeof lines) => computeCoverage(new RepGraph('black', ms), async (k) => stats[k], { repId: 'b', threshold: 1 / 20, source: 'lichess', paramsLabel: 't' });
+    const plain = await run(lines);
+    expect(plain.gaps.map((x) => x.san)).toEqual(['g3']);
+    // 1...c5 starts a sharp line: 2.a3 (2.7% of games, rarer than 1 in 20) now needs an answer.
+    const sharp = await run(lines.map((m) => (m.san === 'c5' ? { ...m, deeper: true } : m)));
+    expect(sharp.gaps.map((x) => [x.san, x.boost])).toEqual([['g3', undefined], ['a3', 'deeper']]);
+    expect(sharp.probs[keyAfter('e4 c5')]).toBeCloseTo(plain.probs[keyAfter('e4 c5')]); // how often: unchanged
+    expect(1 - sharp.coverage![START_KEY]).toBeCloseTo(0.06 + 0.9 * 0.03);
+    expect(sharp.boost![keyAfter('e4 c5')]).toBe(DEEPER);
+    expect(sharp.boost![START_KEY]).toBeUndefined();
   });
 
   it('splits the covered games into your lines and rare sidelines', async () => {

@@ -112,6 +112,8 @@ export interface ScopeGap {
   /** The opponent's move (a gap); none: your move, nothing prepared. */
   san?: string;
   prob: number;
+  /** Needs an answer only because the line is prepared deeper (a sharp line). */
+  boost?: 'deeper' | 'sharp';
 }
 
 /** A run's gaps and unprepared positions, likeliest first — those under `under` (a chapter's opening). */
@@ -119,8 +121,10 @@ export function scopeGaps(run: CoverageResult | undefined, under?: readonly stri
   if (!run) return [];
   const inside = (path: readonly string[]) => !under || (path.length >= under.length && under.every((s, i) => path[i] === s));
   const out: ScopeGap[] = [
-    ...run.gaps.filter((g) => inside([...g.path, g.san])).map((g) => ({ key: `${g.fromKey}|${g.san}`, path: [...g.path, g.san], san: g.san, prob: g.prob })),
-    ...run.unfinished.filter((u) => inside(u.path)).map((u) => ({ key: u.key, path: u.path, prob: u.prob })),
+    ...run.gaps
+      .filter((g) => inside([...g.path, g.san]))
+      .map((g) => ({ key: `${g.fromKey}|${g.san}`, path: [...g.path, g.san], san: g.san, prob: g.prob, boost: g.boost })),
+    ...run.unfinished.filter((u) => inside(u.path)).map((u) => ({ key: u.key, path: u.path, prob: u.prob, boost: u.boost })),
   ];
   return out.sort((a, b) => b.prob - a.prob);
 }

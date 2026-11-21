@@ -61,7 +61,7 @@ export function InlineMoves({
       <span key={key()} className="iv-tok">
         {prefix && <span className="num">{prefix}</span>}
         <span
-          className={`iv-move ${cls} ${glyphClass(moveGlyph(edge))} ${edge && (edge.noTrain || untrained?.has(edge.id)) ? 'no-train' : ''}`}
+          className={`iv-move ${cls} ${glyphClass(moveGlyph(edge))} ${edge && (edge.noTrain || untrained?.has(edge.id)) ? 'no-train' : ''} ${edge?.deeper ? 'deeper' : ''}`}
           title={edge?.glyphs?.map(glyphName).join(' · ') || undefined}
           onClick={onClick}
           {...(edge ? menuFor(edge, ply) : {})}

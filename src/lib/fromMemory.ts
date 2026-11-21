@@ -9,7 +9,7 @@
  */
 import { playUci, posFromFen, turnOfKey, type Color } from './chess';
 import type { RepGraph } from './graph';
-import { reachProbabilities } from './coverage';
+import { reachProbabilities, DEEPER } from './coverage';
 import { moveGames, type PositionStats } from './types';
 
 export interface MemoryStep {
@@ -43,12 +43,14 @@ export async function nextMemoryTarget(opts: {
   const visited = new Set<string>();
   // Positions in the repertoire: probability over all move orders. Elsewhere (off-repertoire
   // positions, or a start position the repertoire doesn't reach) fall back to the line's own.
-  const { prob: total } = await reachProbabilities(graph, provider, { threshold, signal });
+  const { prob: total, boost } = await reachProbabilities(graph, provider, { threshold, signal });
 
-  const explore = async (key: string, path: MemoryStep[], linePr: number): Promise<MemoryTarget | undefined> => {
+  // `b`: how much deeper this line is prepared (after a move marked "prepare deeper"; see DEEPER).
+  const explore = async (key: string, path: MemoryStep[], linePr: number, b: number): Promise<MemoryTarget | undefined> => {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const p = Math.max(linePr, total.get(key) ?? 0);
-    if (p < threshold || visited.has(key) || skip.has(key)) return undefined;
+    const bk = Math.max(b, boost.get(key) ?? 1);
+    if (p * bk < threshold || visited.has(key) || skip.has(key)) return undefined;
     visited.add(key);
     const pos = posFromFen(key);
     if (!pos || pos.isEnd()) return undefined;
@@ -57,7 +59,7 @@ export async function nextMemoryTarget(opts: {
       const mine = graph.childrenOf(key).filter((m) => m.mine);
       if (!mine.length) return { path, prob: p };
       for (const m of mine) {
-        const r = await explore(m.toKey, [...path, { san: m.san, uci: m.uci, fromKey: key, key: m.toKey }], p / mine.length);
+        const r = await explore(m.toKey, [...path, { san: m.san, uci: m.uci, fromKey: key, key: m.toKey }], p / mine.length, m.deeper ? DEEPER : bk);
         if (r) return r;
       }
       return undefined;
@@ -68,14 +70,15 @@ export async function nextMemoryTarget(opts: {
     const replies = [...stats.moves].sort((a, b) => moveGames(b) - moveGames(a));
     for (const ms of replies) {
       const q = (p * moveGames(ms)) / stats.total;
-      if (q < threshold) break;
+      const bc = graph.edge(key, ms.san)?.deeper ? DEEPER : bk;
+      if (q * bc < threshold) continue;
       const next = playUci(pos, ms.uci);
       if (!next) continue;
-      const r = await explore(next.key, [...path, { san: next.san, uci: next.uci, fromKey: key, key: next.key }], q);
+      const r = await explore(next.key, [...path, { san: next.san, uci: next.uci, fromKey: key, key: next.key }], q, bc);
       if (r) return r;
     }
     return undefined;
   };
 
-  return explore(opts.startKey, opts.startPath, opts.startProb);
+  return explore(opts.startKey, opts.startPath, opts.startProb, 1);
 }

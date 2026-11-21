@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
-import { addEdges, chapterForNewLine, deleteMove, deleteRepertoire, deleteUnionMove, renameRepertoire, setMoveAnnotation, setNoTrain, splitOff } from '../db/repertoire';
+import { addEdges, chapterForNewLine, deleteMove, deleteRepertoire, deleteUnionMove, renameRepertoire, setDeeper, setMoveAnnotation, setNoTrain, splitOff } from '../db/repertoire';
 import { loadOpeningIndex, nameParts } from '../lib/openingNames';
 import { catchAllName, catchAllOf, chapterGap, chapterOfMoveId, chapterPosition, chapterTerritory, entersOtherChapter, sourcesOf, trainable } from '../lib/chapters';
 import { useOpeningIndex } from '../components/ChapterTree';
@@ -31,7 +31,7 @@ import { ColorPill, Empty, LineView, MoreMenu } from '../components/ui';
 import { href, navigate, openScope, scopeHref } from '../router';
 import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
 import { compactLine, formatLine, moveNumberPrefix, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
-import { oneIn, oneInShort } from '../lib/coverage';
+import { DEEPER, oneIn, oneInShort } from '../lib/coverage';
 import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
 import type { AppSettings } from '../db/settings';
 import { type CoverageResult, type PositionStats, type RepMove, type Repertoire } from '../lib/types';
@@ -440,10 +440,11 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // (A move left out of training — and the line after it — is greyed out, symbols' colors and all.)
   const shown = (m: RepMove) => ({
     san: sanWithGlyphs(m.san, m.glyphs),
-    className: `${glyphClass(moveGlyph(m))} ${untrained.has(m.id) ? 'no-train' : ''}`,
+    className: `${glyphClass(moveGlyph(m))} ${untrained.has(m.id) ? 'no-train' : ''} ${m.deeper ? 'deeper' : ''}`,
     title:
       [
         m.noTrain ? 'Not trained, nor the line after it' : untrained.has(m.id) ? 'Not trained: it comes after a move you don’t train' : '',
+        m.deeper ? `Sharp line: prepared ${DEEPER}× deeper than your coverage goal from here` : '',
         ...(m.glyphs ?? []).map(glyphName),
         m.comment ?? '',
       ]
@@ -1334,6 +1335,20 @@ function RepAnnotationMenu({ target, onClose, onDelete }: { target: RepAnnotatio
               {move.noTrain ? '↺ Train this move again' : '⊘ Don\'t train this move or the line after it'}
             </button>
           )}
+          <button
+            className="small ghost no-train-toggle"
+            title={
+              move.deeper
+                ? 'Prepare this line to your usual coverage goal again'
+                : `A sharp line, where not knowing a rare move loses at once: from here on, positions need an answer when they come up ${DEEPER} times less often than your goal (1 in 800 → 1 in 8,000). Run Coverage to see what that adds.`
+            }
+            onClick={() => {
+              void setDeeper(move, !move.deeper);
+              onClose();
+            }}
+          >
+            {move.deeper ? '↺ Prepare to the usual goal again' : '⚡ Sharp line: prepare deeper from here'}
+          </button>
           <SplitOffForm move={move} onDone={onClose} />
           {onDelete && (
             <button

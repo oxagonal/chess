@@ -33,7 +33,7 @@ export function trainedCards(
 ): ReviewCard[] {
   const mine = cardsOf(graph, cards).filter((c) => c.color === scope.color);
   const cov = settings.trainOnlyLikely ? coverageFor(scope, runs) : undefined;
-  return cov ? filterByProbability(mine, cov.probs, cov.threshold) : mine;
+  return cov ? filterByProbability(mine, cov.probs, cov.threshold, cov.boost) : mine;
 }
 
 export interface TrainCounts {

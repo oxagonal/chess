@@ -24,7 +24,7 @@ import { Empty } from '../components/ui';
 import { useNow } from '../hooks';
 import { chapterPosition } from '../lib/chapters';
 import { formatLine, START_KEY } from '../lib/chess';
-import { oneIn } from '../lib/coverage';
+import { DEEPER, oneIn } from '../lib/coverage';
 import { STRENGTH_LABEL, strengthOf } from '../lib/map';
 import { weakestMoves } from '../lib/insights';
 import type { Chapter, Collection } from '../lib/types';
@@ -329,7 +329,10 @@ function GapsCard({ data, gaps, onOpen }: { data: MapData; gaps: ScopeGap[]; onO
         <p className="muted small">None — everything you'll meet at least 1 in {Math.round(1 / run.threshold)} games has an answer.</p>
       ) : (
         <>
-          <p className="muted small">Met at least 1 in {Math.round(1 / run.threshold)} games, with no answer in your lines.</p>
+          <p className="muted small">
+            Met at least 1 in {Math.round(1 / run.threshold)} games
+            {gaps.some((g) => g.boost) && <> — or 1 in {Math.round(DEEPER / run.threshold)} in sharp lines you prepare deeper (⚡)</>}, with no answer in your lines.
+          </p>
           <ul className="todo-list">
             {shown.map((g) => (
               <li key={g.key}>
@@ -337,6 +340,12 @@ function GapsCard({ data, gaps, onOpen }: { data: MapData; gaps: ScopeGap[]; onO
                   <span className="mono small">{g.path.length ? formatLine(g.path) : 'Start'}</span>
                   <span className="muted small">
                     {g.san ? 'no answer' : 'your move'} · {oneIn(g.prob)}
+                    {g.boost && (
+                      <span className="sharp-tag" title="Rarer than your goal, but in a sharp line you prepare deeper (⚡ in the builder)">
+                        {' '}
+                        · ⚡ sharp line
+                      </span>
+                    )}
                   </span>
                 </span>
                 <button className="small primary" onClick={() => onOpen(g.path)}>

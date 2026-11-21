@@ -530,6 +530,9 @@ table.data tr.current-row td { background: var(--panel2); }
 .session-cards .line-card.missed { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
 /* A move kept in a chapter but not trained (an example of what not to play, or too deep to review). */
 .ml-move.no-train, .ml-side .mv.no-train, .iv-move.no-train { opacity: 0.42; }
+/* A sharp line starts here: prepared deeper than the coverage goal. */
+.sharp-tag { color: var(--warn); font-weight: 600; }
+.ml-move.deeper::after, .ml-side .mv.deeper::after, .iv-move.deeper::after { content: '⚡'; font-size: 0.8em; margin-left: 2px; }
 .ml-move.current.no-train, .iv-move.current.no-train { opacity: 0.7; }
 .no-train-toggle { align-self: flex-start; padding-left: 0; color: var(--muted); }
 /* Splitting a line off by hand (in the builder's right-click menu). */

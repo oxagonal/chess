@@ -215,10 +215,13 @@ export function orderCards(cards: ReviewCard[], graph: RepGraph, probs?: Record<
   });
 }
 
-/** Keep only cards whose position is reached at least `threshold` of the time. */
-export function filterByProbability(cards: ReviewCard[], probs: Record<string, number> | undefined, threshold: number): ReviewCard[] {
+/**
+ * Keep only cards whose position is reached at least `threshold` of the time — `boost` times less
+ * often where the line is prepared deeper (see coverage DEEPER).
+ */
+export function filterByProbability(cards: ReviewCard[], probs: Record<string, number> | undefined, threshold: number, boost?: Record<string, number>): ReviewCard[] {
   if (!probs || threshold <= 0) return cards;
-  return cards.filter((c) => (probs[c.fromKey] ?? 0) >= threshold);
+  return cards.filter((c) => (probs[c.fromKey] ?? 0) * (boost?.[c.fromKey] ?? 1) >= threshold);
 }
 
 /**

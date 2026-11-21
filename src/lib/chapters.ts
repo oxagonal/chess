@@ -386,16 +386,20 @@ export function chapterGap(
     }
     return through;
   };
+  // Holes that need an answer (the run's gaps, some only because the line is prepared deeper) come
+  // before the rarer ones, then by how often they come up.
+  const needed = new Set<object>([...cov.gaps, ...cov.unfinished]);
   const holes = [
-    ...gaps.filter((g) => under(g.path)).map((g) => ({ sans: [...g.path, g.san], prob: g.prob })),
-    ...unfinished.filter((u) => under(u.path)).map((u) => ({ sans: u.path, prob: u.prob })),
+    ...gaps.filter((g) => under(g.path)).map((g) => ({ sans: [...g.path, g.san], prob: g.prob, needed: needed.has(g) })),
+    ...unfinished.filter((u) => under(u.path)).map((u) => ({ sans: u.path, prob: u.prob, needed: needed.has(u) })),
   ];
   if (!holes.length) return undefined;
-  const best = holes.reduce((a, b) => (b.prob > a.prob ? b : a));
+  const best = holes.reduce((a, b) => (Number(b.needed) - Number(a.needed) || b.prob - a.prob) > 0 ? b : a);
   // "In this opening": as if the opening came up every game.
   const base = key === graph.root ? 1 : cov.probs[key];
   const inChapter = key !== graph.root && base && best.prob < base ? best.prob / base : undefined;
-  return { ...best, inChapter, beyondTarget: cov.threshold !== undefined && best.prob < cov.threshold };
+  const { needed: isNeeded, ...hole } = best;
+  return { ...hole, inChapter, beyondTarget: cov.threshold !== undefined && !isNeeded };
 }
 
 /** A position where chapters played together give you different moves. */
