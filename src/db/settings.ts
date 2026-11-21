@@ -73,6 +73,8 @@ export interface AppSettings {
   puzzleDifficulty: 'easiest' | 'easier' | 'normal' | 'harder' | 'hardest';
   /** Puzzles: write the whole solution first (with the opponent's other replies) before it's checked. */
   puzzleWrite: boolean;
+  /** Touch screens: draw arrows and circles with two fingers (one held on the board, the other drawing). */
+  twoFingerDraw: boolean;
   /** Builder: save every move played on the board straight into the repertoire. */
   builderAutoAdd: boolean;
   /** Show Stockfish evaluations next to each move in the builder. */
@@ -160,6 +162,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   puzzleAngle: 'mix',
   puzzleDifficulty: 'normal',
   puzzleWrite: true,
+  twoFingerDraw: true,
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,

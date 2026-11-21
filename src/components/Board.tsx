@@ -4,7 +4,19 @@ import type { Api } from 'chessground/api';
 import type { DrawShape } from 'chessground/draw';
 import type { Key } from 'chessground/types';
 import type { Position } from 'chessops/chess';
+import { liveQuery } from 'dexie';
 import { fenOf, isPromotion, legalDests, uciSquares, type Color } from '../lib/chess';
+import { DEFAULT_SETTINGS, getSettings } from '../db/settings';
+import { bindTwoFingerDrawing } from './twoFingerDraw';
+
+/** The two-finger drawing setting, watched once for every board. */
+let twoFingerDraw = DEFAULT_SETTINGS.twoFingerDraw;
+let watchingSettings = false;
+function watchTwoFingerDraw() {
+  if (watchingSettings) return;
+  watchingSettings = true;
+  liveQuery(getSettings).subscribe({ next: (s) => (twoFingerDraw = s.twoFingerDraw), error: () => {} });
+}
 
 export interface Arrow {
   uci: string;
@@ -83,7 +95,10 @@ export function Board({ pos, orientation, interactive = false, lastMove, arrows,
       api.current?.redrawAll();
     });
     ro.observe(node);
+    watchTwoFingerDraw();
+    const unbindDrawing = bindTwoFingerDrawing(node, () => api.current, () => twoFingerDraw);
     return () => {
+      unbindDrawing();
       ro.disconnect();
       api.current?.destroy();
       api.current = null;

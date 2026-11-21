@@ -54,6 +54,8 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   board stays on screen, the moves, explorer, computer review and the rest are tabs under it (each
   scrolling in its own box), and the move buttons sit at the bottom. Drag the grip under the board to make it
   smaller (an evaluation bar appears beside it); in a review, where the game left your prep pops up at that move.
+  Arrows and circles work as in the Lichess app: keep one finger on the board and drag another (a tap with
+  it draws a circle; a tap on an empty square clears them; it can be turned off in Settings).
 - **Players** — a tab next to the explorer in the builder for scouting opponents: save a player with their
   Lichess / Chess.com usernames (their games since a date you choose, or all of them, in the time controls you pick, are downloaded and cached on the device) or just a name
   (your over-the-board games against them, plus any PGN you paste), or find them by name in the
