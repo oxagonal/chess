@@ -108,8 +108,8 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   difficulty you pick. By default you write the whole solution first, branches included, without moving the
   pieces: the board stays on the puzzle while you tap a piece's square and where it goes as things stand in
   your line (or drag it, with either mouse button, as if drawing an arrow; or type it), your line shows as
-  numbered arrows (or none, all in your head), a click on a move in the list (or ◀ ▶) shows its position
-  with what you enter after it as arrows from there, and one answer to many replies ("any king move, then Qxa8")
+  numbered arrows (or none, all in your head) — a click on a move in the list only moves your place in the
+  line — and one answer to many replies ("any king move, then Qxa8")
   is two clicks: "same answer to every king move / every other reply". Before you can check it every reply
   on your main line needs another one considered (or "only one sensible reply", unless it's their only legal
   move) — then it's checked against Lichess's solution (any mate counts, as on Lichess). If your lines missed one of their replies, Lichess's line is played through to it

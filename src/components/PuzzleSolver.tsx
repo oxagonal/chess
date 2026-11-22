@@ -67,14 +67,11 @@ export function PuzzleSolver({
   const [, setVersion] = useState(0);
   const bump = () => setVersion((v) => v + 1);
   const [cursor, setCursor] = useState(built.beforeId);
-  // Writing: the position the board shows — the puzzle's, or one you clicked in the move list. Moves
-  // you enter after it don't move the board; they're drawn as numbered arrows from it.
-  const [view, setView] = useState<string>();
-  /** Go to a move (the list, ◀ ▶): the board shows it. */
-  const go = (id: string) => {
-    setCursor(id);
-    setView(id);
-  };
+  /**
+   * Go to a move (the list, ◀ ▶). While you write, that's only where your next move goes: the board
+   * stays on the puzzle (your line up to there is drawn as arrows); afterwards the board shows it.
+   */
+  const go = (id: string) => setCursor(id);
   // Writing (or playing), then — when your lines missed one of their replies — Lichess's line played
   // through to it, for you to answer on the spot; then the study.
   const [phase, setPhase] = useState<'solve' | 'replay' | 'done'>('solve');
@@ -119,7 +116,7 @@ export function PuzzleSolver({
           mode === 'write' ? (
             <>
               Your turn ({you === 'white' ? 'White' : 'Black'}). <b>Write your solution without moving the pieces</b>: tap a piece's square, then
-              where it goes — as things stand in your line (the board stays put; click a move in the list to see its position). Your move, their best reply, your answer… and at each
+              where it goes — as things stand in your line (the board stays on the puzzle). Your move, their best reply, your answer… and at each
               of their turns their other sensible replies too. Nothing is checked until you say so.
             </>
           ) : (
@@ -203,7 +200,6 @@ export function PuzzleSolver({
     }
     bump();
     setCursor(startId);
-    setView(startId);
     steps.forEach((step, i) => later(() => go(step), 500 * (i + 1)));
     const reply = tree.get(id);
     later(() => {
@@ -309,8 +305,7 @@ export function PuzzleSolver({
   };
   // Your line so far as arrows on the still board — yours green, theirs blue — each numbered in the
   // corner of the square it lands on.
-  const anchor = view !== undefined && tree.has(view) && tree.isUnder(cursor, view) && tree.isUnder(view, startId) ? view : startId;
-  const linePath = blind ? tree.path(cursor).filter((n) => n.id !== anchor && tree.isUnder(n.id, anchor)) : [];
+  const linePath = blind ? tree.path(cursor).filter((n) => n.id !== startId && tree.isUnder(n.id, startId)) : [];
   const lineArrows: Arrow[] = linePath.map((n) => ({ uci: n.uci, brush: n.pos.turn === you ? 'blue' : 'green' }));
   const lineLabels: SquareLabel[] = [];
   linePath.forEach((n, i) => {
@@ -322,7 +317,7 @@ export function PuzzleSolver({
       same.color = color;
     } else lineLabels.push({ square, text: String(i + 1), color });
   });
-  const shown = blind ? tree.get(anchor) : node;
+  const shown = blind ? tree.get(startId) : node;
 
   // "Same answer to…": at your answer to one of their moves, write it against their other moves too.
   const theirMove = blind && node.tags.includes('mine') && node.pos.turn !== you && node.parent ? tree.get(node.parent) : undefined;
