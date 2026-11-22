@@ -5,7 +5,10 @@
  * per puzzle, it's done; missed again, it starts over at a day. Pure.
  */
 import type { LichessPuzzle } from './puzzle';
-import type { PuzzleAttempt } from './types';
+import type { PuzzleAttempt, StoredGame } from './types';
+import type { Color } from './chess';
+import { crucialSwings } from './quickReview';
+import type { Score } from './review';
 
 /** Why a puzzle was missed (the tap after a miss) — the pattern says what to work on. */
 export type MissReason = NonNullable<PuzzleAttempt['reason']>;
@@ -26,10 +29,13 @@ export const RETIRE_AFTER = 2;
 const DAY = 86_400_000;
 
 export interface TacticCard {
-  /** `p:${puzzleId}` for a Lichess puzzle. */
+  /** `p:${puzzleId}` for a Lichess puzzle, `g:${gameId}:${ply}` for a mistake in one of your games. */
   id: string;
-  source: 'puzzle';
+  source: 'puzzle' | 'game';
+  /** The position to solve, as a puzzle (a game's: its moves up to there, the engine's move as the answer). */
   puzzle: LichessPuzzle;
+  /** A mistake from your game: what you played, the evaluation with best play (White's view), against whom. */
+  game?: { id: string; played: string; best?: Score; you: Color; opponent: string; playedAt: number };
   reason?: MissReason;
   /** Index into REVIEW_DAYS of the wait before it's due. */
   step: number;
@@ -81,3 +87,42 @@ export function reviewed(card: TacticCard, ok: boolean, now: number): TacticCard
 }
 
 export const isDueCard = (c: TacticCard, now: number) => !c.retired && c.due <= now;
+
+/**
+ * Your crucial mistakes in a game (the big swings of the quick review, by your side) as cards: the
+ * position before your move, "what should you have played?" — back the next day, like a missed puzzle.
+ * Mistakes in your own games show your real blind spots (Nate Solon saves them for spaced review).
+ */
+export function gameCards(game: StoredGame, now: number): TacticCard[] {
+  const review = game.review;
+  if (!review) return [];
+  const you = game.userColor;
+  return crucialSwings(review, game.timeClass, 8)
+    .filter((s) => s.mover === you && s.best && s.ply > 0)
+    .map((s) => {
+      const id = `g:${game.id}:${s.ply}`;
+      return {
+        id,
+        source: 'game' as const,
+        puzzle: {
+          game: {
+            id: game.id,
+            pgn: game.sans.slice(0, s.ply).join(' '),
+            players: [
+              { color: 'white' as const, name: game.white, rating: game.whiteElo },
+              { color: 'black' as const, name: game.black, rating: game.blackElo },
+            ],
+          },
+          puzzle: { id, rating: 0, plays: 0, solution: [s.best!], themes: ['your game'], initialPly: s.ply - 1 },
+        },
+        game: { id: game.id, played: game.sans[s.ply], best: s.scoreBefore, you, opponent: you === 'white' ? game.black : game.white, playedAt: game.playedAt },
+        step: 0,
+        streak: 0,
+        due: dueAfter(now, REVIEW_DAYS[0]),
+        createdAt: now,
+      };
+    });
+}
+
+/** A win chance lost (0–100, by the side to move) that still counts as a good move in your game's position. */
+export const GAME_MOVE_OK_LOSS = 10;

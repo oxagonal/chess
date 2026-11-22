@@ -49,6 +49,8 @@ export function PuzzleSolver({
   onReason,
   nextLabel = 'Next puzzle →',
   timer,
+  judgeAlt,
+  gameNote,
 }: {
   puzzle: LichessPuzzle;
   mode: 'write' | 'play';
@@ -68,6 +70,13 @@ export function PuzzleSolver({
   nextLabel?: string;
   /** The time on this puzzle (while the app is on screen) and your budget per puzzle. */
   timer?: { elapsed: () => number; budgetMs: number };
+  /**
+   * A position from your game: whether a first move that isn't the engine's holds up too (your games
+   * aren't curated puzzles — another good move counts).
+   */
+  judgeAlt?: (fromKey: string, uci: string) => Promise<boolean>;
+  /** Shown once it's over: what you played in the game. */
+  gameNote?: ReactNode;
 }) {
   const built = useMemo(() => buildTree(puzzle), [puzzle]);
   const { tree, startId, you } = built;
@@ -155,8 +164,35 @@ export function PuzzleSolver({
 
   /* ---- writing ---- */
   const writtenMain = tree.mainline(startId).filter((n) => n.tags.includes('mine'));
-  const check = () => {
+  const [checking, setChecking] = useState(false);
+  /** Your game's position: a first move that isn't the engine's, checked with Stockfish. */
+  const altHolds = async (uci: string, san: string): Promise<boolean> => {
+    if (!judgeAlt) return false;
+    setChecking(true);
+    setFeedback({ kind: 'info', text: <>Checking {san} with Stockfish…</> });
+    const ok = await judgeAlt(tree.get(startId).key, uci).catch(() => false);
+    setChecking(false);
+    if (ok) {
+      const best = playUci(tree.get(startId).pos, solution[0]);
+      addSolution();
+      setFeedback({
+        kind: 'good',
+        text: (
+          <>
+            ✓ Good — {san} holds up too. The engine's choice was <b>{best?.san}</b>.
+          </>
+        ),
+      });
+      flashFor('good');
+    }
+    return ok;
+  };
+  const check = async () => {
     const g = gradeWritten(tree, startId, solution);
+    if (!g.win && g.wrongAt?.yours && g.wrongAt.nodeId === startId && judgeAlt) {
+      const first = tree.children(startId).find((k) => k.tags.includes('mine'));
+      if (first && (await altHolds(first.uci, first.san))) return finish(true);
+    }
     if (g.win) {
       addSolution();
       setFeedback({ kind: 'good', text: <>✓ Right — your lines have the solution, their best defence included.</> });
@@ -343,9 +379,19 @@ export function PuzzleSolver({
   };
 
   /* ---- playing it out (play mode) ---- */
-  const playMove = (uci: string) => {
+  const playMove = async (uci: string) => {
     const step = node.ply - tree.get(startId).ply;
     const verdict = judgeMove(node.pos, solution, step, uci);
+    if (verdict === 'wrong' && step === 0 && judgeAlt && !failed.current) {
+      const played = playUci(node.pos, uci);
+      if (played && (await altHolds(uci, played.san))) {
+        const id = tree.add(cursor, uci, 'mine')!;
+        setCursor(id);
+        setTip(id);
+        bump();
+        return finish(true);
+      }
+    }
     if (verdict === 'wrong') {
       flashFor('bad');
       failed.current = true;
@@ -439,12 +485,13 @@ export function PuzzleSolver({
   };
   const relearning = phase === 'done' && relearn === 'active';
   const interactive =
-    (phase === 'done' && (!relearning || (cursor === tip && node.pos.turn === you))) ||
+    !checking &&
+    ((phase === 'done' && (!relearning || (cursor === tip && node.pos.turn === you))) ||
     (phase === 'replay'
       ? replayReady && cursor === tip && node.pos.turn === you
       : mode === 'write'
         ? tree.isUnder(cursor, startId)
-        : cursor === tip && node.pos.turn === you && cursor !== built.beforeId);
+        : cursor === tip && node.pos.turn === you && cursor !== built.beforeId));
 
   /* ---- moving around ---- */
   const back = () => node.parent && go(node.parent);
@@ -526,7 +573,8 @@ export function PuzzleSolver({
         {timer && <PuzzleClock timer={timer} running={phase !== 'done'} />}
         <div className={`feedback ${feedback?.kind ?? ''}`}>
           <div>{feedback?.text ?? '…'}</div>
-          {phase === 'done' && (
+          {phase === 'done' && gameNote && <div className="small" style={{ marginTop: 6 }}>{gameNote}</div>}
+          {phase === 'done' && !gameNote && (
             <div className="small" style={{ marginTop: 6 }}>
               Puzzle rated <b>{p.rating}</b>
               {p.themes.length > 0 && <span className="muted"> · {p.themes.slice(0, 4).join(', ')}</span>}
@@ -683,7 +731,9 @@ export function PuzzleSolver({
           </a>
         </div>
         <p className="muted small puzzle-note" style={{ margin: 0 }}>
-          {review
+          {review && judgeAlt
+            ? 'A position from your game, to solve again cold (not rated) — another good move counts too. Solved twice in a row within your time, it’s done.'
+            : review
             ? 'A puzzle you missed before, to solve again cold: it stays here (not rated). Solved twice in a row within your time, it’s done.'
             : report
             ? 'Counted toward your Lichess puzzle rating — the first time you play a puzzle, as on Lichess.'

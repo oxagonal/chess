@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
+import { addGameCards } from '../services/tactics';
+import { gameCards } from '../lib/tacticCards';
 import { updateSettings, useSettings } from '../db/settings';
 import { tagOptions, toggleTag } from '../lib/takeaways';
 import type { StoredGame } from '../lib/types';
@@ -83,13 +86,18 @@ export function TakeawaysPanel({ game }: { game: StoredGame }) {
             <button className="small ghost" onClick={() => void db.games.update(game.id, { reviewedAt: undefined })}>
               Not done yet
             </button>
+            <MistakeCards game={game} />
           </>
         ) : (
           <>
             <button
               className="primary small"
               title="Mark the review finished: a ✓ and the tags appear beside the game on the Games tab"
-              onClick={() => void db.games.update(game.id, { takeaways: text, reviewedAt: Date.now() })}
+              onClick={() => {
+                void db.games.update(game.id, { takeaways: text, reviewedAt: Date.now() });
+                // Your crucial mistakes come back as puzzles, to solve again cold (Nate Solon's spaced review).
+                void addGameCards(game);
+              }}
             >
               ✓ Done reviewing
             </button>
@@ -98,5 +106,28 @@ export function TakeawaysPanel({ game }: { game: StoredGame }) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Your crucial mistakes in this game, as positions to solve again from tomorrow (mixed into your puzzle
+ * blocks): how many there are, or a button when they aren't yet (e.g. the computer review came later).
+ */
+function MistakeCards({ game }: { game: StoredGame }) {
+  const have = useLiveQuery(() => db.tacticCards.where('id').startsWith(`g:${game.id}:`).count(), [game.id]);
+  if (have === undefined) return null;
+  if (!game.review) return <span className="muted small mistake-cards">Run the computer review to bring your mistakes back as puzzles.</span>;
+  const possible = gameCards(game, Date.now()).length;
+  if (have)
+    return (
+      <span className="muted small mistake-cards" title="In your puzzle blocks from the next day, then spaced out until you solve each twice in a row">
+        ↻ {have} of your mistakes here come back as puzzles
+      </span>
+    );
+  if (!possible) return <span className="muted small mistake-cards">No crucial mistakes of yours to bring back.</span>;
+  return (
+    <button className="small mistake-cards" onClick={() => void addGameCards(game)} title="Positions where you went wrong, to solve again from tomorrow">
+      ↻ Bring my {possible} mistakes back as puzzles
+    </button>
   );
 }

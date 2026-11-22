@@ -120,8 +120,11 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   yourself — your moves, their replies played for you, a hint arrow when you go wrong — before the next
   puzzle; doing it sticks better than watching it. The missed puzzle then comes back to solve again cold,
   spaced (the next day, then 3, 7 and 30 days), mixed into your blocks and never rated; solved twice in a
-  row within your time, it's done. The Puzzles page shows why you miss most often, with what to do about
-  it, and how many missed puzzles are coming back. Blocks guard against tilt: your rating stays hidden
+  row within your time, it's done. Your own games' mistakes join them (Nate Solon's spaced review of the
+  positions where you went wrong): "Done reviewing" a game with a computer review turns your crucial
+  mistakes into the same cards — "what should you have played?", the engine's move or any other that
+  Stockfish says holds up, and afterwards what you played in the game, with a link to it. The Puzzles page
+  shows why you miss most often, with what to do about it, and how many cards are coming back. Blocks guard against tilt: your rating stays hidden
   until the block ends; three misses in a row, or a quick miss right after a miss, bring up a breather. With Lichess connected they're picked around your
   Lichess puzzle rating and, if you let them, count toward it. Every puzzle is kept in your history with
   the time it took (synced), for the balance of the three.

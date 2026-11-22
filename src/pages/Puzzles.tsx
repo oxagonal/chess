@@ -23,6 +23,9 @@ import { clock as fmtClock } from '../lib/quickReview';
 import type { PuzzleAttempt } from '../lib/types';
 import { puzzleTilt } from '../lib/tilt';
 import { cardId, isDueCard, missedCard, MISS_REASONS, reviewed, type MissReason, type TacticCard } from '../lib/tacticCards';
+import { holdsUp } from '../services/tactics';
+import { moveNumberPrefix } from '../lib/chess';
+import { href } from '../router';
 import { startLichessLogin } from '../services/lichessAuth';
 import { fetchPuzzles, hasScope, reportPuzzles, type Glicko } from '../services/puzzles';
 
@@ -473,6 +476,8 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
         report={report && !cur.card}
         review={!!cur.card}
         onReason={(r) => void saveReason(cur, r)}
+        judgeAlt={cur.card?.game ? (key, uci) => holdsUp(key, uci, cur.card!.game!.best, cur.card!.game!.you) : undefined}
+        gameNote={cur.card?.game && <GameNote card={cur.card} />}
         result={result}
         error={error}
         hideRating={blockActive(b)}
@@ -494,8 +499,8 @@ function BlockProgress({ b, current, review }: { b: Block; current: boolean; rev
         Puzzle {Math.min(n, b.size)} of {b.size}
       </b>
       {review && (
-        <span className="badge" title={`You missed it ${fmtDate(review.createdAt)}${review.streak ? ` — solved again ${review.streak}× since` : ''}: solve it from scratch`}>
-          ↻ one you missed
+        <span className="badge" title={`${review.game ? 'A mistake from your game' : 'You missed it'} ${fmtDate(review.createdAt)}${review.streak ? ` — solved again ${review.streak}× since` : ''}: solve it from scratch`}>
+          {review.game ? `↻ from your game vs ${review.game.opponent}` : '↻ one you missed'}
         </span>
       )}
       <span className="block-dots" aria-hidden>
@@ -650,7 +655,7 @@ function History({ hideRating }: { hideRating: boolean }) {
           )}
           {(waiting.length > 0 || doneCount > 0) && (
             <div className="muted">
-              Missed puzzles coming back: {dueNow} due now, {waiting.length - dueNow} later
+              Missed puzzles and your games' mistakes coming back: {dueNow} due now, {waiting.length - dueNow} later
               {doneCount > 0 && ` · ${doneCount} done (solved twice in a row)`}
             </div>
           )}
@@ -697,5 +702,24 @@ function History({ hideRating }: { hideRating: boolean }) {
         </table>
       </TableWrap>
     </div>
+  );
+}
+
+/** After a position from your game: what you played there, and the game. */
+function GameNote({ card }: { card: TacticCard }) {
+  const g = card.game!;
+  const ply = card.puzzle.puzzle.initialPly + 1;
+  return (
+    <span>
+      In your game vs <span className="keep-case">{g.opponent}</span> ({fmtDate(g.playedAt)}) you played{' '}
+      <b className="warn-text">
+        {moveNumberPrefix(ply, true)}
+        {g.played}
+      </b>{' '}
+      ·{' '}
+      <a href={href(`games/${encodeURIComponent(g.id)}`, { ply: String(ply) })} title="Open the game's review at this move">
+        the game
+      </a>
+    </span>
   );
 }
