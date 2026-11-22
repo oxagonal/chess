@@ -11,6 +11,7 @@ import { tokenizeMoveText } from '../lib/pgn';
 import { clock as fmtClock } from '../lib/quickReview';
 import { MISS_REASONS, type MissReason } from '../lib/tacticCards';
 import { parseSquare } from 'chessops/util';
+import { PHONE_QUERY, useMediaQuery } from '../hooks';
 
 const LICHESS = 'https://lichess.org';
 
@@ -103,6 +104,7 @@ export function PuzzleSolver({
   // Writing: the board stays on the puzzle's position. A square you picked, a promotion to choose,
   // a word about a move that isn't legal, and what you're typing.
   const settings = useSettings();
+  const phone = useMediaQuery(PHONE_QUERY);
   const [picked, setPicked] = useState<string>();
   const [promoAsk, setPromoAsk] = useState<{ from: string; to: string }>();
   const [notice, setNotice] = useState<string>();
@@ -130,7 +132,12 @@ export function PuzzleSolver({
       setFeedback({
         kind: 'info',
         text:
-          mode === 'write' ? (
+          mode === 'write' && phone ? (
+            <>
+              Your turn ({you === 'white' ? 'White' : 'Black'}). <b>Write your line to the end</b> — tap or drag each move as things stand in your
+              line (the board stays put), or type it.
+            </>
+          ) : mode === 'write' ? (
             <>
               Your turn ({you === 'white' ? 'White' : 'Black'}). <b>Write your line to the end without moving the pieces</b>: tap a piece's square,
               then where it goes, as things stand in your line (the board stays on the puzzle) — your moves and their best replies, until the
@@ -142,7 +149,7 @@ export function PuzzleSolver({
       });
     }, 450);
     return () => clearTimeout(t);
-  }, [startId, mode, you]);
+  }, [startId, mode, you, phone]);
 
   const node = tree.get(cursor);
   const flashFor = (f: 'good' | 'bad') => {
@@ -516,7 +523,7 @@ export function PuzzleSolver({
   }, []);
 
   // The players, as on Lichess: name, title, rating — and which side you are.
-  const strip = (c: Color) => {
+  const strip = (c: Color, extra?: ReactNode) => {
     const pl = puzzle.game.players?.find((x) => x.color === c);
     return (
       <div className={`player-strip ${node.pos.turn === c ? 'to-move' : ''}`}>
@@ -528,6 +535,7 @@ export function PuzzleSolver({
         {pl?.rating && <span className="muted small">{pl.rating}</span>}
         {c === you && <span className="badge">you</span>}
         <MaterialBalance pos={node.pos} color={c} />
+        {extra}
       </div>
     );
   };
@@ -536,41 +544,25 @@ export function PuzzleSolver({
   // A miss: the next puzzle waits until you've replayed the solution.
   const locked = phase === 'done' && won === false && relearn !== 'done';
   const hasMine = node.tags.includes('mine');
-  return (
-    <div className="board-layout puzzle-layout">
-      <div className="board-col col puzzle-board">
-        {strip(opposite(you))}
-        <Board
-          pos={shown.pos}
-          orientation={you}
-          interactive={interactive && !blind}
-          lastMove={shown.uci || undefined}
-          onMove={onMove}
-          flash={flash}
-          arrows={blind && settings.puzzleArrows ? lineArrows : relearning && hint ? [{ uci: hint, brush: 'green' }] : undefined}
-          squareLabels={blind && settings.puzzleArrows ? lineLabels : undefined}
-          circles={blind && picked ? [{ square: picked, brush: 'yellow' }] : undefined}
-          onSquareClick={blind ? tap : undefined}
-          onSquareDrag={blind ? drag : undefined}
-        />
-        {strip(you)}
-        <div className="row puzzle-nav">
-          <button onClick={() => go(tree.root)} aria-label="Start of the game" title="Start of the game">
-            ⏮
-          </button>
-          <button onClick={back} aria-label="Back" title="Back (←)">
-            ◀
-          </button>
-          <button onClick={forward} aria-label="Forward" title="Forward (→)">
-            ▶
-          </button>
-          <button onClick={() => go(startId)} title="The puzzle's position">
-            Puzzle
-          </button>
-        </div>
-      </div>
-      <div className="col puzzle-side" style={{ gap: 10 }}>
-        {timer && <PuzzleClock timer={timer} running={phase !== 'done'} />}
+
+  /* ---- the pieces, laid out for a computer or a phone below ---- */
+  const clockEl = timer && <PuzzleClock timer={timer} running={phase !== 'done'} compact={phone} />;
+  const boardEl = (
+    <Board
+      pos={shown.pos}
+      orientation={you}
+      interactive={interactive && !blind}
+      lastMove={shown.uci || undefined}
+      onMove={onMove}
+      flash={flash}
+      arrows={blind && settings.puzzleArrows ? lineArrows : relearning && hint ? [{ uci: hint, brush: 'green' }] : undefined}
+      squareLabels={blind && settings.puzzleArrows ? lineLabels : undefined}
+      circles={blind && picked ? [{ square: picked, brush: 'yellow' }] : undefined}
+      onSquareClick={blind ? tap : undefined}
+      onSquareDrag={blind ? drag : undefined}
+    />
+  );
+  const feedbackEl = (
         <div className={`feedback ${feedback?.kind ?? ''}`}>
           <div>{feedback?.text ?? '…'}</div>
           {phase === 'done' && gameNote && <div className="small" style={{ marginTop: 6 }}>{gameNote}</div>}
@@ -594,11 +586,9 @@ export function PuzzleSolver({
             </div>
           )}
         </div>
-        {error && <div className="error small">{error}</div>}
-        <div className="panel col puzzle-tree" style={{ gap: 8 }}>
-          <MoveTreeView tree={tree} cursor={cursor} onSelect={go} wrong={wrong} />
-          {mode === 'write' && phase === 'solve' && (
-            <>
+  );
+  const writeTools = mode === 'write' && phase === 'solve' && (
+    <>
               {blind && (
                 <div className="row write-tools">
                   {promoAsk ? (
@@ -653,42 +643,45 @@ export function PuzzleSolver({
               )}
               {notice && <div className="small warn-text">{notice}</div>}
               {info && !notice && <div className="small muted">{info}</div>}
-              <div className="row">
-                <button className="primary" disabled={!writtenMain.length} onClick={check} title="When you've written your line to the end">
-                  Check my solution
-                </button>
-                {hasMine && (
-                  <button
-                    className="small ghost"
-                    onClick={() => {
-                      const parent = node.parent!;
-                      tree.remove(cursor);
-                      setCursor(parent);
-                      bump();
-                    }}
-                    title="Take back this move and what follows"
-                  >
-                    ✕ Take back
-                  </button>
-                )}
-                <span className="spacer" />
-                <button className="small ghost" onClick={giveUp}>
-                  Show solution
-                </button>
-              </div>
-            </>
-          )}
-          {mode === 'play' && phase === 'solve' && (
-            <div className="row">
-              <span className="spacer" />
-              <button className="small ghost" onClick={giveUp}>
-                Show solution
-              </button>
-            </div>
-          )}
-        </div>
-        {phase === 'done' && <EnginePanel fenKey={node.key} ply={node.ply} onPlay={(san) => onSan([san])} onJump={(sans) => onSan(sans)} />}
-        {phase === 'done' && won === false && (
+    </>
+  );
+  const takeBack = mode === 'write' && phase === 'solve' && hasMine && (
+    <button
+      className="small ghost"
+      onClick={() => {
+        const parent = node.parent!;
+        tree.remove(cursor);
+        setCursor(parent);
+        bump();
+      }}
+      title="Take back this move and what follows"
+      aria-label="Take back"
+    >
+      {phone ? '✕' : '✕ Take back'}
+    </button>
+  );
+  const checkBtn = mode === 'write' && phase === 'solve' && (
+    <button className="primary" disabled={!writtenMain.length || checking} onClick={check} title="When you've written your line to the end">
+      {phone ? 'Check' : 'Check my solution'}
+    </button>
+  );
+  const showSolutionBtn = phase === 'solve' && (
+    <button className="small ghost" onClick={giveUp}>
+      Show solution
+    </button>
+  );
+  const nextBtn = phase === 'done' && (
+    <button className="primary" onClick={onNext} disabled={locked} title={locked ? 'Replay the solution first' : undefined}>
+      {nextLabel}
+    </button>
+  );
+  const lichessLink = (
+    <a className="btn small" href={`${LICHESS}/training/${p.id}`} target="_blank" rel="noreferrer">
+      On Lichess ↗
+    </a>
+  );
+  const missReview =
+    phase === 'done' && won === false && (
           <div className="panel col miss-review" style={{ gap: 8 }}>
             {onReason && (
               <div className="row reason-chips">
@@ -718,17 +711,93 @@ export function PuzzleSolver({
               </div>
             )}
           </div>
-        )}
-        <div className="row">
-          {phase === 'done' && (
-            <button className="primary" onClick={onNext} disabled={locked} title={locked ? 'Replay the solution first' : undefined}>
-              {nextLabel}
-            </button>
-          )}
+        );
+  const engineEl = phase === 'done' && <EnginePanel fenKey={node.key} ply={node.ply} onPlay={(san) => onSan([san])} onJump={(sans) => onSan(sans)} />;
+  const treeEl = <MoveTreeView tree={tree} cursor={cursor} onSelect={go} wrong={wrong} />;
+
+  // Phones: one screen between the header and the tab bar, like training — the board as big as the
+  // screen allows (players above and below, your clock in your strip), what to do and your line in a
+  // box under it that scrolls on its own, and the buttons always at the bottom.
+  if (phone)
+    return (
+      <div className="puzzle-phone">
+        <div className="pp-board">
+          {strip(opposite(you))}
+          {boardEl}
+          {strip(you, clockEl)}
+        </div>
+        <div className="pp-info">
+          {/* The instructions step aside once you've started writing: room for your line. */}
+          {!(mode === 'write' && phase === 'solve' && writtenMain.length > 0 && feedback?.kind === 'info') && feedbackEl}
+          {error && <div className="error small">{error}</div>}
+          <div className="pp-tree">{treeEl}</div>
+          {writeTools}
+          {missReview}
+          {engineEl}
+          {phase === 'done' && <div className="row">{lichessLink}</div>}
+        </div>
+        <div className="pp-actions">
+          {checkBtn}
+          {nextBtn}
+          {takeBack}
           <span className="spacer" />
-          <a className="btn small" href={`${LICHESS}/training/${p.id}`} target="_blank" rel="noreferrer">
-            On Lichess ↗
-          </a>
+          <button onClick={() => go(startId)} aria-label="The puzzle's position" title="The puzzle's position">
+            ⏮
+          </button>
+          <button onClick={back} aria-label="Back">
+            ◀
+          </button>
+          <button onClick={forward} aria-label="Forward">
+            ▶
+          </button>
+          {showSolutionBtn}
+        </div>
+      </div>
+    );
+
+  return (
+    <div className="board-layout puzzle-layout">
+      <div className="board-col col puzzle-board">
+        {strip(opposite(you))}
+        {boardEl}
+        {strip(you)}
+        <div className="row puzzle-nav">
+          <button onClick={() => go(tree.root)} aria-label="Start of the game" title="Start of the game">
+            ⏮
+          </button>
+          <button onClick={back} aria-label="Back" title="Back (←)">
+            ◀
+          </button>
+          <button onClick={forward} aria-label="Forward" title="Forward (→)">
+            ▶
+          </button>
+          <button onClick={() => go(startId)} title="The puzzle's position">
+            Puzzle
+          </button>
+        </div>
+      </div>
+      <div className="col puzzle-side" style={{ gap: 10 }}>
+        {clockEl}
+        {feedbackEl}
+        {error && <div className="error small">{error}</div>}
+        <div className="panel col puzzle-tree" style={{ gap: 8 }}>
+          {treeEl}
+          {writeTools}
+          {phase === 'solve' && (
+            <div className="row">
+              {checkBtn}
+              {takeBack}
+              <span className="spacer" />
+              {showSolutionBtn}
+            </div>
+          )}
+        </div>
+        {engineEl}
+        {missReview}
+        <div className="row">
+          {nextBtn}
+          <span className="spacer" />
+          {lichessLink}
         </div>
         <p className="muted small puzzle-note" style={{ margin: 0 }}>
           {review && judgeAlt
@@ -757,7 +826,7 @@ export function PuzzleSolver({
  * The time on a puzzle against your budget: quiet while you're within it, a nudge past it (commit to
  * your best line, or see the solution) — never a penalty. Stops when the puzzle is done.
  */
-function PuzzleClock({ timer, running }: { timer: { elapsed: () => number; budgetMs: number }; running: boolean }) {
+function PuzzleClock({ timer, running, compact = false }: { timer: { elapsed: () => number; budgetMs: number }; running: boolean; compact?: boolean }) {
   const { elapsed, budgetMs } = timer;
   const [ms, setMs] = useState(() => elapsed());
   useEffect(() => {
@@ -767,6 +836,13 @@ function PuzzleClock({ timer, running }: { timer: { elapsed: () => number; budge
     return () => clearInterval(t);
   }, [elapsed, running]);
   const over = ms > budgetMs;
+  // A phone: just the time, in your player strip like a game clock (amber past your budget).
+  if (compact)
+    return (
+      <span className={`puzzle-clock compact ${over ? 'over' : ''}`} title={over ? 'Over your time — commit to your best line, or see the solution' : `Your time per puzzle: ${fmtClock(budgetMs)}`}>
+        <span>{fmtClock(ms)}</span>
+      </span>
+    );
   return (
     <div className={`puzzle-clock ${over ? 'over' : ''}`} title="Time on this puzzle while the app is on screen — your time per puzzle is set above">
       <span>

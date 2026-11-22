@@ -127,7 +127,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   shows why you miss most often, with what to do about it, and how many cards are coming back. Blocks guard against tilt: your rating stays hidden
   until the block ends; three misses in a row, or a quick miss right after a miss, bring up a breather. With Lichess connected they're picked around your
   Lichess puzzle rating and, if you let them, count toward it. Every puzzle is kept in your history with
-  the time it took (synced), for the balance of the three.
+  the time it took (synced), for the balance of the three. On a phone it's one screen, like training: the
+  block's bar, the board as big as the screen allows (your clock in your player strip), a box with what to
+  do and your line, and the buttons at the bottom — what to solve, your rating and history behind ⚙.
 - **Sync between devices** — optional: keep your phone and computer in step through a secret gist in your
   own GitHub account (see below).
 

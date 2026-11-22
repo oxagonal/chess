@@ -5,7 +5,7 @@
  * they're picked around your Lichess puzzle rating, and your results can count toward it. Every
  * puzzle is kept in your history (synced), with the time it took — for the 1/3 balance.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { updateSettings, useSettings } from '../db/settings';
@@ -13,7 +13,7 @@ import { useChaptersAndSets } from '../db/scopes';
 import { useOpeningIndex } from '../components/ChapterTree';
 import { ConnectLichessButton } from '../components/LichessConnect';
 import { Stat, TableWrap, fmtDate } from '../components/ui';
-import { startOfToday, useActivityClock, useChapterGraphs } from '../hooks';
+import { PHONE_QUERY, startOfToday, useActivityClock, useChapterGraphs, useMediaQuery } from '../hooks';
 import { chapterPosition } from '../lib/chapters';
 import type { Color } from '../lib/chess';
 import { PuzzleSolver } from '../components/PuzzleSolver';
@@ -44,9 +44,47 @@ export function PuzzlesPage() {
   const settings = useSettings();
   const [glicko, setGlicko] = useState<Glicko>();
   const active = blockActive(useBlock());
+  const phone = useMediaQuery(PHONE_QUERY);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   if (!settings.loaded) return null;
   const canRead = hasScope(settings, 'puzzle:read');
   const canWrite = hasScope(settings, 'puzzle:write');
+  const session = <PuzzleSession key={`${settings.puzzleAngle}|${settings.puzzleDifficulty}`} onGlicko={setGlicko} toolbar={phone ? (
+    <button className="small" onClick={() => setSettingsOpen(true)} aria-label="Puzzle settings, your rating and history" title="Settings, your rating and history">
+      ⚙
+    </button>
+  ) : undefined} />;
+  // Phones: one screen — the puzzle; what to solve, the time, your rating and history behind ⚙ (the
+  // puzzle stays as it is underneath).
+  if (phone)
+    return (
+      <div className="col puzzles phone">
+        {settingsOpen && (
+          <div className="col pz-settings">
+            <div className="row">
+              <h2 style={{ margin: 0 }}>Puzzles</h2>
+              {glicko && !active && (
+                <span className="badge" title={`Your Lichess puzzle rating (±${Math.round(glicko.deviation)})`}>
+                  {Math.round(glicko.rating)}
+                  {glicko.provisional ? '?' : ''} on Lichess
+                </span>
+              )}
+              <span className="spacer" />
+              <button className="primary small" onClick={() => setSettingsOpen(false)}>
+                Back to the puzzle
+              </button>
+            </div>
+            <TodayTally hideRating={active} />
+            <ConnectionNote connected={!!settings.lichessToken} canRead={canRead} />
+            <PuzzlePicker canWrite={canWrite} />
+            <History hideRating={active} />
+          </div>
+        )}
+        <div className="pz-live" style={settingsOpen ? { display: 'none' } : undefined}>
+          {session}
+        </div>
+      </div>
+    );
   return (
     <div className="col puzzles" style={{ gap: 14 }}>
       <div className="row">
@@ -67,7 +105,7 @@ export function PuzzlesPage() {
       </div>
       <ConnectionNote connected={!!settings.lichessToken} canRead={canRead} />
       <PuzzlePicker canWrite={canWrite} />
-      <PuzzleSession key={`${settings.puzzleAngle}|${settings.puzzleDifficulty}`} onGlicko={setGlicko} />
+      {session}
       <History hideRating={active} />
     </div>
   );
@@ -289,7 +327,7 @@ interface Current {
   card?: TacticCard;
 }
 
-function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
+function PuzzleSession({ onGlicko, toolbar }: { onGlicko: (g: Glicko) => void; toolbar?: ReactNode }) {
   const settings = useSettings();
   const angle = settings.puzzleAngle;
   const difficulty = settings.puzzleDifficulty;
@@ -419,16 +457,29 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
   };
   const mode = settings.puzzleWrite ? 'write' : 'play';
 
+  // Phones: ⚙ always at hand (the block's bar has it while solving).
+  const bar = toolbar && (
+    <div className="row pz-toolbar">
+      <b>Puzzles</b>
+      <span className="spacer" />
+      {toolbar}
+    </div>
+  );
   if (b?.stage === 'summary')
     return (
-      <BlockSummary
+      <>
+        {bar}
+        <BlockSummary
         b={b}
         budgetMs={budgetMs}
         onAnother={() => setBlock(null)}
       />
+      </>
     );
   if (b?.stage === 'breather')
     return (
+      <>
+      {bar}
       <div className="panel col breather" style={{ gap: 10 }}>
         <h2 style={{ margin: 0 }}>Take a breather</h2>
         <p style={{ margin: 0 }}>
@@ -445,10 +496,13 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
           </button>
         </div>
       </div>
+      </>
     );
 
   if (!cur)
     return (
+      <>
+      {bar}
       <div className="panel">
         {error ? (
           <div className="col" style={{ gap: 8 }}>
@@ -461,14 +515,15 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
           <div className="muted">Getting puzzles from Lichess…</div>
         )}
       </div>
+      </>
     );
 
   // Has this puzzle's result gone into the block yet?
   const recorded = !!b?.attempts.some((a) => a.puzzle === cur.puzzle);
   const lastOne = !!b && b.attempts.length + (recorded ? 0 : 1) >= b.size;
   return (
-    <div className="col" style={{ gap: 8 }}>
-      {b && <BlockProgress b={b} current={!recorded} review={cur.card} />}
+    <div className="col pz-session" style={{ gap: 8 }}>
+      {b ? <BlockProgress b={b} current={!recorded} review={cur.card} toolbar={toolbar} /> : bar}
       <PuzzleSolver
         key={`${cur.puzzle.puzzle.id}|${cur.startedAt}`}
         puzzle={cur.puzzle}
@@ -491,7 +546,7 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
 }
 
 /** Where you are in the block: a dot per puzzle — solved, missed, this one, to come. */
-function BlockProgress({ b, current, review }: { b: Block; current: boolean; review?: TacticCard }) {
+function BlockProgress({ b, current, review, toolbar }: { b: Block; current: boolean; review?: TacticCard; toolbar?: ReactNode }) {
   const n = b.attempts.length + (current ? 1 : 0);
   return (
     <div className="row puzzle-block-bar">
@@ -511,6 +566,12 @@ function BlockProgress({ b, current, review }: { b: Block; current: boolean; rev
           />
         ))}
       </span>
+      {toolbar && (
+        <>
+          <span className="spacer" />
+          {toolbar}
+        </>
+      )}
     </div>
   );
 }
