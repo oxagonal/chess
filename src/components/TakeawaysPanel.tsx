@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { addGameCards } from '../services/tactics';
-import { gameCards } from '../lib/tacticCards';
+import { gameMistakes } from '../lib/tacticCards';
 import { updateSettings, useSettings } from '../db/settings';
 import { tagOptions, toggleTag } from '../lib/takeaways';
 import type { StoredGame } from '../lib/types';
@@ -116,15 +116,21 @@ export function TakeawaysPanel({ game }: { game: StoredGame }) {
 function MistakeCards({ game }: { game: StoredGame }) {
   const have = useLiveQuery(() => db.tacticCards.where('id').startsWith(`g:${game.id}:`).count(), [game.id]);
   if (have === undefined) return null;
-  if (!game.review) return <span className="muted small mistake-cards">Run the computer review to bring your mistakes back as puzzles.</span>;
-  const possible = gameCards(game, Date.now()).length;
+  const possible = gameMistakes(game).length;
   if (have)
     return (
       <span className="muted small mistake-cards" title="In your puzzle blocks from the next day, then spaced out until you solve each twice in a row">
         ↻ {have} of your mistakes here come back as puzzles
       </span>
     );
-  if (!possible) return <span className="muted small mistake-cards">No crucial mistakes of yours to bring back.</span>;
+  if (!possible)
+    return (
+      <span className="muted small mistake-cards">
+        {game.review || game.liveEvals
+          ? 'No crucial mistakes of yours found — mark one with ? or ?? (right-click the move) to bring it back as a puzzle.'
+          : 'Run the computer review — or mark your mistakes with ? or ?? (right-click the move) — to bring them back as puzzles.'}
+      </span>
+    );
   return (
     <button className="small mistake-cards" onClick={() => void addGameCards(game)} title="Positions where you went wrong, to solve again from tomorrow">
       ↻ Bring my {possible} mistakes back as puzzles

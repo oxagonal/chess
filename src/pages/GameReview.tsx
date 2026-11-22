@@ -13,7 +13,8 @@ import { PHONE_QUERY, useActivityClock, useAllGraphs, useMediaQuery } from '../h
 import { analyzeGame, PREP_LABEL, type PrepResult } from '../lib/prep';
 import type { RepGraph } from '../lib/graph';
 import { keyOf, opposite, playSan, playUci, startPos } from '../lib/chess';
-import { biggestSwingsFor, formatEvalShort, JUDGEMENT_GLYPH, swings } from '../lib/review';
+import { biggestSwingsFor, formatEvalShort, JUDGEMENT_GLYPH, swings, withLiveEvals, type LiveEval } from '../lib/review';
+import { onEngineLines } from '../services/engine';
 import {
   canPromote,
   deleteFromMove,
@@ -51,6 +52,9 @@ import type { GameSource, StoredGame } from '../lib/types';
 /** Outline piece symbols for the material balance (text presentation, never emoji). */
 
 const Studio = lazy(() => import('../components/Studio').then((m) => ({ default: m.Studio })));
+
+/** The Stockfish box's evaluations are kept with the game from this depth on (shallower ones say little). */
+const LIVE_MIN_DEPTH = 12;
 
 /** Where each game's review was left this session (move, side line, board flipped). */
 const reviewPlaces = new Map<string, { cursor: number | null; flipped: boolean; sel: { id: string; at: number } | null }>();
@@ -137,6 +141,48 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [replay]);
+
+  // What the Stockfish box finds in the game's positions is kept with the game, where it searched deeper
+  // than the computer review (or there isn't one): the move list's evaluations, the judgements and your
+  // mistakes then match what it shows — and fill in as you go through a game you haven't analysed.
+  const gameId = game?.id;
+  useEffect(() => {
+    if (!gameId || !replay) return;
+    const byKey = new Map<string, number[]>();
+    replay.positions.forEach((p, i) => byKey.set(keyOf(p), [...(byKey.get(keyOf(p)) ?? []), i]));
+    const pending: Record<string, LiveEval> = {};
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const flush = async () => {
+      timer = undefined;
+      const batch = Object.entries(pending);
+      if (!batch.length) return;
+      for (const [k] of batch) delete pending[k];
+      const g = await db.games.get(gameId);
+      if (!g) return;
+      const live = { ...(g.liveEvals ?? {}) };
+      let changed = false;
+      for (const [i, e] of batch) {
+        const reviewDepth = g.review?.evals[Number(i)] ? g.review.depth : 0;
+        if ((live[i] && live[i].depth >= e.depth) || reviewDepth >= e.depth) continue;
+        live[i] = e;
+        changed = true;
+      }
+      if (changed) await db.games.update(gameId, { liveEvals: live });
+    };
+    const off = onEngineLines((key, lines) => {
+      const at = byKey.get(key);
+      const top = lines[0];
+      if (!at || !top || top.eval.depth < LIVE_MIN_DEPTH) return;
+      const e: LiveEval = { depth: top.eval.depth, ...(top.eval.mate !== undefined ? { mate: top.eval.mate } : { cp: top.eval.cp ?? 0 }), ...(top.moves[0] ? { best: top.moves[0] } : {}) };
+      for (const i of at) if (!pending[i] || pending[i].depth < e.depth) pending[i] = e;
+      timer ??= setTimeout(() => void flush(), 2000);
+    });
+    return () => {
+      off();
+      if (timer) clearTimeout(timer);
+      void flush();
+    };
+  }, [gameId, replay]);
 
   if (game === undefined || !graphs || !replay) return <div className="muted">Loading…</div>;
   if (!game) return <Empty>Game not found.</Empty>;
@@ -243,7 +289,8 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
 
   // Arrows: where you left your prep (your prepared moves vs what was played), and at the computer's
   // swings the move played (red) vs the engine's choice (green).
-  const review = game.review;
+  // The computer review with what the live engine found deeper (or instead of one).
+  const review = withLiveEvals(game.review, game.liveEvals, replay.positions.length);
   if (!inLine) visitedRef.current.plies.add(cur);
   const allSwings = review ? swings(review) : [];
   const judged = new Map(allSwings.filter((s) => s.judgement).map((s) => [s.ply, s]));
@@ -581,6 +628,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
       userColor={game.userColor}
       opponentName={opp}
       prepPly={devPly}
+      merged={review}
     />
   );
   const engine = <EnginePanel fenKey={key} ply={plyHere} onPlay={(san) => play({ san })} onJump={playLine} />;

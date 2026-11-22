@@ -8,7 +8,7 @@ import type { LichessPuzzle } from './puzzle';
 import type { PuzzleAttempt, StoredGame } from './types';
 import type { Color } from './chess';
 import { crucialSwings } from './quickReview';
-import type { Score } from './review';
+import { withLiveEvals, type Score } from './review';
 
 /** Why a puzzle was missed (the tap after a miss) — the pattern says what to work on. */
 export type MissReason = NonNullable<PuzzleAttempt['reason']>;
@@ -88,40 +88,69 @@ export function reviewed(card: TacticCard, ok: boolean, now: number): TacticCard
 
 export const isDueCard = (c: TacticCard, now: number) => !c.retired && c.due <= now;
 
+/** A mistake of yours in a game worth bringing back: where, the engine's move there and its evaluation. */
+export interface GameMistake {
+  /** The move's index in the game. */
+  ply: number;
+  best?: string;
+  /** The evaluation with best play, before your move (White's view). */
+  before?: Score;
+}
+
 /**
- * Your crucial mistakes in a game (the big swings of the quick review, by your side) as cards: the
- * position before your move, "what should you have played?" — back the next day, like a missed puzzle.
- * Mistakes in your own games show your real blind spots (Nate Solon saves them for spaced review).
+ * Your mistakes in a game worth solving again: your crucial swings in the quick review (with what the
+ * Stockfish box found deeper, or without a computer review at all), and the moves you marked ? or ??
+ * yourself. The engine's move can be missing for a marked one (no engine there yet).
+ */
+export function gameMistakes(game: StoredGame): GameMistake[] {
+  const you = game.userColor;
+  const merged = withLiveEvals(game.review, game.liveEvals, game.sans.length + 1);
+  const out = new Map<number, GameMistake>();
+  if (merged)
+    for (const s of crucialSwings(merged, game.timeClass, 8)) if (s.mover === you && s.ply > 0) out.set(s.ply, { ply: s.ply, best: s.best, before: s.scoreBefore });
+  for (const [k, a] of Object.entries(game.annotations ?? {})) {
+    const ply = Number(k);
+    if (!(ply > 0 && ply < game.sans.length) || (ply % 2 === 0 ? 'white' : 'black') !== you || out.has(ply)) continue;
+    if (!a.glyphs?.some((g) => g === '?' || g === '??')) continue;
+    out.set(ply, { ply, best: merged?.best[ply] ?? undefined, before: merged?.evals[ply] ?? undefined });
+  }
+  return [...out.values()].sort((x, y) => x.ply - y.ply);
+}
+
+/** One of your game's mistakes as a card: the position before your move, "what should you have played?" */
+export function gameCard(game: StoredGame, m: GameMistake & { best: string }, now: number): TacticCard {
+  const you = game.userColor;
+  const id = `g:${game.id}:${m.ply}`;
+  return {
+    id,
+    source: 'game',
+    puzzle: {
+      game: {
+        id: game.id,
+        pgn: game.sans.slice(0, m.ply).join(' '),
+        players: [
+          { color: 'white', name: game.white, rating: game.whiteElo },
+          { color: 'black', name: game.black, rating: game.blackElo },
+        ],
+      },
+      puzzle: { id, rating: 0, plays: 0, solution: [m.best], themes: ['your game'], initialPly: m.ply - 1 },
+    },
+    game: { id: game.id, played: game.sans[m.ply], best: m.before, you, opponent: you === 'white' ? game.black : game.white, playedAt: game.playedAt },
+    step: 0,
+    streak: 0,
+    due: dueAfter(now, REVIEW_DAYS[0]),
+    createdAt: now,
+  };
+}
+
+/**
+ * Your mistakes in a game as cards — those the engine's move is known for (Mistakes in your own games
+ * show your real blind spots; Nate Solon saves them for spaced review.)
  */
 export function gameCards(game: StoredGame, now: number): TacticCard[] {
-  const review = game.review;
-  if (!review) return [];
-  const you = game.userColor;
-  return crucialSwings(review, game.timeClass, 8)
-    .filter((s) => s.mover === you && s.best && s.ply > 0)
-    .map((s) => {
-      const id = `g:${game.id}:${s.ply}`;
-      return {
-        id,
-        source: 'game' as const,
-        puzzle: {
-          game: {
-            id: game.id,
-            pgn: game.sans.slice(0, s.ply).join(' '),
-            players: [
-              { color: 'white' as const, name: game.white, rating: game.whiteElo },
-              { color: 'black' as const, name: game.black, rating: game.blackElo },
-            ],
-          },
-          puzzle: { id, rating: 0, plays: 0, solution: [s.best!], themes: ['your game'], initialPly: s.ply - 1 },
-        },
-        game: { id: game.id, played: game.sans[s.ply], best: s.scoreBefore, you, opponent: you === 'white' ? game.black : game.white, playedAt: game.playedAt },
-        step: 0,
-        streak: 0,
-        due: dueAfter(now, REVIEW_DAYS[0]),
-        createdAt: now,
-      };
-    });
+  return gameMistakes(game)
+    .filter((m): m is GameMistake & { best: string } => !!m.best)
+    .map((m) => gameCard(game, m, now));
 }
 
 /** A win chance lost (0–100, by the side to move) that still counts as a good move in your game's position. */

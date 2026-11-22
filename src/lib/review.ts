@@ -94,3 +94,41 @@ export function biggestSwings(review: GameReview, count = 3): Swing[] {
     .sort((a, b) => b.loss - a.loss)
     .slice(0, count);
 }
+
+/** The live engine's evaluation of one of the game's positions (as you went through it with Stockfish on). */
+export interface LiveEval extends Score {
+  depth: number;
+  /** Its best move (standard UCI). */
+  best?: string;
+}
+
+/**
+ * The computer review with what the live engine found as you went through the game: in each position,
+ * whichever looked deeper — so the move list, the judgements and the mistakes match the Stockfish box
+ * once it has gone further than the review did. Without a computer review, just the live evaluations
+ * (positions you haven't looked at stay empty). `positions`: the game's positions (moves + 1).
+ */
+export function withLiveEvals(review: GameReview | undefined, live: Record<string, LiveEval> | undefined, positions: number): GameReview | undefined {
+  const keys = live ? Object.keys(live) : [];
+  if (!keys.length) return review;
+  const evals: (Score | null)[] = Array.from({ length: Math.max(positions, review?.evals.length ?? 0) }, (_, i) => review?.evals[i] ?? null);
+  const best: (string | null)[] = evals.map((_, i) => review?.best[i] ?? null);
+  for (const k of keys) {
+    const i = Number(k);
+    const l = live![k];
+    if (!(i >= 0 && i < evals.length)) continue;
+    if (evals[i] && review && review.depth >= l.depth) continue;
+    evals[i] = { cp: l.cp, mate: l.mate };
+    if (l.best) best[i] = l.best;
+  }
+  // Trailing positions nobody has looked at aren't part of an interrupted review.
+  let n = evals.length;
+  while (n > 0 && !evals[n - 1]) n--;
+  return {
+    depth: review?.depth ?? 0,
+    analyzedAt: review?.analyzedAt ?? 0,
+    evals: evals.slice(0, Math.max(n, review?.evals.length ?? 0)),
+    best: best.slice(0, Math.max(n, review?.evals.length ?? 0)),
+    ...(review?.complete === false ? { complete: false } : {}),
+  };
+}

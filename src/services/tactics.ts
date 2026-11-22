@@ -4,15 +4,34 @@
  * so another good move counts too.
  */
 import { db } from '../db/db';
-import { playUci, posFromFen, type Color } from '../lib/chess';
+import { keyOf, playSan, playUci, posFromFen, startPos, type Color } from '../lib/chess';
 import { winChanceOf, type Score } from '../lib/review';
-import { GAME_MOVE_OK_LOSS, gameCards } from '../lib/tacticCards';
+import { GAME_MOVE_OK_LOSS, gameCard, gameMistakes, type GameMistake, type TacticCard } from '../lib/tacticCards';
 import type { StoredGame } from '../lib/types';
 import { analyseOnce, cloudLines, winChance } from './engine';
 
-/** Your crucial mistakes in a reviewed game, as cards (those you already have keep their progress). How many were new. */
+/**
+ * Your mistakes in a game, as cards (those you already have keep their progress): your crucial swings
+ * and the moves you marked ? or ??. A marked one whose position Stockfish hasn't looked at gets the
+ * engine's move now (Lichess's cloud analysis, else Stockfish here). How many were new.
+ */
 export async function addGameCards(game: StoredGame): Promise<number> {
-  const cards = gameCards(game, Date.now());
+  const now = Date.now();
+  const found = gameMistakes(game);
+  const cards: TacticCard[] = [];
+  for (const m of found) {
+    if (!m.best) {
+      let pos = startPos();
+      for (const san of game.sans.slice(0, m.ply)) pos = playSan(pos, san)?.pos ?? pos;
+      const key = keyOf(pos);
+      const lines = (await cloudLines(key).catch(() => undefined)) ?? (await analyseOnce(key, 16, 1));
+      const top = lines?.[0];
+      if (!top?.moves[0]) continue;
+      m.best = top.moves[0];
+      m.before = { cp: top.eval.cp, mate: top.eval.mate };
+    }
+    cards.push(gameCard(game, m as GameMistake & { best: string }, now));
+  }
   let added = 0;
   await db.transaction('rw', db.tacticCards, async () => {
     for (const c of cards) {

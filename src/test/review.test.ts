@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { db } from '../db/db';
 import { saveAnnotation } from '../db/annotations';
 import { canPromote, glyphsFromNags, lineTree, moveGlyph, nagsOf, otherGlyphs, promoteLine, sanWithGlyphs, sortGlyphs, toggleGlyph, withLineNote, withSharedLineNote, type SavedLine } from '../lib/annotations';
-import { biggestSwingsFor, formatEvalShort, type GameReview } from '../lib/review';
+import { biggestSwingsFor, formatEvalShort, withLiveEvals, type GameReview } from '../lib/review';
 import { clocksAt, formatClock, formatMoveTime, inferIncrement, moveTimes, timeSpent } from '../lib/clocks';
 import { materialBalance } from '../lib/material';
 import { WORK_ON_TAGS, tagOptions, toggleTag } from '../lib/takeaways';
@@ -231,5 +231,22 @@ describe('deleting a move of a tried line', () => {
     // Losing notes: A's ! on Nf3 goes with it; deleting Bc4 loses none.
     expect(deleteLosesNotes([A, B, C], A, 2)).toBe(true);
     expect(deleteLosesNotes([A, B, C], B, 2)).toBe(false);
+  });
+});
+
+describe('the live engine and the computer review', () => {
+  const review: GameReview = { depth: 12, analyzedAt: 1, evals: [{ cp: 20 }, { cp: 30 }, { cp: -240 }, { cp: -200 }], best: ['e2e4', 'e7e5', 'd2d4', null] };
+  it('a deeper live evaluation replaces the review’s in that position; a shallower one does not', () => {
+    const m = withLiveEvals(review, { 2: { cp: -323, depth: 21, best: 'f3e5' }, 1: { cp: 99, depth: 8 } }, 4)!;
+    expect(m.evals).toEqual([{ cp: 20 }, { cp: 30 }, { cp: -323, mate: undefined }, { cp: -200 }]);
+    expect(m.best[2]).toBe('f3e5');
+    expect(m.depth).toBe(12);
+  });
+  it('without a computer review: the positions you looked at with Stockfish on', () => {
+    const m = withLiveEvals(undefined, { 0: { cp: 20, depth: 18, best: 'e2e4' }, 1: { cp: 25, depth: 18 } }, 6)!;
+    expect(m.evals).toEqual([{ cp: 20, mate: undefined }, { cp: 25, mate: undefined }]);
+    expect(m.complete).toBeUndefined();
+    expect(withLiveEvals(undefined, undefined, 6)).toBeUndefined();
+    expect(withLiveEvals(review, {}, 4)).toBe(review);
   });
 });

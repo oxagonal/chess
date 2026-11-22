@@ -32,6 +32,7 @@ export function GameReviewPanel({
   userColor,
   opponentName,
   prepPly,
+  merged,
 }: {
   game: StoredGame;
   positions: Chess[];
@@ -41,8 +42,11 @@ export function GameReviewPanel({
   userColor: Color;
   opponentName: string;
   prepPly?: number;
+  /** The review with the Stockfish box's deeper evaluations (or just those, before a computer review). */
+  merged?: GameReview;
 }) {
   const review = game.review;
+  const shown = merged ?? review;
   const partial = review?.complete === false;
   const [depth, setDepth] = useState(12);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -112,6 +116,37 @@ export function GameReviewPanel({
     </div>
   );
 
+  const mine = shown ? biggestSwingsFor(shown, userColor, 3) : [];
+  const theirs = shown ? biggestSwingsFor(shown, opposite(userColor), 3) : [];
+  const list = (items: Swing[], empty: string) =>
+    items.length === 0 ? (
+      <div className="muted small">{empty}</div>
+    ) : (
+      <div className="col" style={{ gap: 6 }}>
+        {items.map((s) => (
+          <SwingRow key={s.ply} s={s} san={sans[s.ply]} pos={positions[s.ply]} active={cursor === s.ply} onJump={onJump} />
+        ))}
+      </div>
+    );
+  // The graph and each side's biggest mistakes (with the Stockfish box's deeper evaluations).
+  const findings = shown && shown.evals.some(Boolean) && (
+    <>
+      <EvalGraph review={shown} cursor={cursor} onJump={onJump} prepPly={prepPly} />
+      <div className="swing-columns">
+        <div className="col" style={{ gap: 6 }}>
+          <h3 style={{ margin: 0 }}>Your biggest mistakes</h3>
+          {list(mine, partial || !review ? 'None so far.' : 'No real swings — a clean game for you.')}
+        </div>
+        <div className="col" style={{ gap: 6 }}>
+          <h3 style={{ margin: 0 }}>
+            <span className="keep-case">{opponentName}’s</span> biggest mistakes
+          </h3>
+          {list(theirs, partial || !review ? 'None so far.' : 'No real swings.')}
+        </div>
+      </div>
+    </>
+  );
+
   if (!review) {
     return (
       <div className="panel review-panel">
@@ -136,24 +171,14 @@ export function GameReviewPanel({
         {progressBar ?? (
           <p className="muted small" style={{ marginTop: 8, marginBottom: 0 }}>
             Runs Stockfish on every position (in your browser) and finds each side’s three biggest swings. Saved with the game as it goes.
+            {findings && ' Meanwhile, from the positions you’ve looked at with the Stockfish box on:'}
           </p>
         )}
+        {findings}
       </div>
     );
   }
 
-  const mine = biggestSwingsFor(review, userColor, 3);
-  const theirs = biggestSwingsFor(review, opposite(userColor), 3);
-  const list = (items: Swing[], empty: string) =>
-    items.length === 0 ? (
-      <div className="muted small">{empty}</div>
-    ) : (
-      <div className="col" style={{ gap: 6 }}>
-        {items.map((s) => (
-          <SwingRow key={s.ply} s={s} san={sans[s.ply]} pos={positions[s.ply]} active={cursor === s.ply} onJump={onJump} />
-        ))}
-      </div>
-    );
   return (
     <div className="panel review-panel">
       <div className="row">
@@ -172,19 +197,7 @@ export function GameReviewPanel({
         )}
       </div>
       {progressBar}
-      <EvalGraph review={review} cursor={cursor} onJump={onJump} prepPly={prepPly} />
-      <div className="swing-columns">
-        <div className="col" style={{ gap: 6 }}>
-          <h3 style={{ margin: 0 }}>Your biggest mistakes</h3>
-          {list(mine, partial ? 'None so far.' : 'No real swings — a clean game for you.')}
-        </div>
-        <div className="col" style={{ gap: 6 }}>
-          <h3 style={{ margin: 0 }}>
-            <span className="keep-case">{opponentName}’s</span> biggest mistakes
-          </h3>
-          {list(theirs, partial ? 'None so far.' : 'No real swings.')}
-        </div>
-      </div>
+      {findings}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { GameReview } from './review';
+import type { GameReview, LiveEval } from './review';
 import type { MoveAnnotation, SavedLine } from './annotations';
 import type { Color } from './chess';
 import type { TimeClass } from './importers/common';
@@ -144,6 +144,11 @@ export interface StoredGame {
   prepApplied?: boolean;
   /** Computer review (Stockfish eval of every position), once run. */
   review?: GameReview;
+  /**
+   * What the live engine (the Stockfish box) found in the game's positions as you went through it, by
+   * position index — kept where it searched deeper than the computer review, or without one.
+   */
+  liveEvals?: Record<string, LiveEval>;
   /** Tournament / event name (over-the-board games). */
   event?: string;
   /** Your annotations (symbols, comments), by the move's index in `sans` (as a string key). */

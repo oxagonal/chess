@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gameCards, isDueCard, missedCard, REVIEW_DAYS, reviewed, startOfDay } from '../lib/tacticCards';
+import { gameCards, gameMistakes, isDueCard, missedCard, REVIEW_DAYS, reviewed, startOfDay } from '../lib/tacticCards';
 import { puzzleStart } from '../lib/puzzle';
 import type { StoredGame } from '../lib/types';
 import type { LichessPuzzle } from '../lib/puzzle';
@@ -52,5 +52,23 @@ describe('mistakes in your games as cards', () => {
     const start = puzzleStart(c.puzzle)!;
     expect([start.color, start.lastMove]).toEqual(['black', 'f1c4']);
     expect(c.due).toBe(startOfDay(noon) + DAY);
+  });
+});
+
+describe('mistakes you marked yourself', () => {
+  it('your ? and ?? moves count (not theirs), with the Stockfish box’s best move where it looked — no computer review needed', () => {
+    const game = {
+      id: 'g2', white: 'Me', black: 'Opp', userColor: 'white', timeClass: 'rapid', playedAt: 1,
+      sans: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Nd4'],
+      annotations: { 2: { glyphs: ['?'] }, 3: { glyphs: ['??'] }, 4: { glyphs: ['!'] } },
+      liveEvals: { 2: { cp: 40, depth: 20, best: 'd2d4' } },
+    } as unknown as StoredGame;
+    // Ply 2 (2.Nf3?) is yours and marked; ply 3 is theirs; ply 4 is marked "!".
+    expect(gameMistakes(game)).toEqual([{ ply: 2, best: 'd2d4', before: { cp: 40, mate: undefined } }]);
+    expect(gameCards(game, noon).map((c) => [c.id, c.puzzle.puzzle.solution[0], c.game!.played])).toEqual([['g:g2:2', 'd2d4', 'Nf3']]);
+    // Marked where Stockfish hasn't looked: found, but without the engine's move yet (added when it's made a card).
+    const unseen = { ...game, liveEvals: undefined } as StoredGame;
+    expect(gameMistakes(unseen)).toEqual([{ ply: 2, best: undefined, before: undefined }]);
+    expect(gameCards(unseen, noon)).toEqual([]);
   });
 });
