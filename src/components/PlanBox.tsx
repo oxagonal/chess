@@ -6,6 +6,7 @@ import { moveNumberPrefix, type Color } from '../lib/chess';
 import { planCover, plansByKey, type PlanRef } from '../lib/plans';
 import type { RepMove, TopGame } from '../lib/types';
 import { masterGames } from '../services/explorer';
+import { sourcesOf } from '../lib/chapters';
 
 /** Every plan in a color's chapters, by position (transposed lines share them). */
 export function usePlans(color: Color | undefined): Map<string, PlanRef> | undefined {
@@ -62,7 +63,22 @@ export function PlanNote({ id, placeholder, autoFocus, rows = 3 }: { id: string;
   if (stored === undefined) return null;
   return (
     <div className="plan-note">
-      <textarea rows={rows} value={text ?? stored} placeholder={placeholder} autoFocus={autoFocus} onChange={(e) => setText(e.target.value)} onBlur={save} onKeyDown={keys} />
+      <textarea
+        rows={rows}
+        value={text ?? stored}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={save}
+        onKeyDown={keys}
+        ref={(el) => {
+          // Grow with the text (up to a dozen lines) so a long plan isn't hidden behind a scrollbar.
+          if (el) {
+            el.style.height = 'auto';
+            el.style.height = `${Math.min(el.scrollHeight + 2, 260)}px`;
+          }
+        }}
+      />
       {(saved || dirty) && <span className={saved ? 'badge good' : 'muted small'}>{saved ? 'Saved' : 'unsaved'}</span>}
     </div>
   );
@@ -81,6 +97,8 @@ export function PlanBox({ color, path, lineEnd, fenKey }: { color: Color; path: 
   const cur = path[path.length - 1];
   useEffect(() => setWriting(false), [cur?.id]);
   if (!plans || !cur) return null;
+  // In "All chapters" the line's moves are merged ones: write to the chapters' own moves.
+  const ids = sourcesOf(cur);
   const own = plans.get(cur.toKey);
   const cover = planCover(path, plans);
   const where = (p: PlanRef) => {
@@ -93,7 +111,7 @@ export function PlanBox({ color, path, lineEnd, fenKey }: { color: Color; path: 
       <div className="plan-box filled">
         <div className="plan-head">
           <b>Plan</b>
-          <span className="muted small">{own.move.id === cur.id ? afterMove(cur, path.length - 1) : 'shared with a transposed line'}</span>
+          <span className="muted small">{ids.includes(own.move.id) ? afterMove(cur, path.length - 1) : 'shared with a transposed line'}</span>
         </div>
         <PlanNote id={own.move.id} placeholder={PLAN_PROMPT} rows={2} />
         {lineEnd && <MasterGames fenKey={fenKey} />}
@@ -107,7 +125,7 @@ export function PlanBox({ color, path, lineEnd, fenKey }: { color: Color; path: 
           <b>Plan {afterMove(cur, path.length - 1)}</b>
           <span className="muted small">— for the lines that go on from here</span>
         </div>
-        <PlanNote id={cur.id} placeholder={PLAN_PROMPT} autoFocus rows={2} />
+        <PlanNote id={ids[0]} placeholder={PLAN_PROMPT} autoFocus rows={2} />
       </div>
     ) : (
       <button className="linklike small plan-add" onClick={() => setWriting(true)} title="A plan here covers the lines that end within 5 moves of it">
@@ -133,7 +151,7 @@ export function PlanBox({ color, path, lineEnd, fenKey }: { color: Color; path: 
               Write one just for this line
             </button>
             {cover.status === 'confirmed' && (
-              <button className="linklike small" onClick={() => void setPlanStill([cur.id], false)}>
+              <button className="linklike small" onClick={() => void setPlanStill(ids, false)}>
                 It doesn't apply after all
               </button>
             )}
@@ -145,7 +163,7 @@ export function PlanBox({ color, path, lineEnd, fenKey }: { color: Color; path: 
           <span className="warn-text">The nearest plan is {Math.ceil(cover.back! / 2)} moves back</span>
           <span className="muted"> ({where(cover.plan!)}):</span> {cover.plan!.text}
           <div className="row" style={{ gap: 8, marginTop: 4 }}>
-            <button className="small" onClick={() => void setPlanStill([cur.id], true)} title="Counts as this line's plan">
+            <button className="small" onClick={() => void setPlanStill(ids, true)} title="Counts as this line's plan">
               Still applies
             </button>
             <button className="small" onClick={() => setWriting(true)}>
@@ -157,7 +175,7 @@ export function PlanBox({ color, path, lineEnd, fenKey }: { color: Color; path: 
       {(cover.status === 'none' || writing) && (
         <>
           {cover.status === 'none' && <div className="small warn-text">No plan for this line yet — what are you aiming for once the moves run out?</div>}
-          <PlanNote id={cur.id} placeholder={PLAN_PROMPT} autoFocus={writing} rows={2} />
+          <PlanNote id={ids[0]} placeholder={PLAN_PROMPT} autoFocus={writing} rows={2} />
         </>
       )}
       <MasterGames fenKey={fenKey} />
