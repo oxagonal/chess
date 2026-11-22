@@ -22,7 +22,7 @@ import { cardsOf, chapterOfMoveId, sourcesOf } from '../lib/chapters';
 import { href, navigate, scopeHref } from '../router';
 import { compactLine, formatLine, playUci, startPos } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
-import { asQuiz, moveOrders, newMovesQuiz, orderCards, planLine, type PlannedStep } from '../lib/trainer';
+import { asQuiz, moveOrders, newMovesQuiz, orderCards, ordersFor, planLine, type PlannedStep } from '../lib/trainer';
 import { Builder } from './Repertoire';
 import { computeInsights, movesForLine, movesUnder, weakestMoves } from '../lib/insights';
 import { formatInterval, isDue, isNew, Rating, type Grade } from '../lib/srs';
@@ -309,7 +309,7 @@ function Session({ setup }: { setup: SessionSetup }) {
       }
       // A transposed position: each review takes the next move order into it (most common first),
       // so over time you practice reaching it every way your repertoire allows.
-      const orders = moveOrders(graph, move.fromKey, setup.probs.get(scopeId));
+      const orders = ordersFor(moveOrders(graph, move.fromKey, setup.probs.get(scopeId), 16), move).slice(0, 8);
       let index = orders.length ? card.reps % orders.length : 0;
       const learn = mode === 'learn';
       const seen = !learn && skipRepeatsRef.current ? seenRef.current : undefined;

@@ -260,6 +260,23 @@ describe('trainer planning', () => {
     expect(steps.filter((s) => s.leadIn).map((s) => s.move.san)).toEqual(['e4', 'Nf3']);
   });
 
+  it("reviews a move only through its own chapter's move orders", async () => {
+    const { moveOrders, ordersFor } = await import('../lib/trainer');
+    const { unionGraph } = await import('../lib/chapters');
+    const { keysAlong } = await import('../lib/pgn');
+    // King's Indian chapter: 1.d4 Nf6 2.c4 d6 3.Nf3. Another chapter: 1.d4 d6 2.c4 Nf6 3.Nc3 — the same position.
+    const kid = movesFromLines('kid', 'white', ['d4 Nf6 c4 d6 Nf3']);
+    const old = movesFromLines('old', 'white', ['d4 d6 c4 Nf6 Nc3']);
+    const ug = unionGraph('white', [...kid, ...old]);
+    const meet = keysAlong(['d4', 'Nf6', 'c4', 'd6']).keys.at(-1)!;
+    const all = moveOrders(ug, meet);
+    expect(all.length).toBe(2);
+    const mine = (san: string) => [...ug.byId.values()].find((m) => m.fromKey === meet && m.san === san)!;
+    const line = (o: { san: string }[]) => o.map((m) => m.san).join(' ');
+    expect(ordersFor(all, mine('Nc3')).map(line)).toEqual(['d4 d6 c4 Nf6']);
+    expect(ordersFor(all, mine('Nf3')).map(line)).toEqual(['d4 Nf6 c4 d6']);
+  });
+
   it('finds every move order into a transposed position, most common first', async () => {
     const { moveOrders } = await import('../lib/trainer');
     const { keysAlong } = await import('../lib/pgn');

@@ -1,4 +1,5 @@
 import type { RepGraph } from './graph';
+import { chapterOfMoveId, sourcesOf } from './chapters';
 import type { RepMove, ReviewCard } from './types';
 import { State } from './srs';
 
@@ -53,6 +54,18 @@ export function moveOrders(graph: RepGraph, key: string, probs?: Record<string, 
   const keyed = found.map((path) => ({ path, w: weight(path) }));
   keyed.sort((a, b) => b.w - a.w || a.path.length - b.path.length || a.path.map((m) => m.san).join().localeCompare(b.path.map((m) => m.san).join()));
   return keyed.slice(0, max).map((x) => x.path);
+}
+
+/**
+ * The move orders that belong with a move: through the chapters that have it. When two chapters reach
+ * the same position by different orders and play different moves there (1.d4 Nf6 2.c4 d6 3.Nf3 in the
+ * King's Indian, 1.d4 d6 2.c4 Nf6 3.Nc3 in another), each move is reviewed by its own chapter's order —
+ * not asked after an order where you play something else. All of them if none fits.
+ */
+export function ordersFor(orders: RepMove[][], move: RepMove): RepMove[][] {
+  const chapters = new Set(sourcesOf(move).map(chapterOfMoveId));
+  const own = orders.filter((o) => o.every((m) => sourcesOf(m).some((id) => chapters.has(chapterOfMoveId(id)))));
+  return own.length ? own : orders;
 }
 
 /**
