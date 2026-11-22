@@ -18,7 +18,8 @@ import { chapterPosition } from '../lib/chapters';
 import type { Color } from '../lib/chess';
 import { PuzzleSolver } from '../components/PuzzleSolver';
 import { nameParts } from '../lib/openingNames';
-import { openingAngle, PUZZLE_DIFFICULTIES, PUZZLE_THEMES, puzzleStart, type LichessPuzzle, type PuzzleDifficulty } from '../lib/puzzle';
+import { difficultyAdvice, openingAngle, PUZZLE_DIFFICULTIES, PUZZLE_THEMES, puzzleStart, stepDifficulty, type LichessPuzzle, type PuzzleDifficulty } from '../lib/puzzle';
+import { clock as fmtClock } from '../lib/quickReview';
 import type { PuzzleAttempt } from '../lib/types';
 import { puzzleTilt } from '../lib/tilt';
 import { startLichessLogin } from '../services/lichessAuth';
@@ -75,6 +76,7 @@ interface BlockAttempt {
   puzzle: LichessPuzzle;
   win: boolean;
   soft?: boolean;
+  overTime?: boolean;
   ms: number;
   rated: boolean;
   ratingDiff?: number;
@@ -233,9 +235,19 @@ function PuzzlePicker({ canWrite }: { canWrite: boolean }) {
           ))}
         </select>
       </label>
-      <label className="check" title="Write your whole solution first — your moves, their replies, and their other sensible replies as branches — before anything is checked">
+      <label className="field" title="The time you aim to spend per puzzle — pick puzzles hard enough that you solve about 70% within it (Solon: 5–10 min; Studer: go easier past 15)">
+        <span>Time per puzzle</span>
+        <select value={settings.puzzleBudgetMin} onChange={(e) => void updateSettings({ puzzleBudgetMin: Number(e.target.value) })}>
+          {[1, 2, 3, 5, 10, 15].map((m) => (
+            <option key={m} value={m}>
+              {m} min
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="check" title="Write your line to the end — your moves and their best replies — before anything is checked (other replies optional); off: move by move, as on Lichess">
         <input type="checkbox" checked={settings.puzzleWrite} onChange={(e) => updateSettings({ puzzleWrite: e.target.checked })} />
-        <span className="small">Write the solution first (with branches)</span>
+        <span className="small">Write the line first</span>
       </label>
       <label className="check" title={canWrite ? undefined : 'Connect Lichess (with puzzle permissions) first'}>
         <input type="checkbox" disabled={!canWrite} checked={canWrite && settings.puzzleRated} onChange={(e) => updateSettings({ puzzleRated: e.target.checked })} />
@@ -332,8 +344,10 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
     if (!cur && queue.length && solving) begin(queue[0]);
   }, [cur, queue, begin, solving]);
 
+  const budgetMs = settings.puzzleBudgetMin * 60_000;
   const finish = async (c: Current, win: boolean, soft = false) => {
     const ms = clock.elapsed();
+    const overTime = ms > budgetMs;
     const attempt: PuzzleAttempt = {
       id: `${c.puzzle.puzzle.id}|${c.startedAt}`,
       puzzleId: c.puzzle.puzzle.id,
@@ -342,10 +356,11 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
       angle,
       win,
       ...(soft ? { soft: true } : {}),
+      ...(overTime ? { overTime: true } : {}),
       ms: Math.round(ms),
       startedAt: c.startedAt,
     };
-    if (currentBlock) setBlock({ ...currentBlock, attempts: [...currentBlock.attempts, { puzzle: c.puzzle, win, soft, ms, rated: false }] });
+    if (currentBlock) setBlock({ ...currentBlock, attempts: [...currentBlock.attempts, { puzzle: c.puzzle, win, soft, overTime, ms, rated: false }] });
     await db.puzzleLog.put(attempt);
     if (!report) {
       setResult({ rated: false });
@@ -412,6 +427,7 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
     return (
       <BlockSummary
         b={b}
+        budgetMs={budgetMs}
         onRetry={() => goOverMisses(b)}
         onAnother={() => setBlock(null)}
       />
@@ -467,6 +483,7 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
         result={result}
         error={error}
         hideRating={blockActive(b)}
+        timer={{ elapsed: clock.elapsed, budgetMs }}
         onResult={(win, soft) => void finish(cur, win, soft)}
         onNext={next}
         nextLabel={lastOne ? 'End of the block →' : 'Next puzzle →'}
@@ -496,8 +513,12 @@ function BlockProgress({ b, current }: { b: Block; current: boolean }) {
 }
 
 /** The end of a block: how it went, your misses, and a break before anything else. */
-function BlockSummary({ b, onRetry, onAnother }: { b: Block; onRetry: () => void; onAnother: () => void }) {
+function BlockSummary({ b, budgetMs, onRetry, onAnother }: { b: Block; budgetMs: number; onRetry: () => void; onAnother: () => void }) {
+  const settings = useSettings();
   const n = b.attempts.length;
+  const advice = difficultyAdvice(b.attempts, budgetMs);
+  const budgetMin = budgetMs / 60_000;
+  const next = advice.step ? stepDifficulty(settings.puzzleDifficulty, advice.step) : undefined;
   const wins = b.attempts.filter((a) => a.win).length;
   const soft = b.attempts.filter((a) => a.soft).length;
   const misses = blockMisses(b);
@@ -508,8 +529,12 @@ function BlockSummary({ b, onRetry, onAnother }: { b: Block; onRetry: () => void
     <div className="panel col block-summary" style={{ gap: 12 }}>
       <h2 style={{ margin: 0 }}>{n >= b.size ? 'Block done' : `Block ended after ${n} puzzle${n === 1 ? '' : 's'}`}</h2>
       <div className="grid3">
-        <Stat value={`${wins} / ${n}`} label={soft ? `Solved (${soft} soft)` : 'Solved'} hint="Soft: you found the answer to a reply of theirs you hadn't written, when it came up" />
-        <Stat value={`${minutes} min`} label="Time" />
+        <Stat
+          value={`${advice.inTime} / ${n}`}
+          label={`Solved within ${budgetMin} min`}
+          hint={`Solved ${wins} of ${n}${soft ? ` (${soft} soft — you answered a reply you hadn't written when it came up)` : ''}; ${advice.inTime} within your time per puzzle`}
+        />
+        <Stat value={fmtClock(advice.avgMs)} label={`Average · ${minutes} min in all`} />
         {rated.length > 0 ? (
           <Stat value={diff >= 0 ? `+${diff}` : String(diff)} label="Lichess puzzle rating" />
         ) : (
@@ -532,6 +557,28 @@ function BlockSummary({ b, onRetry, onAnother }: { b: Block; onRetry: () => void
           ))}
         </div>
       )}
+      <div className="row difficulty-advice">
+        <span className="small">
+          {advice.step === -1 ? (
+            <>
+              Under 60% solved in {budgetMin} min: the puzzles are harder than your time allows — <b>a step easier</b> next block.
+            </>
+          ) : advice.step === 1 ? (
+            <>
+              Over 85% solved, with time to spare: <b>a step harder</b> next block.
+            </>
+          ) : n < 3 ? (
+            <>Too few puzzles to judge the difficulty.</>
+          ) : (
+            <>About right — around 70% solved within your time is the sweet spot.</>
+          )}
+        </span>
+        {next && (
+          <button className="small" onClick={() => void updateSettings({ puzzleDifficulty: next })}>
+            {advice.step === -1 ? 'Make it easier' : 'Make it harder'} ({DIFFICULTY_LABEL[next]})
+          </button>
+        )}
+      </div>
       <div className="note">
         Take five minutes off before anything else. Then another block only if you feel fresh and you're enjoying it{misses.length ? ' — and going over your misses first is worth more than new puzzles' : ''}.
       </div>
@@ -616,7 +663,9 @@ function History({ hideRating }: { hideRating: boolean }) {
                 </td>
                 <td className="num">{a.rating}</td>
                 <td className="small muted hide-sm">{a.themes.slice(0, 3).join(', ')}</td>
-                <td className="num small">{Math.round(a.ms / 1000)} s</td>
+                <td className={`num small ${a.overTime ? 'warn-text' : ''}`} title={a.overTime ? 'Over your time per puzzle' : undefined}>
+                  {fmtClock(a.ms)}
+                </td>
                 <td className="num small">{hideRating || a.ratingDiff === undefined ? '—' : a.ratingDiff >= 0 ? `+${a.ratingDiff}` : a.ratingDiff}</td>
               </tr>
             ))}

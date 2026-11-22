@@ -311,6 +311,10 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .train-plan.ahead { margin: 0 0 8px; }
 .train-plan .plan-text { white-space: pre-wrap; }
 .train-plan .plan-note { align-self: stretch; }
+.puzzle-clock { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.puzzle-clock.over > span:first-child { color: var(--warn); font-weight: 650; }
+.puzzle-clock.over .small { color: var(--warn); }
+.difficulty-advice { gap: 10px; align-items: center; flex-wrap: wrap; }
 .promo-overlay { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 10; }
 /* On the promotion square: a column of four squares toward the middle of the board. */
 .promo-column.cg-wrap { position: absolute; width: 12.5%; height: 50%; display: flex; flex-direction: column; }

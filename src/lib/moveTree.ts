@@ -103,33 +103,6 @@ export class MoveTree {
 }
 
 /**
- * Your written solution's main line from the puzzle's start (your moves and the replies you expect —
- * the first choice at each step), and the opponent's turns on it where you've written their reply but
- * not considered any other: each needs another reply or "only one sensible reply" (`only`) — unless
- * their reply is the only legal move.
- */
-export function unconsidered(tree: MoveTree, startId: string, only: ReadonlySet<string>): string[] {
-  const you = tree.get(startId).pos.turn;
-  const out: string[] = [];
-  let id = startId;
-  for (;;) {
-    const kids = tree.children(id).filter((k) => k.tags.includes('mine'));
-    if (!kids.length) break;
-    const node = tree.get(id);
-    if (node.pos.turn !== you && kids.length < 2 && !only.has(id) && legalMoveCount(node.pos) > kids.length) out.push(id);
-    id = kids[0].id;
-  }
-  return out;
-}
-
-/** How many legal moves a position has (a forced reply has one: nothing else to consider). */
-export function legalMoveCount(pos: Chess): number {
-  let n = 0;
-  for (const dests of pos.allDests().values()) n += dests.size();
-  return n;
-}
-
-/**
  * "Same answer to…": your answer to one of their moves, written against their other moves too — every
  * other move of the piece they moved (`piece`, e.g. any king move), or every other legal reply (`all`).
  * Each reply your answer is still legal after gets it as a branch (the reply's node id is returned);

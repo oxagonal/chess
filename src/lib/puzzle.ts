@@ -100,3 +100,32 @@ export const PUZZLE_THEMES: [string, string][] = [
 
 export const PUZZLE_DIFFICULTIES = ['easiest', 'easier', 'normal', 'harder', 'hardest'] as const;
 export type PuzzleDifficulty = (typeof PUZZLE_DIFFICULTIES)[number];
+
+/** Solved within the time budget: below this share, the next block is a step easier (Studer: under 60%). */
+export const IN_TIME_EASIER = 0.6;
+/** Above this share, with time to spare, a step harder (around 70% is the sweet spot — Solon). */
+export const IN_TIME_HARDER = 0.85;
+
+export interface DifficultyAdvice {
+  /** Solved (first time, or a soft pass) within the time budget. */
+  inTime: number;
+  rate: number;
+  avgMs: number;
+  /** -1: a step easier, 1: a step harder, 0: about right (or too few puzzles to say). */
+  step: -1 | 0 | 1;
+}
+
+/** How a block went against your time budget, and whether the next should be easier or harder. */
+export function difficultyAdvice(attempts: readonly { win: boolean; ms: number; overTime?: boolean }[], budgetMs: number): DifficultyAdvice {
+  const n = attempts.length;
+  const inTime = attempts.filter((a) => a.win && !a.overTime).length;
+  const rate = n ? inTime / n : 0;
+  const avgMs = n ? attempts.reduce((s, a) => s + a.ms, 0) / n : 0;
+  const step = n < 3 ? 0 : rate < IN_TIME_EASIER ? -1 : rate > IN_TIME_HARDER && avgMs < budgetMs / 2 ? 1 : 0;
+  return { inTime, rate, avgMs, step };
+}
+
+/** The difficulty a step easier (-1) or harder (1), if there is one. */
+export function stepDifficulty(d: PuzzleDifficulty, step: -1 | 1): PuzzleDifficulty | undefined {
+  return PUZZLE_DIFFICULTIES[PUZZLE_DIFFICULTIES.indexOf(d) + step];
+}

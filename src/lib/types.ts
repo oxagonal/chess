@@ -294,6 +294,8 @@ export interface PuzzleAttempt {
   soft?: boolean;
   /** Time spent on it while the app was on screen. */
   ms: number;
+  /** It took longer than your time budget per puzzle. */
+  overTime?: boolean;
   startedAt: number;
   /** Sent to Lichess, whether it counted toward your Lichess puzzle rating, and the change it made. */
   reported?: boolean;

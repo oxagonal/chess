@@ -104,26 +104,23 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   your weakest moves on demand.
 
 - **Puzzles** — Lichess puzzles, the tactics third of the 1/3 rule (openings · games and their review ·
-  tactics): a healthy mix, from your own openings, or by theme (forks, pins, mates, endgames…), at the
-  difficulty you pick. By default you write the whole solution first, branches included, without moving the
-  pieces: the board stays on the puzzle while you tap a piece's square and where it goes as things stand in
-  your line (or drag it, with either mouse button, as if drawing an arrow; or type it), your line shows as
-  numbered arrows (or none, all in your head) — a click on a move in the list only moves your place in the
-  line — and one answer to many replies ("any king move, then Qxa8")
-  is two clicks: "same answer to every king move / every other reply". Before you can check it every reply
-  on your main line needs another one considered (or "only one sensible reply", unless it's their only legal
-  move) — then it's checked against Lichess's solution (any mate counts, as on Lichess). If your lines missed one of their replies, Lichess's line is played through to it
-  and you answer it on the board: find the rest and it's a soft pass (counted as solved, marked ✓~), a wrong
-  move and it's a miss. Afterwards the puzzle is a small study: the game from move 1 with the players'
-  names, titles and ratings, step back and forth, play any move, Stockfish with clickable lines. Unchecking
-  "Write the solution first" gives the usual move-by-move solving. Puzzles come in blocks whose size you pick
-  before you start (10 by default), against tilt: your rating stays hidden until the block ends; after a miss
-  the next puzzle waits until you've stepped through the solution; three misses in a row, or a quick miss
-  right after a miss, bring up a breather (end the block, go over the misses, or keep going); and the block
-  ends with a summary, your misses to go over again (not recorded) and a suggested break. With Lichess
-  connected they're picked around your Lichess puzzle rating (ones you haven't played) and, if you let them,
-  count toward it. Every puzzle is kept in your history with the time
-  it took (synced), for the balance of the three.
+  tactics): a healthy mix, from your own openings, or by theme, at the difficulty you pick. Set a time per
+  puzzle (5 min by default) and pick puzzles hard enough that you solve about 70% within it (Nate Solon:
+  5–10 minutes and ~70%; Noël Studer: go easier past 15 minutes or under 60%) — a quiet clock shows it,
+  past it a nudge (never a penalty), and each block ends with how many you solved in time and a step easier
+  or harder when that's off. By default you write your line to the end before anything is checked, without
+  moving the pieces (Studer: "any solution not written down until the end is not correct"): the board stays
+  on the puzzle while you tap or drag a move as things stand in your line, or type it; your line shows as
+  numbered arrows; other replies are optional branches ("same answer to every king move / every other
+  reply" in two clicks). If Lichess's line goes another way, it's played to that reply and you answer it on
+  the board: find the rest and it's a soft pass (✓~), a wrong move a miss. Unchecking "Write the line first"
+  gives move-by-move solving. Afterwards the puzzle is a small study: the game from move 1 with the players'
+  names, titles and ratings, Stockfish, any move you like. Blocks guard against tilt: your rating stays
+  hidden until the block ends; after a miss the next puzzle waits until you've stepped through the
+  solution; three misses in a row, or a quick miss right after a miss, bring up a breather; the summary
+  lists your misses to go over again (not recorded). With Lichess connected they're picked around your
+  Lichess puzzle rating and, if you let them, count toward it. Every puzzle is kept in your history with
+  the time it took (synced), for the balance of the three.
 - **Sync between devices** — optional: keep your phone and computer in step through a secret gist in your
   own GitHub account (see below).
 

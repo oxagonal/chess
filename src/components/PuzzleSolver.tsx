@@ -5,9 +5,10 @@ import { MaterialBalance } from './MaterialBalance';
 import { MoveTreeView } from './MoveTreeView';
 import { isPromotion, legalDests, moveNumberPrefix, opposite, playUci, type Color } from '../lib/chess';
 import { updateSettings, useSettings } from '../db/settings';
-import { gradeWritten, MoveTree, sameAnswer, unconsidered } from '../lib/moveTree';
+import { gradeWritten, MoveTree, sameAnswer } from '../lib/moveTree';
 import { judgeMove, type LichessPuzzle } from '../lib/puzzle';
 import { tokenizeMoveText } from '../lib/pgn';
+import { clock as fmtClock } from '../lib/quickReview';
 import { parseSquare } from 'chessops/util';
 
 const LICHESS = 'https://lichess.org';
@@ -28,10 +29,10 @@ function buildTree(p: LichessPuzzle) {
 
 /**
  * One puzzle, worked through like a study. "Write" mode: before anything is checked you write your
- * solution on the board — your move, their reply, your answer — and at each of their turns their
- * other sensible replies as branches (or say there's only one): the part Lichess and Chess.com let
- * you skip. Then it's checked against the solution. "Play" mode: the moves are judged as you play
- * them, as on Lichess. Either way it ends on an analysis board: the game from move 1 with the players,
+ * line to the end — your moves and their best replies (Studer: "any solution not written down until
+ * the end is not correct"); other replies are optional branches. Then it's checked against the
+ * solution, and a reply of theirs you didn't write is played for you to answer on the spot. "Play"
+ * mode: the moves are judged as you play them, as on Lichess. Either way it ends on an analysis board: the game from move 1 with the players,
  * your lines and the solution in one tree, Stockfish, and any move you want to try.
  */
 export function PuzzleSolver({
@@ -45,6 +46,7 @@ export function PuzzleSolver({
   hideRating = false,
   practice = false,
   nextLabel = 'Next puzzle →',
+  timer,
 }: {
   puzzle: LichessPuzzle;
   mode: 'write' | 'play';
@@ -60,6 +62,8 @@ export function PuzzleSolver({
   /** Going over a miss again: nothing is recorded. */
   practice?: boolean;
   nextLabel?: string;
+  /** The time on this puzzle (while the app is on screen) and your budget per puzzle. */
+  timer?: { elapsed: () => number; budgetMs: number };
 }) {
   const built = useMemo(() => buildTree(puzzle), [puzzle]);
   const { tree, startId, you } = built;
@@ -77,7 +81,6 @@ export function PuzzleSolver({
   const [phase, setPhase] = useState<'solve' | 'replay' | 'done'>('solve');
   /** The replay has reached the reply you didn't write: your move. */
   const [replayReady, setReplayReady] = useState(false);
-  const [only, setOnly] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [flash, setFlash] = useState<'good' | 'bad' | null>(null);
   const [wrong, setWrong] = useState<string>();
@@ -115,9 +118,9 @@ export function PuzzleSolver({
         text:
           mode === 'write' ? (
             <>
-              Your turn ({you === 'white' ? 'White' : 'Black'}). <b>Write your solution without moving the pieces</b>: tap a piece's square, then
-              where it goes — as things stand in your line (the board stays on the puzzle). Your move, their best reply, your answer… and at each
-              of their turns their other sensible replies too. Nothing is checked until you say so.
+              Your turn ({you === 'white' ? 'White' : 'Black'}). <b>Write your line to the end without moving the pieces</b>: tap a piece's square,
+              then where it goes, as things stand in your line (the board stays on the puzzle) — your moves and their best replies, until the
+              outcome is clear. Other replies are optional. Nothing is checked until you say so.
             </>
           ) : (
             <>Your turn — find the best move for {you === 'white' ? 'White' : 'Black'}.</>
@@ -151,7 +154,6 @@ export function PuzzleSolver({
   };
 
   /* ---- writing ---- */
-  const open = mode === 'write' && phase === 'solve' ? unconsidered(tree, startId, only) : [];
   const writtenMain = tree.mainline(startId).filter((n) => n.tags.includes('mine'));
   const check = () => {
     const g = gradeWritten(tree, startId, solution);
@@ -438,7 +440,6 @@ export function PuzzleSolver({
   const p = puzzle.puzzle;
   const seenSolution = solutionIds.filter((id) => visited.has(id)).length;
   const locked = phase === 'done' && won === false && seenSolution < solutionIds.length;
-  const onOpen = open.includes(cursor);
   const hasMine = node.tags.includes('mine');
   return (
     <div className="board-layout puzzle-layout">
@@ -474,6 +475,7 @@ export function PuzzleSolver({
         </div>
       </div>
       <div className="col puzzle-side" style={{ gap: 10 }}>
+        {timer && <PuzzleClock timer={timer} running={phase !== 'done'} />}
         <div className={`feedback ${feedback?.kind ?? ''}`}>
           <div>{feedback?.text ?? '…'}</div>
           {phase === 'done' && (
@@ -555,16 +557,8 @@ export function PuzzleSolver({
               )}
               {notice && <div className="small warn-text">{notice}</div>}
               {info && !notice && <div className="small muted">{info}</div>}
-              {onOpen && (
-                <div className="note small">
-                  What else could they play here? Enter it — or{' '}
-                  <button className="small" onClick={() => setOnly(new Set(only).add(cursor))}>
-                    Only one sensible reply
-                  </button>
-                </div>
-              )}
               <div className="row">
-                <button className="primary" disabled={!writtenMain.length || open.length > 0} onClick={check}>
+                <button className="primary" disabled={!writtenMain.length} onClick={check} title="When you've written your line to the end">
                   Check my solution
                 </button>
                 {hasMine && (
@@ -586,23 +580,6 @@ export function PuzzleSolver({
                   Show solution
                 </button>
               </div>
-              {open.length > 0 && writtenMain.length > 0 && (
-                <div className="muted small">
-                  Before checking — their other replies after:{' '}
-                  {open.map((id, i) => {
-                    const n = tree.get(id);
-                    return (
-                      <span key={id}>
-                        {i > 0 && ', '}
-                        <button className="linklike" onClick={() => go(id)}>
-                          {moveNumberPrefix(n.ply - 1, true)}
-                          {n.san}
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
             </>
           )}
           {mode === 'play' && phase === 'solve' && (
@@ -651,4 +628,28 @@ export function PuzzleSolver({
       bump();
     }
   }
+}
+
+/**
+ * The time on a puzzle against your budget: quiet while you're within it, a nudge past it (commit to
+ * your best line, or see the solution) — never a penalty. Stops when the puzzle is done.
+ */
+function PuzzleClock({ timer, running }: { timer: { elapsed: () => number; budgetMs: number }; running: boolean }) {
+  const { elapsed, budgetMs } = timer;
+  const [ms, setMs] = useState(() => elapsed());
+  useEffect(() => {
+    setMs(elapsed());
+    if (!running) return;
+    const t = setInterval(() => setMs(elapsed()), 1000);
+    return () => clearInterval(t);
+  }, [elapsed, running]);
+  const over = ms > budgetMs;
+  return (
+    <div className={`puzzle-clock ${over ? 'over' : ''}`} title="Time on this puzzle while the app is on screen — your time per puzzle is set above">
+      <span>
+        ⏱ {fmtClock(ms)} <span className="muted">/ {fmtClock(budgetMs)}</span>
+      </span>
+      {over && running && <span className="small">Over your time — commit to your best line, or see the solution.</span>}
+    </div>
+  );
 }

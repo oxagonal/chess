@@ -79,6 +79,8 @@ export interface AppSettings {
   puzzleBlock: number;
   /** Puzzles, writing the solution: show your line as numbered arrows on the still board. */
   puzzleArrows: boolean;
+  /** Puzzles: minutes per puzzle you aim for (a soft budget — the difficulty follows from it). */
+  puzzleBudgetMin: number;
   /** Training: at a line's end, recall its plan before it's shown (and wait for Continue). */
   trainRecallPlans: boolean;
   /** Builder: save every move played on the board straight into the repertoire. */
@@ -171,6 +173,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   twoFingerDraw: true,
   puzzleBlock: 10,
   puzzleArrows: true,
+  puzzleBudgetMin: 5,
   trainRecallPlans: true,
   builderAutoAdd: false,
   engineEnabled: true,

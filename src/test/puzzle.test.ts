@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
-import { gradeWritten, MoveTree, sameAnswer, unconsidered } from '../lib/moveTree';
+import { gradeWritten, MoveTree, sameAnswer } from '../lib/moveTree';
 import { describe, expect, it } from 'vitest';
-import { judgeMove, openingAngle, puzzleStart, type LichessPuzzle } from '../lib/puzzle';
+import { difficultyAdvice, judgeMove, openingAngle, puzzleStart, stepDifficulty, type LichessPuzzle } from '../lib/puzzle';
 import { fenOf, playUci, posFromFen } from '../lib/chess';
 
 // The daily puzzle of 2026-11-20, as /api/puzzle/daily sent it (its fen and lastMove are what the
@@ -92,14 +92,6 @@ describe('writing a puzzle solution', () => {
     }
     return tree;
   };
-  it('asks for their other replies at each of their turns on your line', () => {
-    const tree = write([['e2e4', 'e7e5', 'g1f3']]);
-    const afterE4 = `${tree.root} e2e4`;
-    expect(unconsidered(tree, tree.root, new Set())).toEqual([afterE4]);
-    // A branch, or "only one sensible reply", settles it.
-    expect(unconsidered(write([['e2e4', 'e7e5', 'g1f3'], ['e2e4', 'c7c5']]), tree.root, new Set())).toEqual([]);
-    expect(unconsidered(tree, tree.root, new Set([afterE4]))).toEqual([]);
-  });
   it('writes the same answer against their other moves: the same piece, or everything', () => {
     // You (Black) check with Qb7+; the rook on a7 can take the queen. You answer Kh2 with Qxa7.
     const write2 = () => {
@@ -119,19 +111,6 @@ describe('writing a puzzle solution', () => {
     const all = sameAnswer(b.tree, b.answer, 'all');
     expect(all.added.length).toBe(5);
     expect(all.skipped).toEqual(['Rxb7']);
-    // Their turn now has several replies considered.
-    expect(unconsidered(b.tree, b.tree.root, new Set())).toEqual([]);
-  });
-  it("doesn't ask for other replies when theirs is the only legal move", () => {
-    // Rh1+: the king on f6 covers g7, so Kg8 is Black's only move. After Rg1+ (pinning nothing), two.
-    const tree = new MoveTree(posFromFen('7k/8/5K2/8/8/8/8/6R1 w - - 0 1')!);
-    let id: string | undefined = tree.root;
-    for (const uci of ['g1h1', 'h8g8', 'h1g1']) id = id && tree.add(id, uci, 'mine');
-    expect(unconsidered(tree, tree.root, new Set())).toEqual([]);
-    const two = new MoveTree(posFromFen('7k/8/8/8/8/8/8/K5R1 w - - 0 1')!);
-    let j: string | undefined = two.root;
-    for (const uci of ['g1h1', 'h8g8']) j = j && two.add(j, uci, 'mine');
-    expect(unconsidered(two, two.root, new Set())).toEqual([`${two.root} g1h1`]);
   });
   it('is right when your lines contain the solution, their best defence included', () => {
     expect(gradeWritten(write([['e2e4', 'e7e5', 'g1f3'], ['e2e4', 'c7c5', 'g1f3']]), 'root', solution)).toEqual({ win: true });
@@ -149,5 +128,20 @@ describe('writing a puzzle solution', () => {
     expect(tree.path(`${id} h5f7`).map((n) => n.san).join(' ')).toBe('e4 e5 Bc4 Nc6 Qh5 Nf6 Qxf7#');
     tree.remove(`${id} h5f7`);
     expect(tree.children(id)).toEqual([]);
+  });
+});
+
+describe('puzzle difficulty from your numbers', () => {
+  const MIN = 60_000;
+  const a = (win: boolean, mins: number, budget = 5) => ({ win, ms: mins * MIN, overTime: mins * MIN > budget * MIN });
+  it('a step easier under 60% solved in time, harder over 85% with time to spare, else about right', () => {
+    expect(difficultyAdvice([a(true, 2), a(false, 3), a(true, 6), a(false, 4), a(true, 1)], 5 * MIN)).toMatchObject({ inTime: 2, step: -1 });
+    expect(difficultyAdvice([a(true, 1), a(true, 2), a(true, 1), a(true, 2), a(true, 1)], 5 * MIN).step).toBe(1);
+    // All solved but slowly: no reason to go harder.
+    expect(difficultyAdvice([a(true, 4), a(true, 4), a(true, 4), a(true, 4)], 5 * MIN).step).toBe(0);
+    expect(difficultyAdvice([a(true, 2), a(true, 3), a(false, 3), a(true, 4)], 5 * MIN).step).toBe(0);
+    // Too few to say.
+    expect(difficultyAdvice([a(false, 2), a(false, 2)], 5 * MIN).step).toBe(0);
+    expect([stepDifficulty('normal', -1), stepDifficulty('hardest', 1)]).toEqual(['easier', undefined]);
   });
 });
