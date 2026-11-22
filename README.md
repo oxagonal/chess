@@ -25,7 +25,8 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   and reviewing them) and study (one topic at a time; openings at most a third — a warning says when they take
   more). Time is recorded as you use the app (training, the builder, game review, puzzles — only while it's on
   screen and you're using it), games you play count from their clocks (the speeds you choose), and time away
-  from the app is logged by hand. This week, last week or 30 days against your weekly hours, what's furthest
+  from the app is logged by hand. Today, this week, last week or 30 days against your weekly hours (today:
+  against what your week plan has for today, by third, else a seventh of the week), what's furthest
   behind with a button to it, and your week's plan: slots with a day, time, third and the exact task. The
   games bar shows playing and reviewing side by side, with how many of your games you've reviewed (the goal
   is all of them), a link to the latest one that isn't, and a warning once 3 are waiting.

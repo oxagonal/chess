@@ -6,7 +6,7 @@ import { graphToPgn, pgnToEdges, tokenizeMoveText } from '../lib/pgn';
 import { newMovesQuiz, planLine, orderCards } from '../lib/trainer';
 import { isSharp, movesThatHold } from '../lib/sharp';
 import { puzzleTilt, tiltCheck } from '../lib/tilt';
-import { behind, gameDurationMs, planTotals, tooMuchOpenings, weekStart } from '../lib/plan';
+import { behind, behindTargets, gameDurationMs, periodBounds, planTotals, tooMuchOpenings, weekStart } from '../lib/plan';
 import type { StoredGame } from '../lib/types';
 import { newCard, grade, isDue, Rating, State } from '../lib/srs';
 
@@ -443,6 +443,14 @@ describe('the 1/3 plan', () => {
     expect(tooMuchOpenings(totals)).toBe(true);
     // 7 hours a week: tactics (30 of 140 min) and games (30) are furthest behind — tactics first.
     expect(behind(totals, 420 * MIN)).toBe('tactics');
+  });
+  it('today: from midnight to midnight; with planned slots, the third furthest behind its own target', () => {
+    const t = new Date(2026, 10, 22, 15, 30).getTime();
+    const b = periodBounds('today', t);
+    expect([b.from, b.to, b.days]).toEqual([new Date(2026, 10, 22).getTime(), new Date(2026, 10, 23).getTime(), 1]);
+    const totals = planTotals([act('tactics', 40, t), act('study', 10, t, { topic: 'openings' })], [], b.from, b.to, []);
+    // Planned today: 45 min tactics, 30 min study — study is further behind.
+    expect(behindTargets(totals, { tactics: 45 * MIN, games: 0, study: 30 * MIN })).toBe('study');
   });
   it('counts the games you reviewed, and lists the rest newest first', () => {
     const g = (id: string, playedAt: number, reviewedAt?: number) => ({ id, source: 'lichess', playedAt, timeClass: 'blitz', sans: [], reviewedAt }) as unknown as StoredGame;

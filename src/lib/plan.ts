@@ -93,13 +93,25 @@ export function behind(t: PlanTotals, targetMs: number): Third {
   return THIRDS.reduce((a, b) => (goal - t.by[b] > goal - t.by[a] ? b : a));
 }
 
+/** The third furthest behind its own target (targets by third, e.g. today's planned slots). */
+export function behindTargets(t: PlanTotals, targets: Record<Third, number>): Third {
+  return THIRDS.reduce((a, b) => (targets[b] - t.by[b] > targets[a] - t.by[a] ? b : a));
+}
+
 /** Openings took more than a third of the training (with enough of it to say): Studer's cap. */
 export function tooMuchOpenings(t: PlanTotals): boolean {
   return t.total >= 60 * MIN && t.topics.openings > t.total / 3;
 }
 
-/** A period's bounds: this week, last week, or the last 30 days. */
-export function periodBounds(period: 'week' | 'last' | '30d', now = Date.now()): { from: number; to: number; days: number } {
+/** A period's bounds: today, this week, last week, or the last 30 days. */
+export function periodBounds(period: 'today' | 'week' | 'last' | '30d', now = Date.now()): { from: number; to: number; days: number } {
+  if (period === 'today') {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    const from = d.getTime();
+    d.setDate(d.getDate() + 1);
+    return { from, to: d.getTime(), days: 1 };
+  }
   const w = weekStart(now);
   if (period === 'week') return { from: w, to: w + 7 * DAY, days: 7 };
   if (period === 'last') return { from: w - 7 * DAY, to: w, days: 7 };

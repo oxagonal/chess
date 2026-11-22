@@ -10,14 +10,15 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, uid } from '../db/db';
 import { updateSettings, useSettings, type PlanSlot } from '../db/settings';
 import { useNow } from '../hooks';
-import { behind, fmtDuration, minutes, periodBounds, planTotals, SPEEDS, THIRD_LABEL, THIRDS, tooMuchOpenings, TOPIC_LABEL, weekStart, type PlanTotals } from '../lib/plan';
+import { behind, behindTargets, fmtDuration, minutes, periodBounds, planTotals, SPEEDS, THIRD_LABEL, THIRDS, tooMuchOpenings, TOPIC_LABEL, weekStart, type PlanTotals } from '../lib/plan';
 import type { Activity, StudyTopic, Third } from '../lib/types';
 import { deleteActivity, logActivity } from '../services/activity';
 import { href } from '../router';
 import { fmtDate } from '../components/ui';
 
-type Period = 'week' | 'last' | '30d';
+type Period = 'today' | 'week' | 'last' | '30d';
 const PERIODS: [Period, string][] = [
+  ['today', 'Today'],
   ['week', 'This week'],
   ['last', 'Last week'],
   ['30d', '30 days'],
@@ -36,7 +37,14 @@ export function PlanPage() {
   if (!settings.loaded || !activities || !games) return <div className="muted">Loading…</div>;
 
   const totals = planTotals(activities, games, from, to, settings.trainingSpeeds);
-  const target = (settings.weeklyMinutes * 60_000 * days) / 7;
+  // Today: what your week plan has for today, by third — else a day's share of your weekly hours.
+  const todayIndex = (new Date(now).getDay() + 6) % 7;
+  const todaySlots = settings.planSlots.filter((x) => x.day === todayIndex);
+  const planned = period === 'today' && todaySlots.length ? todaySlots : undefined;
+  const target = planned ? planned.reduce((t, x) => t + x.minutes * 60_000, 0) : (settings.weeklyMinutes * 60_000 * days) / 7;
+  const thirdTargets = Object.fromEntries(
+    THIRDS.map((t) => [t, planned ? planned.filter((x) => x.third === t).reduce((m, x) => m + x.minutes * 60_000, 0) : target / 3]),
+  ) as Record<Third, number>;
 
   return (
     <div className="col plan-page" style={{ gap: 14 }}>
@@ -51,8 +59,8 @@ export function PlanPage() {
           ))}
         </div>
       </div>
-      <Balance totals={totals} target={target} focus={settings.studyFocus} period={period} />
-      {period === 'week' && <WeekPlan slots={settings.planSlots} activities={activities} now={now} />}
+      <Balance totals={totals} target={target} thirdTargets={thirdTargets} planned={!!planned} focus={settings.studyFocus} period={period} />
+      {(period === 'week' || period === 'today') && <WeekPlan slots={settings.planSlots} activities={activities} now={now} onlyToday={period === 'today'} />}
       <LogTime focus={settings.studyFocus} />
       <Recent activities={activities} />
       <PlanSettings />
@@ -62,11 +70,26 @@ export function PlanPage() {
 
 /* ------------------------------------------------------------------ balance */
 
-function Balance({ totals, target, focus, period }: { totals: PlanTotals; target: number; focus: StudyTopic; period: Period }) {
-  const third = target / 3;
-  const next = behind(totals, target);
+function Balance({
+  totals,
+  target,
+  thirdTargets,
+  planned,
+  focus,
+  period,
+}: {
+  totals: PlanTotals;
+  target: number;
+  /** Each third's target (a third of the total, or today's planned slots). */
+  thirdTargets: Record<Third, number>;
+  /** Today's targets come from your week plan's slots. */
+  planned: boolean;
+  focus: StudyTopic;
+  period: Period;
+}) {
+  const next = planned ? behindTargets(totals, thirdTargets) : behind(totals, target);
   const openingsShare = totals.total ? totals.topics.openings / totals.total : 0;
-  const when = period === 'week' ? 'this week' : period === 'last' ? 'last week' : 'in the last 30 days';
+  const when = period === 'today' ? 'today' : period === 'week' ? 'this week' : period === 'last' ? 'last week' : 'in the last 30 days';
   return (
     <div className="panel col" style={{ gap: 12 }}>
       <div className="row">
@@ -74,10 +97,11 @@ function Balance({ totals, target, focus, period }: { totals: PlanTotals; target
           <b className="plan-total">{fmtDuration(totals.total)}</b> <span className="muted">of {fmtDuration(target)} {when}</span>
         </span>
         <span className="spacer" />
-        <span className="muted small">a third each: tactics · your games · study</span>
+        <span className="muted small">{planned ? 'as planned for today in your week' : 'a third each: tactics · your games · study'}</span>
       </div>
       {THIRDS.map((t) => {
         const done = totals.by[t];
+        const third = thirdTargets[t];
         const pct = (ms: number) => `${Math.min(100, third ? (100 * ms) / third : 0)}%`;
         return (
           <div key={t} className="plan-third">
@@ -95,7 +119,7 @@ function Balance({ totals, target, focus, period }: { totals: PlanTotals; target
               </div>
             )}
             <span className="small nowrap">
-              <b>{fmtDuration(done)}</b> <span className="muted">/ {fmtDuration(third)}</span>
+              <b>{fmtDuration(done)}</b> <span className="muted">/ {third ? fmtDuration(third) : 'not planned'}</span>
             </span>
             <span className="muted small plan-third-detail">
               {t === 'tactics' && 'puzzles here, and tactics you logged'}
@@ -196,21 +220,23 @@ function NextAction({ third, focus, toReview }: { third: Third; focus: StudyTopi
 
 /* --------------------------------------------------------------- week plan */
 
-function WeekPlan({ slots, activities, now }: { slots: PlanSlot[]; activities: Activity[]; now: number }) {
+function WeekPlan({ slots, activities, now, onlyToday = false }: { slots: PlanSlot[]; activities: Activity[]; now: number; onlyToday?: boolean }) {
   const [adding, setAdding] = useState(false);
   const w = weekStart(now);
   const today = Math.floor((now - w) / DAY_MS);
   // A slot is done when that day has about as much time in its third (games played count too).
   const dayTotal = (day: number, third: Third) =>
     activities.filter((a) => a.third === third && a.start >= w + day * DAY_MS && a.start < w + (day + 1) * DAY_MS).reduce((s, a) => s + a.ms, 0);
-  const sorted = [...slots].sort((a, b) => a.day - b.day || a.time.localeCompare(b.time));
+  const sorted = [...slots].filter((s) => !onlyToday || s.day === today).sort((a, b) => a.day - b.day || a.time.localeCompare(b.time));
   const remove = (id: string) => void updateSettings({ planSlots: slots.filter((s) => s.id !== id) });
-  const planned = slots.reduce((s, x) => s + x.minutes, 0);
+  const planned = (onlyToday ? sorted : slots).reduce((s, x) => s + x.minutes, 0);
   return (
     <div className="panel col" style={{ gap: 8 }}>
       <div className="row">
-        <h2 style={{ margin: 0 }}>Your week</h2>
-        <span className="muted small">{planned ? `${planned} min planned` : 'Plan the days, times, thirds and exact tasks beforehand'}</span>
+        <h2 style={{ margin: 0 }}>{onlyToday ? `Today — ${DAYS[today]}` : 'Your week'}</h2>
+        <span className="muted small">
+          {planned ? `${planned} min planned` : onlyToday ? 'Nothing planned for today' : 'Plan the days, times, thirds and exact tasks beforehand'}
+        </span>
         <span className="spacer" />
         {!adding && (
           <button className="small" onClick={() => setAdding(true)}>
@@ -218,8 +244,13 @@ function WeekPlan({ slots, activities, now }: { slots: PlanSlot[]; activities: A
           </button>
         )}
       </div>
-      {adding && <SlotForm onDone={() => setAdding(false)} slots={slots} />}
-      {!sorted.length && !adding && (
+      {adding && <SlotForm onDone={() => setAdding(false)} slots={slots} defaultDay={onlyToday ? today : 0} />}
+      {!sorted.length && !adding && onlyToday && (
+        <p className="muted small" style={{ margin: 0 }}>
+          Add a slot for today here, or plan your whole week (This week). Without one, today's target is a seventh of your weekly hours.
+        </p>
+      )}
+      {!sorted.length && !adding && !onlyToday && (
         <p className="muted small" style={{ margin: 0 }}>
           E.g. Tuesday 18:00 · Tactics · 45 min · “Lichess puzzles: 30 min solving, 15 min checking the solutions” — specific slots and
           tasks, not “an hour on Tuesday”.
@@ -251,8 +282,8 @@ function WeekPlan({ slots, activities, now }: { slots: PlanSlot[]; activities: A
   );
 }
 
-function SlotForm({ slots, onDone }: { slots: PlanSlot[]; onDone: () => void }) {
-  const [day, setDay] = useState(0);
+function SlotForm({ slots, onDone, defaultDay = 0 }: { slots: PlanSlot[]; onDone: () => void; defaultDay?: number }) {
+  const [day, setDay] = useState(defaultDay);
   const [time, setTime] = useState('18:00');
   const [third, setThird] = useState<Third>('tactics');
   const [mins, setMins] = useState(45);
