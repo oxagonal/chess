@@ -115,10 +115,14 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   reply" in two clicks). If Lichess's line goes another way, it's played to that reply and you answer it on
   the board: find the rest and it's a soft pass (✓~), a wrong move a miss. Unchecking "Write the line first"
   gives move-by-move solving. Afterwards the puzzle is a small study: the game from move 1 with the players'
-  names, titles and ratings, Stockfish, any move you like. Blocks guard against tilt: your rating stays
-  hidden until the block ends; after a miss the next puzzle waits until you've stepped through the
-  solution; three misses in a row, or a quick miss right after a miss, bring up a breather; the summary
-  lists your misses to go over again (not recorded). With Lichess connected they're picked around your
+  names, titles and ratings, Stockfish, any move you like. After a miss: one tap for why (didn't see the
+  move · missed their defence · miscalculated · misjudged the end · rushed), then you replay the solution
+  yourself — your moves, their replies played for you, a hint arrow when you go wrong — before the next
+  puzzle; doing it sticks better than watching it. The missed puzzle then comes back to solve again cold,
+  spaced (the next day, then 3, 7 and 30 days), mixed into your blocks and never rated; solved twice in a
+  row within your time, it's done. The Puzzles page shows why you miss most often, with what to do about
+  it, and how many missed puzzles are coming back. Blocks guard against tilt: your rating stays hidden
+  until the block ends; three misses in a row, or a quick miss right after a miss, bring up a breather. With Lichess connected they're picked around your
   Lichess puzzle rating and, if you let them, count toward it. Every puzzle is kept in your history with
   the time it took (synced), for the balance of the three.
 - **Sync between devices** — optional: keep your phone and computer in step through a secret gist in your

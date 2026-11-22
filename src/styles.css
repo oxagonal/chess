@@ -315,6 +315,12 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .puzzle-clock.over > span:first-child { color: var(--warn); font-weight: 650; }
 .puzzle-clock.over .small { color: var(--warn); }
 .difficulty-advice { gap: 10px; align-items: center; flex-wrap: wrap; }
+/* After a miss: why (one tap), then replay the solution. */
+.miss-review { padding: 10px 12px; }
+.reason-chips { gap: 6px; flex-wrap: wrap; align-items: center; }
+.reason-chips .chip { border-radius: 999px; padding: 3px 10px; }
+.reason-chips .chip.active { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+.puzzle-why b { font-weight: 650; }
 .promo-overlay { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 10; }
 /* On the promotion square: a column of four squares toward the middle of the board. */
 .promo-column.cg-wrap { position: absolute; width: 12.5%; height: 50%; display: flex; flex-direction: column; }

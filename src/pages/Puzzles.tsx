@@ -22,6 +22,7 @@ import { difficultyAdvice, openingAngle, PUZZLE_DIFFICULTIES, PUZZLE_THEMES, puz
 import { clock as fmtClock } from '../lib/quickReview';
 import type { PuzzleAttempt } from '../lib/types';
 import { puzzleTilt } from '../lib/tilt';
+import { cardId, isDueCard, missedCard, MISS_REASONS, reviewed, type MissReason, type TacticCard } from '../lib/tacticCards';
 import { startLichessLogin } from '../services/lichessAuth';
 import { fetchPuzzles, hasScope, reportPuzzles, type Glicko } from '../services/puzzles';
 
@@ -97,8 +98,6 @@ interface Block {
   stage: 'solve' | 'breather' | 'summary';
   /** Why the breather. */
   reason?: string;
-  /** Going over your misses: the list, and which one. */
-  retry?: { list: LichessPuzzle[]; i: number };
 }
 
 let currentBlock: Block | null = null;
@@ -280,10 +279,11 @@ function useVisibleClock() {
   return { reset, elapsed };
 }
 
-/** The puzzle being worked on, and when it started. */
+/** The puzzle being worked on, and when it started — a card when it's one you missed before. */
 interface Current {
   puzzle: LichessPuzzle;
   startedAt: number;
+  card?: TacticCard;
 }
 
 function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
@@ -322,27 +322,36 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
   }, [angle, difficulty, add, onGlicko]);
 
   const begin = useCallback(
-    (p: LichessPuzzle) => {
+    (p: LichessPuzzle, card?: TacticCard) => {
       if (!puzzleStart(p)) {
-        setQueue((q) => q.filter((x) => x !== p));
+        if (card) doneCards.current.add(card.id);
+        else setQueue((q) => q.filter((x) => x !== p));
         return;
       }
       setResult(undefined);
       if (!currentBlock) setBlock({ size: settings.puzzleBlock, startedAt: Date.now(), attempts: [], resumeAt: 0, stage: 'solve' });
-      setCur({ puzzle: p, startedAt: Date.now() });
+      setCur({ puzzle: p, startedAt: Date.now(), card });
       clock.reset();
     },
     [clock, settings.puzzleBlock],
   );
+  // Puzzles you missed before, due to solve again: mixed in, every other puzzle.
+  const due = useLiveQuery(async () => (await db.tacticCards.where('due').belowOrEqual(Date.now()).toArray()).filter((c) => isDueCard(c, Date.now())), []);
+  const doneCards = useRef(new Set<string>());
+  const lastWasCard = useRef(false);
 
   useEffect(() => {
     if (!queue.length && !loading && !error) void load();
   }, [queue.length, loading, error, load]);
-  // The next puzzle — unless the block is at a breather or its end, or you're going over misses.
-  const solving = !b || (b.stage === 'solve' && !b.retry);
+  // The next puzzle — unless the block is at a breather or its end: a card that's due (every other
+  // puzzle, while there are some), else the next from Lichess.
+  const solving = !b || b.stage === 'solve';
   useEffect(() => {
-    if (!cur && queue.length && solving) begin(queue[0]);
-  }, [cur, queue, begin, solving]);
+    if (cur || !solving || !due) return;
+    const card = due.find((c) => !doneCards.current.has(c.id));
+    if (card && (!lastWasCard.current || !queue.length)) begin(card.puzzle, card);
+    else if (queue.length) begin(queue[0]);
+  }, [cur, queue, begin, solving, due]);
 
   const budgetMs = settings.puzzleBudgetMin * 60_000;
   const finish = async (c: Current, win: boolean, soft = false) => {
@@ -357,12 +366,17 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
       win,
       ...(soft ? { soft: true } : {}),
       ...(overTime ? { overTime: true } : {}),
+      ...(c.card ? { review: true } : {}),
       ms: Math.round(ms),
       startedAt: c.startedAt,
     };
     if (currentBlock) setBlock({ ...currentBlock, attempts: [...currentBlock.attempts, { puzzle: c.puzzle, win, soft, overTime, ms, rated: false }] });
     await db.puzzleLog.put(attempt);
-    if (!report) {
+    // A card: when it comes back next (or it's done). A miss: it becomes one, back tomorrow.
+    const now = Date.now();
+    if (c.card) await db.tacticCards.put(reviewed((await db.tacticCards.get(c.card.id)) ?? c.card, win && !overTime, now));
+    else if (!win) await db.tacticCards.put(missedCard(c.puzzle, now, await db.tacticCards.get(cardId(c.puzzle.puzzle.id))));
+    if (!report || c.card) {
       setResult({ rated: false });
       return;
     }
@@ -382,9 +396,17 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
     }
   };
 
+  /** Why you missed it: kept with the attempt and the card (the pattern shows on this page). */
+  const saveReason = async (c: Current, r: MissReason) => {
+    await db.puzzleLog.update(`${c.puzzle.puzzle.id}|${c.startedAt}`, { reason: r });
+    await db.tacticCards.update(cardId(c.puzzle.puzzle.id), { reason: r });
+  };
+
   // After each puzzle: the block's end, a breather if you're tilting, or the next one.
   const next = () => {
-    setQueue((q) => q.slice(1));
+    if (cur?.card) doneCards.current.add(cur.card.id);
+    else setQueue((q) => q.slice(1));
+    lastWasCard.current = !!cur?.card;
     setCur(undefined);
     const bl = currentBlock;
     if (!bl) return;
@@ -392,43 +414,13 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
     const reason = puzzleTilt(bl.attempts.slice(bl.resumeAt));
     if (reason) setBlock({ ...bl, stage: 'breather', reason });
   };
-  const goOverMisses = (bl: Block) => {
-    const list = blockMisses(bl);
-    if (list.length) setBlock({ ...bl, retry: { list, i: 0 } });
-  };
   const mode = settings.puzzleWrite ? 'write' : 'play';
 
-  if (b?.retry) {
-    const { list, i } = b.retry;
-    const last = i + 1 >= list.length;
-    return (
-      <div className="col" style={{ gap: 8 }}>
-        <div className="row puzzle-block-bar">
-          <b>Going over your misses</b>
-          <span className="muted small">
-            {i + 1} of {list.length} · not recorded
-          </span>
-        </div>
-        <PuzzleSolver
-          key={`retry|${list[i].puzzle.id}|${i}`}
-          puzzle={list[i]}
-          mode={mode}
-          report={false}
-          practice
-          result={{ rated: false }}
-          onResult={() => {}}
-          onNext={() => setBlock({ ...b, retry: last ? undefined : { list, i: i + 1 } })}
-          nextLabel={last ? (b.stage === 'summary' ? 'Back to the summary →' : 'Done →') : 'Next miss →'}
-        />
-      </div>
-    );
-  }
   if (b?.stage === 'summary')
     return (
       <BlockSummary
         b={b}
         budgetMs={budgetMs}
-        onRetry={() => goOverMisses(b)}
         onAnother={() => setBlock(null)}
       />
     );
@@ -438,13 +430,12 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
         <h2 style={{ margin: 0 }}>Take a breather</h2>
         <p style={{ margin: 0 }}>
           <b>{b.reason ? b.reason[0].toUpperCase() + b.reason.slice(1) : 'Time for a pause'}.</b> This is where puzzles turn into guessing, and the urge to win one back makes it worse. Stand up, get some
-          water, come back calm — or stop here: going over your misses is worth more than new puzzles now.
+          water, come back calm — or stop here. Your misses come back tomorrow, to solve again cold.
         </p>
         <div className="row">
           <button className="primary" onClick={() => setBlock({ ...b, stage: 'summary' })}>
             End the block here
           </button>
-          {blockMisses(b).length > 0 && <button onClick={() => goOverMisses(b)}>Go over the misses</button>}
           <span className="spacer" />
           <button className="small ghost" onClick={() => setBlock({ ...b, stage: 'solve', reason: undefined, resumeAt: b.attempts.length })}>
             Keep going anyway
@@ -474,12 +465,14 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
   const lastOne = !!b && b.attempts.length + (recorded ? 0 : 1) >= b.size;
   return (
     <div className="col" style={{ gap: 8 }}>
-      {b && <BlockProgress b={b} current={!recorded} />}
+      {b && <BlockProgress b={b} current={!recorded} review={cur.card} />}
       <PuzzleSolver
         key={`${cur.puzzle.puzzle.id}|${cur.startedAt}`}
         puzzle={cur.puzzle}
         mode={mode}
-        report={report}
+        report={report && !cur.card}
+        review={!!cur.card}
+        onReason={(r) => void saveReason(cur, r)}
         result={result}
         error={error}
         hideRating={blockActive(b)}
@@ -493,13 +486,18 @@ function PuzzleSession({ onGlicko }: { onGlicko: (g: Glicko) => void }) {
 }
 
 /** Where you are in the block: a dot per puzzle — solved, missed, this one, to come. */
-function BlockProgress({ b, current }: { b: Block; current: boolean }) {
+function BlockProgress({ b, current, review }: { b: Block; current: boolean; review?: TacticCard }) {
   const n = b.attempts.length + (current ? 1 : 0);
   return (
     <div className="row puzzle-block-bar">
       <b>
         Puzzle {Math.min(n, b.size)} of {b.size}
       </b>
+      {review && (
+        <span className="badge" title={`You missed it ${fmtDate(review.createdAt)}${review.streak ? ` — solved again ${review.streak}× since` : ''}: solve it from scratch`}>
+          ↻ one you missed
+        </span>
+      )}
       <span className="block-dots" aria-hidden>
         {Array.from({ length: Math.max(b.size, b.attempts.length) }, (_, i) => (
           <span
@@ -513,7 +511,7 @@ function BlockProgress({ b, current }: { b: Block; current: boolean }) {
 }
 
 /** The end of a block: how it went, your misses, and a break before anything else. */
-function BlockSummary({ b, budgetMs, onRetry, onAnother }: { b: Block; budgetMs: number; onRetry: () => void; onAnother: () => void }) {
+function BlockSummary({ b, budgetMs, onAnother }: { b: Block; budgetMs: number; onAnother: () => void }) {
   const settings = useSettings();
   const n = b.attempts.length;
   const advice = difficultyAdvice(b.attempts, budgetMs);
@@ -580,15 +578,11 @@ function BlockSummary({ b, budgetMs, onRetry, onAnother }: { b: Block; budgetMs:
         )}
       </div>
       <div className="note">
-        Take five minutes off before anything else. Then another block only if you feel fresh and you're enjoying it{misses.length ? ' — and going over your misses first is worth more than new puzzles' : ''}.
+        Take five minutes off before anything else. Then another block only if you feel fresh and you're enjoying it.
+        {misses.length > 0 && ' Your misses come back from tomorrow, mixed into your blocks, to solve again from scratch — that, not looking at the solution again, is what makes them stick.'}
       </div>
       <div className="row">
-        {misses.length > 0 && (
-          <button className="primary" onClick={onRetry}>
-            Go over your misses
-          </button>
-        )}
-        <button className={misses.length ? '' : 'primary'} onClick={onAnother}>
+        <button className="primary" onClick={onAnother}>
           Start another block
         </button>
       </div>
@@ -620,9 +614,17 @@ function TodayTally({ hideRating }: { hideRating: boolean }) {
 function History({ hideRating }: { hideRating: boolean }) {
   const recent = useLiveQuery(() => db.puzzleLog.orderBy('startedAt').reverse().limit(15).toArray(), []);
   const month = useLiveQuery(() => db.puzzleLog.where('startedAt').aboveOrEqual(Date.now() - 30 * 86_400_000).toArray(), []);
+  const cards = useLiveQuery(() => db.tacticCards.toArray(), []);
   if (!recent || !month) return null;
   if (!recent.length) return null;
   const wins = month.filter((a) => a.win).length;
+  // Why you missed (your taps), most common first — and what to do about the top one.
+  const why = MISS_REASONS.map((r) => ({ ...r, n: month.filter((a) => a.reason === r.key).length }))
+    .filter((r) => r.n > 0)
+    .sort((x, y) => y.n - x.n);
+  const waiting = (cards ?? []).filter((c) => !c.retired);
+  const dueNow = waiting.filter((c) => isDueCard(c, Date.now())).length;
+  const doneCount = (cards ?? []).filter((c) => c.retired).length;
   const minutes = Math.round(month.reduce((a, x) => a + x.ms, 0) / 60000);
   return (
     <div className="panel col puzzle-history" style={{ gap: 10 }}>
@@ -632,6 +634,28 @@ function History({ hideRating }: { hideRating: boolean }) {
         <Stat value={month.length ? `${Math.round((wins / month.length) * 100)}%` : '—'} label="Solved first time" />
         <Stat value={`${minutes} min`} label="Time on tactics (30 days)" hint="While the app was on screen — for the 1/3 balance of openings, games and tactics" />
       </div>
+      {(why.length > 0 || waiting.length > 0 || doneCount > 0) && (
+        <div className="col small puzzle-why" style={{ gap: 4 }}>
+          {why.length > 0 && (
+            <div>
+              <span className="muted">Why you missed (30 days):</span>{' '}
+              {why.map((r, i) => (
+                <span key={r.key}>
+                  {i > 0 && ' · '}
+                  <b>{r.label}</b> {r.n}
+                </span>
+              ))}
+              <div className="muted">Most often “{why[0].label.toLowerCase()}”: {why[0].tip}</div>
+            </div>
+          )}
+          {(waiting.length > 0 || doneCount > 0) && (
+            <div className="muted">
+              Missed puzzles coming back: {dueNow} due now, {waiting.length - dueNow} later
+              {doneCount > 0 && ` · ${doneCount} done (solved twice in a row)`}
+            </div>
+          )}
+        </div>
+      )}
       <TableWrap>
         <table className="data">
           <thead>

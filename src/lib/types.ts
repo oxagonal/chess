@@ -296,6 +296,10 @@ export interface PuzzleAttempt {
   ms: number;
   /** It took longer than your time budget per puzzle. */
   overTime?: boolean;
+  /** A missed puzzle solved again (a card): not sent to Lichess. */
+  review?: boolean;
+  /** Missed: why (your tap afterwards). */
+  reason?: 'unseen' | 'defence' | 'calc' | 'eval' | 'rushed';
   startedAt: number;
   /** Sent to Lichess, whether it counted toward your Lichess puzzle rating, and the change it made. */
   reported?: boolean;

@@ -9,6 +9,7 @@ import { gradeWritten, MoveTree, sameAnswer } from '../lib/moveTree';
 import { judgeMove, type LichessPuzzle } from '../lib/puzzle';
 import { tokenizeMoveText } from '../lib/pgn';
 import { clock as fmtClock } from '../lib/quickReview';
+import { MISS_REASONS, type MissReason } from '../lib/tacticCards';
 import { parseSquare } from 'chessops/util';
 
 const LICHESS = 'https://lichess.org';
@@ -44,7 +45,8 @@ export function PuzzleSolver({
   onResult,
   onNext,
   hideRating = false,
-  practice = false,
+  review = false,
+  onReason,
   nextLabel = 'Next puzzle →',
   timer,
 }: {
@@ -59,8 +61,10 @@ export function PuzzleSolver({
   onNext: () => void;
   /** During a block: your rating change waits for the end of it (play for learning, not rating). */
   hideRating?: boolean;
-  /** Going over a miss again: nothing is recorded. */
-  practice?: boolean;
+  /** A puzzle you missed before, solved again (a card): not sent to Lichess. */
+  review?: boolean;
+  /** Missed: why (the tap afterwards). */
+  onReason?: (r: MissReason) => void;
   nextLabel?: string;
   /** The time on this puzzle (while the app is on screen) and your budget per puzzle. */
   timer?: { elapsed: () => number; budgetMs: number };
@@ -100,11 +104,12 @@ export function PuzzleSolver({
     setPromoAsk(undefined);
     setInfo(undefined);
   }, [cursor]);
-  // After a miss, the next puzzle waits until you've been through the solution, move by move.
+  // After a miss: why (one tap), then you replay the solution yourself — your moves, their replies
+  // played for you — before the next puzzle. Doing it beats watching it.
   const [won, setWon] = useState<boolean>();
-  const [solutionIds, setSolutionIds] = useState<string[]>([]);
-  const [visited, setVisited] = useState<Set<string>>(() => new Set());
-  useEffect(() => setVisited((v) => (v.has(cursor) ? v : new Set(v).add(cursor))), [cursor]);
+  const [relearn, setRelearn] = useState<'todo' | 'active' | 'done'>('todo');
+  const [hint, setHint] = useState<string>();
+  const [reason, setReason] = useState<MissReason>();
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const later = (f: () => void, ms: number) => timers.current.push(setTimeout(f, ms));
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -138,18 +143,13 @@ export function PuzzleSolver({
   /** Lichess's solution, added to the tree (from the puzzle's start). */
   const addSolution = () => {
     let id: string | undefined = startId;
-    const ids: string[] = [];
-    for (const uci of solution) {
-      id = id && tree.add(id, uci, 'solution');
-      if (id) ids.push(id);
-    }
-    setSolutionIds(ids);
+    for (const uci of solution) id = id && tree.add(id, uci, 'solution');
     bump();
   };
   const finish = (win: boolean, soft = false) => {
     setPhase('done');
     setWon(win);
-    if (!win && !solutionIds.length) addSolution();
+    if (!win) addSolution();
     onResult(win, soft);
   };
 
@@ -372,8 +372,55 @@ export function PuzzleSolver({
     }, 350);
   };
 
+  /* ---- after a miss: replaying the solution yourself ---- */
+  const startRelearn = () => {
+    setRelearn('active');
+    setHint(undefined);
+    setCursor(startId);
+    setTip(startId);
+    setFeedback({ kind: 'info', text: <>Play the solution — your moves; their replies come by themselves.</> });
+  };
+  const relearnMove = (uci: string) => {
+    const step = node.ply - tree.get(startId).ply;
+    const verdict = judgeMove(node.pos, solution, step, uci);
+    if (verdict === 'wrong') {
+      const exp = playUci(node.pos, solution[step]);
+      setHint(solution[step]);
+      flashFor('bad');
+      setFeedback({
+        kind: 'bad',
+        text: (
+          <>
+            Not that one — it's <b>{exp?.san}</b>. Play it.
+          </>
+        ),
+      });
+      return;
+    }
+    const id = tree.add(cursor, uci, 'solution')!;
+    setCursor(id);
+    setTip(id);
+    setHint(undefined);
+    bump();
+    flashFor('good');
+    if (verdict === 'solved' || step + 1 >= solution.length) {
+      setRelearn('done');
+      setFeedback({ kind: 'good', text: <>✓ That's the solution. It comes back tomorrow, to solve again from scratch.</> });
+      return;
+    }
+    setFeedback({ kind: 'good', text: '✓ Right — on.' });
+    later(() => {
+      const reply = tree.add(id, solution[step + 1], 'solution');
+      if (!reply) return;
+      setCursor(reply);
+      setTip(reply);
+      bump();
+    }, 400);
+  };
+
   /* ---- the board ---- */
   const onMove = (uci: string) => {
+    if (phase === 'done' && relearn === 'active') return relearnMove(uci);
     if (phase === 'done') {
       const id = tree.add(cursor, uci, 'explore');
       if (id) {
@@ -390,8 +437,9 @@ export function PuzzleSolver({
       bump();
     }
   };
+  const relearning = phase === 'done' && relearn === 'active';
   const interactive =
-    phase === 'done' ||
+    (phase === 'done' && (!relearning || (cursor === tip && node.pos.turn === you))) ||
     (phase === 'replay'
       ? replayReady && cursor === tip && node.pos.turn === you
       : mode === 'write'
@@ -438,8 +486,8 @@ export function PuzzleSolver({
   };
 
   const p = puzzle.puzzle;
-  const seenSolution = solutionIds.filter((id) => visited.has(id)).length;
-  const locked = phase === 'done' && won === false && seenSolution < solutionIds.length;
+  // A miss: the next puzzle waits until you've replayed the solution.
+  const locked = phase === 'done' && won === false && relearn !== 'done';
   const hasMine = node.tags.includes('mine');
   return (
     <div className="board-layout puzzle-layout">
@@ -452,7 +500,7 @@ export function PuzzleSolver({
           lastMove={shown.uci || undefined}
           onMove={onMove}
           flash={flash}
-          arrows={blind && settings.puzzleArrows ? lineArrows : undefined}
+          arrows={blind && settings.puzzleArrows ? lineArrows : relearning && hint ? [{ uci: hint, brush: 'green' }] : undefined}
           squareLabels={blind && settings.puzzleArrows ? lineLabels : undefined}
           circles={blind && picked ? [{ square: picked, brush: 'yellow' }] : undefined}
           onSquareClick={blind ? tap : undefined}
@@ -493,8 +541,8 @@ export function PuzzleSolver({
                 </>
               )}
               {hideRating && result?.rated && <span className="muted"> · rating change at the end of the block</span>}
-              {!practice && result && !result.rated && <span className="muted"> · kept here only</span>}
-              {practice && <span className="muted"> · going over it again (not recorded)</span>}
+              {!review && result && !result.rated && <span className="muted"> · kept here only</span>}
+              {review && <span className="muted"> · a puzzle you missed before (not rated)</span>}
             </div>
           )}
         </div>
@@ -592,15 +640,40 @@ export function PuzzleSolver({
           )}
         </div>
         {phase === 'done' && <EnginePanel fenKey={node.key} ply={node.ply} onPlay={(san) => onSan([san])} onJump={(sans) => onSan(sans)} />}
-        {locked && (
-          <div className="note small">
-            Before the next puzzle, go through the solution: ▶ (or →) from the puzzle's position — {seenSolution} of {solutionIds.length}{' '}
-            moves seen. A miss is worth more than a solve if you see why.
+        {phase === 'done' && won === false && (
+          <div className="panel col miss-review" style={{ gap: 8 }}>
+            {onReason && (
+              <div className="row reason-chips">
+                <span className="small">Why did you miss it?</span>
+                {MISS_REASONS.map((r) => (
+                  <button
+                    key={r.key}
+                    className={`small chip ${reason === r.key ? 'active' : ''}`}
+                    title={r.tip}
+                    onClick={() => {
+                      setReason(r.key);
+                      onReason(r.key);
+                    }}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {reason && <div className="small muted">{MISS_REASONS.find((r) => r.key === reason)!.tip}</div>}
+            {relearn === 'todo' && (
+              <div className="row">
+                <button className="primary" onClick={startRelearn}>
+                  Replay the solution
+                </button>
+                <span className="muted small">You play your moves, their replies come by themselves — doing it sticks better than watching.</span>
+              </div>
+            )}
           </div>
         )}
         <div className="row">
           {phase === 'done' && (
-            <button className="primary" onClick={onNext} disabled={locked} title={locked ? 'Step through the solution first' : undefined}>
+            <button className="primary" onClick={onNext} disabled={locked} title={locked ? 'Replay the solution first' : undefined}>
               {nextLabel}
             </button>
           )}
@@ -610,8 +683,8 @@ export function PuzzleSolver({
           </a>
         </div>
         <p className="muted small puzzle-note" style={{ margin: 0 }}>
-          {practice
-            ? 'Going over a puzzle you missed: nothing is recorded or counted.'
+          {review
+            ? 'A puzzle you missed before, to solve again cold: it stays here (not rated). Solved twice in a row within your time, it’s done.'
             : report
             ? 'Counted toward your Lichess puzzle rating — the first time you play a puzzle, as on Lichess.'
             : 'Kept here only (with the time it took) — your Lichess rating isn’t touched.'}

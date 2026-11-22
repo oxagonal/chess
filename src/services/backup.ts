@@ -14,7 +14,7 @@ function withoutCredentials(row: KvRow): KvRow {
   return { ...row, value };
 }
 
-const TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players', 'collections', 'puzzleLog', 'activity'] as const;
+const TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players', 'collections', 'puzzleLog', 'activity', 'tacticCards'] as const;
 
 /** 2: chapters (cards per position and move, repertoires as collections). Version 1 files are upgraded on restore. */
 const BACKUP_VERSION = 2;

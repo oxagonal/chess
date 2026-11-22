@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from 'dexie';
 import type { Collection, CoverageResult, Player, PlayerGame, PositionStats, PuzzleAttempt, Repertoire, RepMove, ReviewCard, ReviewLogEntry, StoredGame, Activity } from '../lib/types';
 import { migrateCardRows } from '../lib/chapters';
 import { trackChanges } from './changes';
+import type { TacticCard } from '../lib/tacticCards';
 
 export interface ExplorerCacheRow {
   key: string;
@@ -47,6 +48,7 @@ export type ChessDB = Dexie & {
   puzzleLog: EntityTable<PuzzleAttempt, 'id'>;
   engineCache: EntityTable<EngineCacheRow, 'key'>;
   activity: EntityTable<Activity, 'id'>;
+  tacticCards: EntityTable<TacticCard, 'id'>;
 };
 
 export function openDb(name = 'chess-prep'): ChessDB {
@@ -97,6 +99,8 @@ export function openDb(name = 'chess-prep'): ChessDB {
   db.version(6).stores({ engineCache: 'key, fetchedAt' });
   // Time spent on your training, by third (the Plan tab).
   db.version(7).stores({ activity: 'id, start, third, refId' });
+  // Tactics you missed, to solve again cold, spaced (the Puzzles tab).
+  db.version(8).stores({ tacticCards: 'id, due' });
   trackChanges(db);
   return db;
 }

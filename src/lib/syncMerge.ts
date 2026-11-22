@@ -14,7 +14,7 @@ import type { Color } from './chess';
 import type { RepMove } from './types';
 import { cardIdOf, migrateCardRows } from './chapters';
 
-export const SYNC_TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players', 'collections', 'puzzleLog', 'activity'] as const;
+export const SYNC_TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players', 'collections', 'puzzleLog', 'activity', 'tacticCards'] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
 export type Row = Record<string, any>;
@@ -103,6 +103,7 @@ function rowBirth(table: SyncTable, row: Row): number {
     case 'cards':
     case 'players':
     case 'collections':
+    case 'tacticCards':
       return row.createdAt ?? rowVersion(table, row);
     case 'reviewLog':
       return row.reviewedAt ?? 0;
