@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { moveNumberPrefix } from '../lib/chess';
 import type { MoveTree, TreeNode } from '../lib/moveTree';
-import { revealInBox } from './MoveList';
 
 /**
  * A move tree as running notation, like a Lichess study: the first choice straight through, every
@@ -14,17 +13,30 @@ export function MoveTreeView({
   cursor,
   onSelect,
   wrong,
+  from,
 }: {
   tree: MoveTree;
   cursor: string;
   onSelect: (id: string) => void;
   /** A move of yours that went wrong (shown in red). */
   wrong?: string;
+  /** Start from here (e.g. just before the puzzle), with "…" to show the moves before. */
+  from?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   // Long groups of replies with the same answer show their first few until opened.
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
-  useEffect(() => revealInBox(box.current?.querySelector('.mt-move.current')), [cursor]);
+  // Keep the current move in view — inside this box only (scrolling the panel around it would push
+  // what's above it, like the verdict, out of sight).
+  useEffect(() => {
+    const b = box.current;
+    const el = b?.querySelector('.mt-move.current');
+    if (!b || !el || b.scrollHeight <= b.clientHeight) return;
+    const r = el.getBoundingClientRect();
+    const top = b.getBoundingClientRect().top + b.clientTop;
+    if (r.top < top) b.scrollTop -= top - r.top;
+    else if (r.bottom > top + b.clientHeight) b.scrollTop += r.bottom - top - b.clientHeight;
+  }, [cursor]);
 
   const cls = (n: TreeNode) =>
     n.tags.includes('game') ? 'mt-game' : n.id === wrong ? 'mt-wrong' : n.tags.includes('solution') ? 'mt-solution' : n.tags.includes('mine') ? 'mt-mine' : 'mt-explore';
@@ -103,9 +115,17 @@ export function MoveTreeView({
     }
     return out;
   };
+  const [all, setAll] = useState(false);
+  // From just before the puzzle — unless you asked for all of it, or you've gone back into the game.
+  const start = from && !all && tree.has(from) && tree.isUnder(cursor, from) ? from : tree.root;
   return (
     <div className="move-tree" ref={box}>
-      {line(tree.root, true)}
+      {start !== tree.root && (
+        <button className="mt-more" onClick={() => setAll(true)} title="Show the game's moves before the puzzle">
+          … earlier moves
+        </button>
+      )}
+      {line(start, true)}
     </div>
   );
 }

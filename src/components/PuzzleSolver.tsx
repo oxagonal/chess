@@ -172,6 +172,9 @@ export function PuzzleSolver({
   /* ---- writing ---- */
   const writtenMain = tree.mainline(startId).filter((n) => n.tags.includes('mine'));
   const [checking, setChecking] = useState(false);
+  // "Show solution" asks first: it ends the puzzle as a miss, and it sits next to the arrows.
+  const [confirmGiveUp, setConfirmGiveUp] = useState(false);
+  useEffect(() => setConfirmGiveUp(false), [cursor]);
   /** Your game's position: a first move that isn't the engine's, checked with Stockfish. */
   const altHolds = async (uci: string, san: string): Promise<boolean> => {
     if (!judgeAlt) return false;
@@ -379,6 +382,7 @@ export function PuzzleSolver({
     );
   };
   const giveUp = () => {
+    setConfirmGiveUp(false);
     addSolution();
     setFeedback({ kind: 'hint', text: 'The solution is in green — step through it, try other moves, ask Stockfish.' });
     setCursor(startId);
@@ -569,7 +573,7 @@ export function PuzzleSolver({
           {phase === 'done' && !gameNote && (
             <div className="small" style={{ marginTop: 6 }}>
               Puzzle rated <b>{p.rating}</b>
-              {p.themes.length > 0 && <span className="muted"> · {p.themes.slice(0, 4).join(', ')}</span>}
+              {p.themes.length > 0 && <span className="muted puzzle-themes"> · {p.themes.slice(0, 4).join(', ')}</span>}
               {!hideRating && result?.rated && result.ratingDiff !== undefined && (
                 <>
                   {' '}
@@ -665,9 +669,26 @@ export function PuzzleSolver({
       {phone ? 'Check' : 'Check my solution'}
     </button>
   );
-  const showSolutionBtn = phase === 'solve' && (
-    <button className="small ghost" onClick={giveUp}>
+  const showSolutionBtn = phase === 'solve' && !confirmGiveUp && (
+    <button className="small ghost" onClick={() => setConfirmGiveUp(true)}>
       Show solution
+    </button>
+  );
+  const giveUpConfirm = phase === 'solve' && confirmGiveUp && (
+    <div className="row give-up-confirm">
+      <span className="small">Show the solution? It counts as a miss.</span>
+      <span className="spacer" />
+      <button className="small" onClick={() => setConfirmGiveUp(false)} autoFocus>
+        Keep trying
+      </button>
+      <button className="small danger-ghost" onClick={giveUp}>
+        Yes, show it
+      </button>
+    </div>
+  );
+  const replayBtn = phase === 'done' && won === false && relearn === 'todo' && (
+    <button className="primary" onClick={startRelearn} title="You play your moves, their replies come by themselves — doing it sticks better than watching">
+      Replay the solution
     </button>
   );
   const nextBtn = phase === 'done' && (
@@ -702,7 +723,7 @@ export function PuzzleSolver({
               </div>
             )}
             {reason && <div className="small muted">{MISS_REASONS.find((r) => r.key === reason)!.tip}</div>}
-            {relearn === 'todo' && (
+            {relearn === 'todo' && !phone && (
               <div className="row">
                 <button className="primary" onClick={startRelearn}>
                   Replay the solution
@@ -713,7 +734,7 @@ export function PuzzleSolver({
           </div>
         );
   const engineEl = phase === 'done' && <EnginePanel fenKey={node.key} ply={node.ply} onPlay={(san) => onSan([san])} onJump={(sans) => onSan(sans)} />;
-  const treeEl = <MoveTreeView tree={tree} cursor={cursor} onSelect={go} wrong={wrong} />;
+  const treeEl = <MoveTreeView tree={tree} cursor={cursor} onSelect={go} wrong={wrong} from={phone ? built.beforeId : undefined} />;
 
   // Phones: one screen between the header and the tab bar, like training — the board as big as the
   // screen allows (players above and below, your clock in your strip), what to do and your line in a
@@ -730,28 +751,31 @@ export function PuzzleSolver({
           {/* The instructions step aside once you've started writing: room for your line. */}
           {!(mode === 'write' && phase === 'solve' && writtenMain.length > 0 && feedback?.kind === 'info') && feedbackEl}
           {error && <div className="error small">{error}</div>}
+          {missReview}
           <div className="pp-tree">{treeEl}</div>
           {writeTools}
-          {missReview}
           {engineEl}
           {phase === 'done' && <div className="row">{lichessLink}</div>}
         </div>
-        <div className="pp-actions">
-          {checkBtn}
-          {nextBtn}
-          {takeBack}
-          <span className="spacer" />
-          <button onClick={() => go(startId)} aria-label="The puzzle's position" title="The puzzle's position">
-            ⏮
-          </button>
-          <button onClick={back} aria-label="Back">
-            ◀
-          </button>
-          <button onClick={forward} aria-label="Forward">
-            ▶
-          </button>
-          {showSolutionBtn}
-        </div>
+        {giveUpConfirm || (
+          <div className="pp-actions">
+            {checkBtn}
+            {/* After a miss: replay the solution first, then the next puzzle. */}
+            {replayBtn || (!relearning && nextBtn)}
+            {takeBack}
+            <span className="spacer" />
+            <button onClick={() => go(startId)} aria-label="The puzzle's position" title="The puzzle's position">
+              ⏮
+            </button>
+            <button onClick={back} aria-label="Back">
+              ◀
+            </button>
+            <button onClick={forward} aria-label="Forward">
+              ▶
+            </button>
+            {showSolutionBtn}
+          </div>
+        )}
       </div>
     );
 
@@ -783,14 +807,15 @@ export function PuzzleSolver({
         <div className="panel col puzzle-tree" style={{ gap: 8 }}>
           {treeEl}
           {writeTools}
-          {phase === 'solve' && (
-            <div className="row">
-              {checkBtn}
-              {takeBack}
-              <span className="spacer" />
-              {showSolutionBtn}
-            </div>
-          )}
+          {phase === 'solve' &&
+            (giveUpConfirm || (
+              <div className="row">
+                {checkBtn}
+                {takeBack}
+                <span className="spacer" />
+                {showSolutionBtn}
+              </div>
+            ))}
         </div>
         {engineEl}
         {missReview}
