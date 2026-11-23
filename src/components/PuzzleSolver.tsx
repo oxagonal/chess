@@ -53,6 +53,8 @@ export function PuzzleSolver({
   timer,
   judgeAlt,
   gameNote,
+  orientation,
+  betterMove,
 }: {
   puzzle: LichessPuzzle;
   mode: 'write' | 'play';
@@ -79,6 +81,13 @@ export function PuzzleSolver({
   judgeAlt?: (fromKey: string, uci: string) => Promise<boolean>;
   /** Shown once it's over: what you played in the game. */
   gameNote?: ReactNode;
+  /** The board's side and the "you" badge, when you solve the other side's move (their punishment). */
+  orientation?: Color;
+  /**
+   * A blunder of yours: after finding their punishment, a better move than the one you played, from the
+   * position before it — any move Stockfish says holds. The puzzle counts as solved with both right.
+   */
+  betterMove?: { played: string; engine?: string; judge: (fromKey: string, uci: string) => Promise<boolean> };
 }) {
   const built = useMemo(() => buildTree(puzzle), [puzzle]);
   const { tree, startId, you } = built;
@@ -133,7 +142,12 @@ export function PuzzleSolver({
       setCursor(startId);
       setFeedback({
         kind: 'info',
-        text:
+        text: betterMove ? (
+          <>
+            You played <b>{betterMove.played}</b>. <b>Find {you === 'white' ? 'White' : 'Black'}'s punishment</b> — their best reply, from your side of
+            the board{mode === 'write' ? ' (write their line: tap or drag their moves, or type them)' : ''}.
+          </>
+        ) :
           mode === 'write' && phone ? (
             <>
               Your turn ({you === 'white' ? 'White' : 'Black'}). <b>Write your line to the end</b> — tap or drag each move as things stand in your
@@ -164,11 +178,56 @@ export function PuzzleSolver({
     for (const uci of solution) id = id && tree.add(id, uci, 'solution');
     bump();
   };
+  // A blunder's card: their punishment first, then a better move — the result once both are done.
+  const [better, setBetter] = useState<'todo' | 'active' | 'done'>('todo');
+  const firstPart = useRef<{ win: boolean; soft: boolean } | undefined>(undefined);
   const finish = (win: boolean, soft = false) => {
     setPhase('done');
     setWon(win);
     if (!win) addSolution();
-    onResult(win, soft);
+    if (betterMove) firstPart.current = { win, soft };
+    else onResult(win, soft);
+  };
+  const startBetter = () => {
+    setBetter('active');
+    setCursor(built.beforeId);
+    setFeedback({
+      kind: 'info',
+      text: (
+        <>
+          Now <b>a better move than {betterMove!.played}</b> — back before it, any move that holds.
+        </>
+      ),
+    });
+  };
+  const betterMoveTry = async (uci: string) => {
+    const from = tree.get(built.beforeId);
+    const played = playUci(from.pos, uci);
+    if (!played) return;
+    if (from.children.includes(startId) && tree.get(startId).uci === played.uci) {
+      setFeedback({ kind: 'bad', text: <>That's the move you played — find another.</> });
+      flashFor('bad');
+      return;
+    }
+    const id = tree.add(built.beforeId, uci, 'mine')!;
+    setCursor(id);
+    bump();
+    setChecking(true);
+    setFeedback({ kind: 'info', text: <>Checking {played.san} with Stockfish…</> });
+    const ok = await betterMove!.judge(from.key, uci).catch(() => false);
+    setChecking(false);
+    const engine = betterMove!.engine ? playUci(from.pos, betterMove!.engine)?.san : undefined;
+    if (engine && engine !== played.san) tree.add(built.beforeId, betterMove!.engine!, 'solution');
+    bump();
+    setFeedback(
+      ok
+        ? { kind: 'good', text: <>✓ {played.san} holds{engine && engine !== played.san ? <> — the engine's choice was <b>{engine}</b></> : ''}.</> }
+        : { kind: 'bad', text: <>✗ {played.san} doesn't hold either{engine ? <> — the engine's choice was <b>{engine}</b></> : ''}.</> },
+    );
+    flashFor(ok ? 'good' : 'bad');
+    setBetter('done');
+    const first = firstPart.current ?? { win: false, soft: false };
+    onResult(first.win && ok, first.soft);
   };
 
   /* ---- writing ---- */
@@ -207,7 +266,10 @@ export function PuzzleSolver({
     }
     if (g.win) {
       addSolution();
-      setFeedback({ kind: 'good', text: <>✓ Right — your lines have the solution, their best defence included.</> });
+      setFeedback({
+        kind: 'good',
+        text: betterMove ? <>✓ Right — that's the punishment.</> : <>✓ Right — your lines have the solution, their best defence included.</>,
+      });
       flashFor('good');
       return finish(true);
     }
@@ -479,6 +541,7 @@ export function PuzzleSolver({
 
   /* ---- the board ---- */
   const onMove = (uci: string) => {
+    if (phase === 'done' && better === 'active') return void betterMoveTry(uci);
     if (phase === 'done' && relearn === 'active') return relearnMove(uci);
     if (phase === 'done') {
       const id = tree.add(cursor, uci, 'explore');
@@ -497,14 +560,15 @@ export function PuzzleSolver({
     }
   };
   const relearning = phase === 'done' && relearn === 'active';
-  const interactive =
-    !checking &&
-    ((phase === 'done' && (!relearning || (cursor === tip && node.pos.turn === you))) ||
-    (phase === 'replay'
+  const bettering = phase === 'done' && better === 'active';
+  const solvingNow =
+    phase === 'replay'
       ? replayReady && cursor === tip && node.pos.turn === you
       : mode === 'write'
         ? tree.isUnder(cursor, startId)
-        : cursor === tip && node.pos.turn === you && cursor !== built.beforeId));
+        : cursor === tip && node.pos.turn === you && cursor !== built.beforeId;
+  const interactive =
+    !checking && (bettering ? cursor === built.beforeId : phase === 'done' ? !relearning || (cursor === tip && node.pos.turn === you) : solvingNow);
 
   /* ---- moving around ---- */
   const back = () => node.parent && go(node.parent);
@@ -539,7 +603,7 @@ export function PuzzleSolver({
           {pl?.name ?? (c === you ? 'White' : 'Black')}
         </span>
         {pl?.rating && <span className="muted small">{pl.rating}</span>}
-        {c === you && <span className="badge">you</span>}
+        {c === (orientation ?? you) && <span className="badge">you</span>}
         <MaterialBalance pos={node.pos} color={c} />
         {extra}
       </div>
@@ -552,11 +616,11 @@ export function PuzzleSolver({
   const hasMine = node.tags.includes('mine');
 
   /* ---- the pieces, laid out for a computer or a phone below ---- */
-  const clockEl = timer && <PuzzleClock timer={timer} running={phase !== 'done'} compact={phone} />;
+  const clockEl = timer && <PuzzleClock timer={timer} running={phase !== 'done' || (!!betterMove && better !== 'done')} compact={phone} />;
   const boardEl = (
     <Board
       pos={shown.pos}
-      orientation={you}
+      orientation={orientation ?? you}
       interactive={interactive && !blind}
       lastMove={shown.uci || undefined}
       onMove={onMove}
@@ -693,11 +757,19 @@ export function PuzzleSolver({
       Replay the solution
     </button>
   );
-  const nextBtn = phase === 'done' && (
-    <button className="primary" onClick={onNext} disabled={locked} title={locked ? 'Replay the solution first' : undefined}>
-      {nextLabel}
-    </button>
-  );
+  const nextBtn =
+    phase === 'done' &&
+    (betterMove && better !== 'done' ? (
+      better === 'todo' && (
+        <button className="primary" onClick={startBetter} disabled={locked} title={locked ? 'Replay the solution first' : `Then: a better move than ${betterMove.played}`}>
+          Now a better move →
+        </button>
+      )
+    ) : (
+      <button className="primary" onClick={onNext} disabled={locked} title={locked ? 'Replay the solution first' : undefined}>
+        {nextLabel}
+      </button>
+    ));
   const lichessLink = (
     <a className="btn small" href={`${LICHESS}/training/${p.id}`} target="_blank" rel="noreferrer">
       On Lichess ↗
@@ -745,9 +817,9 @@ export function PuzzleSolver({
     return (
       <div className="puzzle-phone">
         <div className="pp-board" ref={boardSize.boardRef} style={{ '--board-scale': boardSize.scale } as CSSProperties}>
-          {strip(opposite(you))}
+          {strip(opposite(orientation ?? you))}
           {boardEl}
-          {strip(you, clockEl)}
+          {strip(orientation ?? you, clockEl)}
         </div>
         {boardSize.grip}
         <div className="pp-info">
@@ -787,9 +859,9 @@ export function PuzzleSolver({
   return (
     <div className="board-layout puzzle-layout">
       <div className="board-col col puzzle-board">
-        {strip(opposite(you))}
+        {strip(opposite(orientation ?? you))}
         {boardEl}
-        {strip(you)}
+        {strip(orientation ?? you)}
         <div className="row puzzle-nav">
           <button onClick={() => go(tree.root)} aria-label="Start of the game" title="Start of the game">
             ⏮
@@ -830,7 +902,9 @@ export function PuzzleSolver({
           {lichessLink}
         </div>
         <p className="muted small puzzle-note" style={{ margin: 0 }}>
-          {review && judgeAlt
+          {review && betterMove
+            ? 'A blunder from your game, to solve again cold (not rated): their punishment from your side of the board, then a better move — both right counts. Solved twice in a row within your time, it’s done.'
+            : review && judgeAlt
             ? 'A position from your game, to solve again cold (not rated) — another good move counts too. Solved twice in a row within your time, it’s done.'
             : review
             ? 'A puzzle you missed before, to solve again cold: it stays here (not rated). Solved twice in a row within your time, it’s done.'

@@ -24,7 +24,7 @@ import type { PuzzleAttempt } from '../lib/types';
 import { puzzleTilt } from '../lib/tilt';
 import { cardId, isDueCard, missedCard, MISS_REASONS, reviewed, type MissReason, type TacticCard } from '../lib/tacticCards';
 import { holdsUp } from '../services/tactics';
-import { moveNumberPrefix } from '../lib/chess';
+import { moveNumberPrefix, playSan } from '../lib/chess';
 import { href } from '../router';
 import { startLichessLogin } from '../services/lichessAuth';
 import { fetchPuzzles, hasScope, reportPuzzles, type Glicko } from '../services/puzzles';
@@ -531,8 +531,7 @@ function PuzzleSession({ onGlicko, toolbar }: { onGlicko: (g: Glicko) => void; t
         report={report && !cur.card}
         review={!!cur.card}
         onReason={(r) => void saveReason(cur, r)}
-        judgeAlt={cur.card?.game ? (key, uci) => holdsUp(key, uci, cur.card!.game!.best, cur.card!.game!.you) : undefined}
-        gameNote={cur.card?.game && <GameNote card={cur.card} />}
+        {...gameCardProps(cur.card)}
         result={result}
         error={error}
         hideRating={blockActive(b)}
@@ -552,8 +551,8 @@ function BlockProgress({ b, current, review, toolbar }: { b: Block; current: boo
     <div className="row puzzle-block-bar">
       <b>{b.size === 1 ? 'One puzzle' : `Puzzle ${Math.min(n, b.size)} of ${b.size}`}</b>
       {review && (
-        <span className="badge" title={`${review.game ? 'A mistake from your game' : 'You missed it'} ${fmtDate(review.createdAt)}${review.streak ? ` — solved again ${review.streak}× since` : ''}: solve it from scratch`}>
-          {review.game ? `↻ from your game vs ${review.game.opponent}` : '↻ one you missed'}
+        <span className="badge" title={`${review.game ? (review.game.kind === 'punish' ? 'A blunder from your game: find their punishment, then a better move' : 'A mistake from your game') : 'You missed it'} ${fmtDate(review.createdAt)}${review.streak ? ` — solved again ${review.streak}× since` : ''}: solve it from scratch`}>
+          {review.game ? `↻ ${review.game.kind === 'punish' ? 'your blunder' : 'from your game'} vs ${review.game.opponent}` : '↻ one you missed'}
         </span>
       )}
       <span className="block-dots" aria-hidden>
@@ -789,21 +788,56 @@ function History({ hideRating }: { hideRating: boolean }) {
   );
 }
 
-/** After a position from your game: what you played there, and the game. */
+/**
+ * What a position from your game needs: another good move counts (Stockfish judges it); a blunder's
+ * card is solved from your side of the board, then asks for a better move than yours.
+ */
+function gameCardProps(card: TacticCard | undefined) {
+  const g = card?.game;
+  if (!card || !g) return {};
+  const note = <GameNote card={card} />;
+  if (g.kind !== 'punish') return { judgeAlt: (key: string, uci: string) => holdsUp(key, uci, g.best, g.you), gameNote: note };
+  const them = g.you === 'white' ? 'black' : 'white';
+  const ply = card.puzzle.puzzle.initialPly;
+  return {
+    orientation: g.you,
+    // Their other replies that keep the win count too.
+    judgeAlt: (key: string, uci: string) => holdsUp(key, uci, g.after, them),
+    betterMove: { played: `${moveNumberPrefix(ply, true)}${g.played}`, engine: g.betterMove, judge: (key: string, uci: string) => holdsUp(key, uci, g.best, g.you) },
+    gameNote: note,
+  };
+}
+
+/** After a position from your game: what you played there (and, for a blunder, whether they punished it), and the game. */
 function GameNote({ card }: { card: TacticCard }) {
   const g = card.game!;
-  const ply = card.puzzle.puzzle.initialPly + 1;
+  const punish = g.kind === 'punish';
+  const ply = punish ? card.puzzle.puzzle.initialPly : card.puzzle.puzzle.initialPly + 1;
+  const reply = punish && g.theyPlayed ? `${moveNumberPrefix(ply + 1, true)}${g.theyPlayed}` : undefined;
+  const found = punish && g.theyPlayed && playSanOf(card, g.theyPlayed) === card.puzzle.puzzle.solution[0];
   return (
     <span>
       In your game vs <span className="keep-case">{g.opponent}</span> ({fmtDate(g.playedAt)}) you played{' '}
       <b className="warn-text">
         {moveNumberPrefix(ply, true)}
         {g.played}
-      </b>{' '}
+      </b>
+      {reply && (
+        <>
+          {' '}
+          — and they {found ? 'found it' : <>let you off with {reply}</>}
+        </>
+      )}{' '}
       ·{' '}
       <a href={href(`games/${encodeURIComponent(g.id)}`, { ply: String(ply) })} title="Open the game's review at this move">
         the game
       </a>
     </span>
   );
+}
+
+/** A move of the card's position (after your move) in UCI, from its SAN. */
+function playSanOf(card: TacticCard, san: string): string | undefined {
+  const start = puzzleStart(card.puzzle);
+  return start ? playSan(start.pos, san)?.uci : undefined;
 }

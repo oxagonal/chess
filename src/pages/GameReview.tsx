@@ -173,7 +173,13 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
       const at = byKey.get(key);
       const top = lines[0];
       if (!at || !top || top.eval.depth < LIVE_MIN_DEPTH) return;
-      const e: LiveEval = { depth: top.eval.depth, ...(top.eval.mate !== undefined ? { mate: top.eval.mate } : { cp: top.eval.cp ?? 0 }), ...(top.moves[0] ? { best: top.moves[0] } : {}) };
+      const two = lines[1]?.eval;
+      const e: LiveEval = {
+        depth: top.eval.depth,
+        ...(top.eval.mate !== undefined ? { mate: top.eval.mate } : { cp: top.eval.cp ?? 0 }),
+        ...(top.moves[0] ? { best: top.moves[0] } : {}),
+        ...(two ? { second: two.mate !== undefined ? { mate: two.mate } : { cp: two.cp ?? 0 } } : {}),
+      };
       for (const i of at) if (!pending[i] || pending[i].depth < e.depth) pending[i] = e;
       timer ??= setTimeout(() => void flush(), 2000);
     });

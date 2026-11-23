@@ -6,31 +6,44 @@
 import { db } from '../db/db';
 import { keyOf, playSan, playUci, posFromFen, startPos, type Color } from '../lib/chess';
 import { winChanceOf, type Score } from '../lib/review';
-import { GAME_MOVE_OK_LOSS, gameCard, gameMistakes, type GameMistake, type TacticCard } from '../lib/tacticCards';
+import { cardReady, GAME_MOVE_OK_LOSS, gameCard, gameMistakes, type TacticCard } from '../lib/tacticCards';
 import type { StoredGame } from '../lib/types';
 import { analyseOnce, cloudLines, winChance } from './engine';
 
+/** The engine's best move in a position, and its evaluation (White's view): Lichess's cloud analysis, else here. */
+async function engineAt(key: string): Promise<{ best: string; eval: Score } | undefined> {
+  const lines = (await cloudLines(key).catch(() => undefined)) ?? (await analyseOnce(key, 16, 1));
+  const top = lines?.[0];
+  return top?.moves[0] ? { best: top.moves[0], eval: { cp: top.eval.cp, mate: top.eval.mate } } : undefined;
+}
+
 /**
- * Your mistakes in a game, as cards (those you already have keep their progress): your crucial swings
- * and the moves you marked ? or ??. A marked one whose position Stockfish hasn't looked at gets the
- * engine's move now (Lichess's cloud analysis, else Stockfish here). How many were new.
+ * Your mistakes in a game, as cards (those you already have keep their progress): your crucial swings,
+ * the tactics you missed and the moves you marked ? or ??. What the engine hasn't looked at yet (the
+ * move to find, their punishing reply) it finds now. How many were new.
  */
 export async function addGameCards(game: StoredGame): Promise<number> {
   const now = Date.now();
-  const found = gameMistakes(game);
+  const keys: string[] = [];
+  let pos = startPos();
+  keys.push(keyOf(pos));
+  for (const san of game.sans) {
+    const r = playSan(pos, san);
+    if (!r) break;
+    pos = r.pos;
+    keys.push(r.key);
+  }
   const cards: TacticCard[] = [];
-  for (const m of found) {
-    if (!m.best) {
-      let pos = startPos();
-      for (const san of game.sans.slice(0, m.ply)) pos = playSan(pos, san)?.pos ?? pos;
-      const key = keyOf(pos);
-      const lines = (await cloudLines(key).catch(() => undefined)) ?? (await analyseOnce(key, 16, 1));
-      const top = lines?.[0];
-      if (!top?.moves[0]) continue;
-      m.best = top.moves[0];
-      m.before = { cp: top.eval.cp, mate: top.eval.mate };
+  for (const m of gameMistakes(game)) {
+    if (!m.best && keys[m.ply]) {
+      const e = await engineAt(keys[m.ply]);
+      if (e) [m.best, m.before] = [e.best, m.before ?? e.eval];
     }
-    cards.push(gameCard(game, m as GameMistake & { best: string }, now));
+    if (m.kind === 'punish' && !m.reply && keys[m.ply + 1]) {
+      const e = await engineAt(keys[m.ply + 1]);
+      if (e) [m.reply, m.after] = [e.best, m.after ?? e.eval];
+    }
+    if (cardReady(m)) cards.push(gameCard(game, m, now));
   }
   let added = 0;
   await db.transaction('rw', db.tacticCards, async () => {

@@ -47,15 +47,18 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   `.pgn` files or public Lichess studies; export back to PGN.
 - **Game review** — each game opens in the same dockable studio as the builder: board with both clocks,
   Stockfish, the game's moves as a scoresheet (always the game itself, with each move's clock), and a
-  computer review (eval graph, your three biggest mistakes and your opponent's). Right-click a move — or
+  computer review (eval graph, your three biggest mistakes and your opponent's, and the missed tactics:
+  a winning move that stood out above the second best — it looks at two lines per position — that you
+  didn't play, and your blunders they let you off). Right-click a move — or
   long-press it on a phone or iPad — to annotate it like a Lichess study (!!, !, !?, ?!, ?, ??, □, ±, N…, a
   comment) — or, on a line you tried, to delete it and what follows (in the builder, the same menu deletes a
   move from your repertoire). Annotations and the analysis are saved with the game (an interrupted analysis
   continues). What the Stockfish box finds as you go through the game is kept too: where it searched deeper
   than the computer review, its evaluation replaces the review's — the move list, the ?/?? marks, the
   graph and the biggest mistakes then match it — and without a computer review, the positions you've looked
-  at get evaluations all the same. "Done reviewing" turns your mistakes — the crucial swings, and the moves
-  you marked ? or ?? yourself — into puzzles that come back spaced (see Puzzles).
+  at get evaluations all the same (its second line too). "Done reviewing" turns your mistakes — the crucial
+  swings, the missed tactics, your blunders they let you off, and the moves you marked ? or ?? yourself —
+  into puzzles that come back spaced (see Puzzles).
 - **On a phone** the builder and the game review work like the Lichess and Chess.com apps: Stockfish sits
   at the top (switch it on or off there — phones keep their own engine settings, e.g. fewer lines), the
   board stays on screen, the moves, explorer, computer review and the rest are tabs under it (each
@@ -128,9 +131,12 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   puzzle; doing it sticks better than watching it. The missed puzzle then comes back to solve again cold,
   spaced (the next day, then 3, 7 and 30 days), mixed into your blocks and never rated; solved twice in a
   row within your time, it's done. Your own games' mistakes join them (Nate Solon's spaced review of the
-  positions where you went wrong): "Done reviewing" a game with a computer review turns your crucial
-  mistakes (and the moves you marked ? or ??) into the same cards — "what should you have played?", the engine's move or any other that
-  Stockfish says holds up, and afterwards what you played in the game, with a link to it. The Puzzles page
+  positions where you went wrong): "Done reviewing" a game turns your mistakes into the same cards, of two
+  kinds. A missed tactic — one move stood out (above the second best), or you were clearly better — asks
+  "what should you have played?": the engine's move or any other that Stockfish says holds up. A blunder
+  where many moves held asks for their punishment instead: the position after your move, solved from your
+  side of the board (practice seeing their resources), then a better move than yours — both right counts.
+  Afterwards: what you played in the game (and whether they punished it), with a link to it. The Puzzles page
   shows why you miss most often, with what to do about it, and how many cards are coming back. Blocks (pick the size before you start — 10 by default, or just one) guard against tilt: your rating stays hidden
   until the block ends; three misses in a row, or a quick miss right after a miss, bring up a breather. With Lichess connected they're picked around your
   Lichess puzzle rating and, if you let them, count toward it. Every puzzle is kept in your history with

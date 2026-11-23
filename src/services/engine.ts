@@ -319,27 +319,29 @@ export interface PositionEval {
   eval: MoveEval;
   /** Engine's best move (standard UCI), if any. */
   best?: string;
+  /** With two lines: the second-best move's evaluation (an only move stands out from it). */
+  second?: MoveEval;
 }
 
 /**
  * Evaluate one position. Resolves `undefined` if the position is over (mate/stalemate) or the search
  * was replaced.
  */
-export function evaluatePosition(fen: string, depth: number): Promise<PositionEval | undefined> {
+export function evaluatePosition(fen: string, depth: number, multiPv = 1): Promise<PositionEval | undefined> {
   if (!(depth > 0)) depth = 18; // a review needs a finite search
   return new Promise((resolve) => {
     let best: EngineLine | undefined;
     engine
       .analyse({
         fen,
-        multiPv: 1,
+        multiPv,
         depth,
         onUpdate: (lines) => {
           if (lines[0]) best = lines[0];
         },
         resolve: (lines) => {
           const top = lines[0] ?? best;
-          resolve(top ? { eval: top.eval, best: top.moves[0] } : undefined);
+          resolve(top ? { eval: top.eval, best: top.moves[0], ...(lines[1] ? { second: lines[1].eval } : {}) } : undefined);
         },
       })
       .catch(() => resolve(undefined));

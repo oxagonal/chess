@@ -17,6 +17,11 @@ export interface GameReview {
   evals: (Score | null)[];
   /** best[i] = engine's best move in position i (standard UCI). */
   best: (string | null)[];
+  /**
+   * second[i] = the evaluation of the engine's second-best move in position i (White's view), when it
+   * looked at two (reviews since missed tactics): an only move stands out from it.
+   */
+  second?: (Score | null)[];
   /** false while the analysis is still running (or was interrupted): evals cover only the start. */
   complete?: boolean;
 }
@@ -100,6 +105,8 @@ export interface LiveEval extends Score {
   depth: number;
   /** Its best move (standard UCI). */
   best?: string;
+  /** Its second-best move's evaluation (the Stockfish box shows several lines). */
+  second?: Score;
 }
 
 /**
@@ -113,6 +120,7 @@ export function withLiveEvals(review: GameReview | undefined, live: Record<strin
   if (!keys.length) return review;
   const evals: (Score | null)[] = Array.from({ length: Math.max(positions, review?.evals.length ?? 0) }, (_, i) => review?.evals[i] ?? null);
   const best: (string | null)[] = evals.map((_, i) => review?.best[i] ?? null);
+  const second: (Score | null)[] = evals.map((_, i) => review?.second?.[i] ?? null);
   for (const k of keys) {
     const i = Number(k);
     const l = live![k];
@@ -120,6 +128,7 @@ export function withLiveEvals(review: GameReview | undefined, live: Record<strin
     if (evals[i] && review && review.depth >= l.depth) continue;
     evals[i] = { cp: l.cp, mate: l.mate };
     if (l.best) best[i] = l.best;
+    second[i] = l.second ?? null;
   }
   // Trailing positions nobody has looked at aren't part of an interrupted review.
   let n = evals.length;
@@ -129,6 +138,63 @@ export function withLiveEvals(review: GameReview | undefined, live: Record<strin
     analyzedAt: review?.analyzedAt ?? 0,
     evals: evals.slice(0, Math.max(n, review?.evals.length ?? 0)),
     best: best.slice(0, Math.max(n, review?.evals.length ?? 0)),
+    ...(second.some(Boolean) ? { second: second.slice(0, Math.max(n, review?.evals.length ?? 0)) } : {}),
     ...(review?.complete === false ? { complete: false } : {}),
   };
+}
+
+/** A score as the win chance (0–100) of `side`. */
+export function winFor(s: Score, side: Color): number {
+  const w = winChanceOf(s);
+  return side === 'white' ? w : 100 - w;
+}
+
+/** How far the best move stands above the second-best (win chance of the side to move), if known. */
+export function onlyMoveGap(review: GameReview, ply: number): number | undefined {
+  const best = review.evals[ply];
+  const second = review.second?.[ply];
+  if (!best || !second) return undefined;
+  const side: Color = ply % 2 === 0 ? 'white' : 'black';
+  return winFor(best, side) - winFor(second, side);
+}
+
+/** The best move stands out this much (win chance) from the second-best: there was one move to find. */
+export const ONLY_MOVE_GAP = 10;
+/** A missed tactic: best play gave the side to move at least this win chance… */
+export const TACTIC_WIN = 70;
+/** …and the move played lost at least this much of it. */
+export const TACTIC_LOSS = 15;
+
+export interface MissedTactic {
+  ply: number;
+  mover: Color;
+  /** The move that was there (standard UCI). */
+  best: string;
+  /** Win chance (of the mover) with it, and after the move played. */
+  withBest: number;
+  played: number;
+  /** How far it stood out from the second-best move, when known. */
+  gap?: number;
+}
+
+/**
+ * Missed tactics: positions where the side to move had a strong move (best play gives them at least
+ * TACTIC_WIN) that stood out (ONLY_MOVE_GAP above the second-best, when that's known) and played
+ * something else that lost at least TACTIC_LOSS of it — a win not taken, a blunder not punished.
+ */
+export function missedTactics(review: GameReview, ucis: readonly string[]): MissedTactic[] {
+  const out: MissedTactic[] = [];
+  for (let ply = 0; ply + 1 < review.evals.length && ply < ucis.length; ply++) {
+    const before = review.evals[ply];
+    const after = review.evals[ply + 1];
+    const best = review.best[ply];
+    if (!before || !after || !best || best === ucis[ply]) continue;
+    const mover: Color = ply % 2 === 0 ? 'white' : 'black';
+    const withBest = winFor(before, mover);
+    const played = winFor(after, mover);
+    const gap = onlyMoveGap(review, ply);
+    if (withBest < TACTIC_WIN || withBest - played < TACTIC_LOSS || (gap !== undefined && gap < ONLY_MOVE_GAP)) continue;
+    out.push({ ply, mover, best, withBest, played, ...(gap !== undefined ? { gap } : {}) });
+  }
+  return out;
 }

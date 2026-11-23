@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Chess } from 'chessops/chess';
 import { db } from '../db/db';
-import { fenOf, opposite, playUci, type Color } from '../lib/chess';
-import { biggestSwingsFor, formatEvalShort, JUDGEMENT_GLYPH, swings, winChanceOf, type GameReview, type Score, type Swing } from '../lib/review';
+import { fenOf, opposite, playSan, playUci, type Color } from '../lib/chess';
+import { biggestSwingsFor, formatEvalShort, JUDGEMENT_GLYPH, missedTactics, swings, winChanceOf, type GameReview, type MissedTactic, type Score, type Swing } from '../lib/review';
 import type { StoredGame } from '../lib/types';
 import { evaluatePosition } from '../services/engine';
 
@@ -62,10 +62,13 @@ export function GameReviewPanel({
     const total = positions.length;
     const evals: (Score | null)[] = resume ? resume.evals.slice(0, total) : [];
     const best: (string | null)[] = resume ? resume.best.slice(0, total) : [];
+    // The second-best move's evaluation too: an only move — a tactic to find — stands out from it.
+    const second: (Score | null)[] = resume ? (resume.second ?? []).slice(0, total) : [];
+    while (second.length < evals.length) second.push(null);
     // A run stopped because another took over doesn't save (the new one owns the result).
     const save = async (complete: boolean) =>
       (run.current === token || !token.cancelled) &&
-      db.games.update(game.id, { review: { depth: d, analyzedAt: Date.now(), evals: [...evals], best: [...best], ...(complete ? {} : { complete: false }) } });
+      db.games.update(game.id, { review: { depth: d, analyzedAt: Date.now(), evals: [...evals], best: [...best], second: [...second], ...(complete ? {} : { complete: false }) } });
     setProgress({ done: evals.length, total });
     try {
       for (let i = evals.length; i < total; i++) {
@@ -74,11 +77,13 @@ export function GameReviewPanel({
         if (pos.isEnd()) {
           evals.push(terminalScore(pos));
           best.push(null);
+          second.push(null);
         } else {
-          const r = await evaluatePosition(fenOf(pos), d);
+          const r = await evaluatePosition(fenOf(pos), d, 2);
           if (token.cancelled) break;
           evals.push(r ? { cp: r.eval.cp, mate: r.eval.mate } : null);
           best.push(r?.best ?? null);
+          second.push(r?.second ? { cp: r.second.cp, mate: r.second.mate } : null);
         }
         if (run.current === token) setProgress({ done: i + 1, total });
         if ((i + 1) % SAVE_EVERY === 0 && i + 1 < total) await save(false);
@@ -128,10 +133,32 @@ export function GameReviewPanel({
         ))}
       </div>
     );
+  // Strong moves that stood out (above the second best) and weren't played.
+  const ucis = positions.slice(0, sans.length).map((p, i) => playUciOfSan(p, sans[i]) ?? '');
+  const tactics = shown ? missedTactics(shown, ucis) : [];
+  const yourTactics = tactics.filter((t) => t.mover === userColor);
+  const theirTactics = tactics.filter((t) => t.mover !== userColor);
+  const tacticRow = (t: MissedTactic) => <TacticRow key={t.ply} t={t} san={sans[t.ply]} prev={sans[t.ply - 1]} pos={positions[t.ply]} yours={t.mover === userColor} active={cursor === t.ply} onJump={onJump} />;
   // The graph and each side's biggest mistakes (with the Stockfish box's deeper evaluations).
   const findings = shown && shown.evals.some(Boolean) && (
     <>
       <EvalGraph review={shown} cursor={cursor} onJump={onJump} prepPly={prepPly} />
+      {tactics.length > 0 && (
+        <div className="swing-columns">
+          <div className="col" style={{ gap: 6 }}>
+            <h3 style={{ margin: 0 }} title="A move that won (or kept a big edge) and stood out above the second best — you played something else">
+              Tactics you missed
+            </h3>
+            {yourTactics.length ? <div className="col" style={{ gap: 6 }}>{yourTactics.map(tacticRow)}</div> : <div className="muted small">None — you found what was there.</div>}
+          </div>
+          <div className="col" style={{ gap: 6 }}>
+            <h3 style={{ margin: 0 }} title="Your blunders they didn't punish: their winning reply, and what they played instead">
+              Blunders they let you off
+            </h3>
+            {theirTactics.length ? <div className="col" style={{ gap: 6 }}>{theirTactics.map(tacticRow)}</div> : <div className="muted small">None.</div>}
+          </div>
+        </div>
+      )}
       <div className="swing-columns">
         <div className="col" style={{ gap: 6 }}>
           <h3 style={{ margin: 0 }}>Your biggest mistakes</h3>
@@ -222,6 +249,47 @@ function SwingRow({ s, san, pos, active, onJump }: { s: Swing; san: string; pos:
               · best was <b className="keep-case">{bestSan}</b>
             </>
           ) : null}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+/** The move in UCI, from its SAN. */
+function playUciOfSan(pos: Chess, san: string): string | undefined {
+  const r = playSan(pos, san);
+  return r?.uci;
+}
+
+/** A missed tactic: the move that was there, and what was played instead (for theirs, after your blunder). */
+function TacticRow({ t, san, prev, pos, yours, active, onJump }: { t: MissedTactic; san: string; prev?: string; pos: Chess; yours: boolean; active: boolean; onJump: (ply: number) => void }) {
+  const bestSan = playUci(pos, t.best)?.san ?? t.best;
+  const no = (ply: number) => `${Math.floor(ply / 2) + 1}${ply % 2 === 0 ? '.' : '…'}`;
+  return (
+    <button className={`swing ${active ? 'active' : ''}`} onClick={() => onJump(t.ply)} title="Show the position with the tactic">
+      <span className="swing-glyph">!</span>
+      <span>
+        {yours ? (
+          <b>
+            {no(t.ply)} <span className="keep-case">{bestSan}</span> was there
+          </b>
+        ) : (
+          <b>
+            After your {no(t.ply - 1)} <span className="keep-case">{prev}</span>: {no(t.ply)} <span className="keep-case">{bestSan}</span>
+          </b>
+        )}
+        <br />
+        <span className="small muted">
+          {yours ? (
+            <>
+              you played <span className="keep-case">{san}</span> · your win chance {Math.round(t.withBest)}% → {Math.round(t.played)}%
+              {t.gap !== undefined ? ` (the next best move: ${Math.round(t.withBest - t.gap)}%)` : ''}
+            </>
+          ) : (
+            <>
+              they played <span className="keep-case">{san}</span> · your win chance {Math.round(100 - t.withBest)}% → {Math.round(100 - t.played)}%
+            </>
+          )}
         </span>
       </span>
     </button>
