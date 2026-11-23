@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useBoardScale } from './BoardGrip';
 import { Board, type Arrow, type SquareLabel } from './Board';
 import { EnginePanel } from './EnginePanel';
 import { MaterialBalance } from './MaterialBalance';
@@ -105,6 +106,7 @@ export function PuzzleSolver({
   // a word about a move that isn't legal, and what you're typing.
   const settings = useSettings();
   const phone = useMediaQuery(PHONE_QUERY);
+  const boardSize = useBoardScale('puzzles');
   const [picked, setPicked] = useState<string>();
   const [promoAsk, setPromoAsk] = useState<{ from: string; to: string }>();
   const [notice, setNotice] = useState<string>();
@@ -742,11 +744,12 @@ export function PuzzleSolver({
   if (phone)
     return (
       <div className="puzzle-phone">
-        <div className="pp-board">
+        <div className="pp-board" ref={boardSize.boardRef} style={{ '--board-scale': boardSize.scale } as CSSProperties}>
           {strip(opposite(you))}
           {boardEl}
           {strip(you, clockEl)}
         </div>
+        {boardSize.grip}
         <div className="pp-info">
           {/* The instructions step aside once you've started writing: room for your line. */}
           {!(mode === 'write' && phase === 'solve' && writtenMain.length > 0 && feedback?.kind === 'info') && feedbackEl}
@@ -764,15 +767,17 @@ export function PuzzleSolver({
             {replayBtn || (!relearning && nextBtn)}
             {takeBack}
             <span className="spacer" />
-            <button onClick={() => go(startId)} aria-label="The puzzle's position" title="The puzzle's position">
-              ⏮
-            </button>
-            <button onClick={back} aria-label="Back">
-              ◀
-            </button>
-            <button onClick={forward} aria-label="Forward">
-              ▶
-            </button>
+            <span className="pp-nav">
+              <button onClick={() => go(startId)} aria-label="The puzzle's position" title="The puzzle's position">
+                ⏮
+              </button>
+              <button onClick={back} aria-label="Back">
+                ◀
+              </button>
+              <button onClick={forward} aria-label="Forward">
+                ▶
+              </button>
+            </span>
             {showSolutionBtn}
           </div>
         )}

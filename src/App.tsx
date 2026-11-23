@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { loadDueCount } from './db/training';
 import { setDueBadge } from './services/appBadge';
 import { useNow } from './hooks';
+import { useSettings } from './db/settings';
 import { useRoute, href, scopeHref, type Route } from './router';
 import { HomePage } from './pages/Home';
 import { RepertoirePage } from './pages/Repertoire';
@@ -97,6 +98,8 @@ function useLastGames(route: Route): string {
 export function App() {
   const route = useRoute();
   const now = useNow();
+  // Phones: the main buttons on the right, for your right thumb.
+  const thumbRight = useSettings().thumbRight;
   // What a review would actually have — not a due card of a move you've taken out of training.
   const due = useLiveQuery(() => loadDueCount(now), [now]);
   const moved = movedTo(route);
@@ -117,7 +120,7 @@ export function App() {
   }, [due]);
 
   return (
-    <div className="app">
+    <div className={`app ${thumbRight ? 'thumb-right' : ''}`}>
       <header className="topbar">
         <a className="brand" href={href('')}>
           <span>♞</span> Tabiya

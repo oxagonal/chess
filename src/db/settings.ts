@@ -83,6 +83,8 @@ export interface AppSettings {
   puzzleBudgetMin: number;
   /** Training: at a line's end, recall its plan before it's shown (and wait for Continue). */
   trainRecallPlans: boolean;
+  /** Phones: the main buttons of a bottom row on the right, for your right thumb. */
+  thumbRight: boolean;
   /** Builder: save every move played on the board straight into the repertoire. */
   builderAutoAdd: boolean;
   /** Show Stockfish evaluations next to each move in the builder. */
@@ -175,6 +177,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   puzzleArrows: true,
   puzzleBudgetMin: 5,
   trainRecallPlans: true,
+  thumbRight: false,
   builderAutoAdd: false,
   engineEnabled: true,
   engineDepth: 18,

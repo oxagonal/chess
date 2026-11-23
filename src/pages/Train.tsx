@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Chess } from 'chessops/chess';
 import type { PageProps } from '../App';
 import { db } from '../db/db';
 import { getSettings, updateSettings, useSettings, type AppSettings } from '../db/settings';
 import { gradeAnswer } from '../db/repertoire';
 import { MoveNote } from '../components/MoveNote';
+import { useBoardScale } from '../components/BoardGrip';
 import { afterMove, MasterGames, PlanNote, useAllPlans } from '../components/PlanBox';
 import { setPlanStill } from '../db/repertoire';
 import { planAhead, planCover, type PlanRef } from '../lib/plans';
@@ -252,6 +253,8 @@ function Session({ setup }: { setup: SessionSetup }) {
   const feedbackToken = useRef(0);
   // Trainer options (⚙): read live, so a change applies from the next line.
   const live = useSettings();
+  // Phones: the board's size, chosen with the grip under it (like the builder's).
+  const boardSize = useBoardScale('train');
   const [showOptions, setShowOptions] = useState(false);
   const skipRepeatsRef = useRef(false);
   skipRepeatsRef.current = live.trainSkipRepeats;
@@ -767,6 +770,12 @@ function Session({ setup }: { setup: SessionSetup }) {
         </span>
       </label>
       <label className="check">
+        <input type="checkbox" checked={live.thumbRight} onChange={(e) => updateSettings({ thumbRight: e.target.checked })} />
+        <span>
+          <b>Right thumb</b> — on a phone, the main buttons (Continue, Show move, Check, Next) on the right, where your right thumb is.
+        </span>
+      </label>
+      <label className="check">
         <input type="checkbox" checked={live.trainRecallPlans} onChange={(e) => updateSettings({ trainRecallPlans: e.target.checked })} />
         <span>
           <b>Recall plans</b> — at the end of a line with a plan, say what you're aiming for before it's shown (the line waits for
@@ -971,7 +980,10 @@ function Session({ setup }: { setup: SessionSetup }) {
           </div>
           <ProgressBar value={progress} />
         </div>
-        <div className="tp-board">{board}</div>
+        <div className="tp-board" ref={boardSize.boardRef} style={{ '--board-scale': boardSize.scale } as CSSProperties}>
+          {board}
+        </div>
+        {boardSize.grip}
         {navBar}
         <div className="tp-line">
           {lineLabel}

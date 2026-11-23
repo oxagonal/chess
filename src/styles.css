@@ -524,7 +524,7 @@ button.chip:hover:not(:disabled) { background: var(--border); }
 .pz-session .puzzle-block-bar .badge { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .pz-toolbar { flex: none; min-height: 32px; margin-bottom: 6px; }
 .puzzle-phone { --pp-reserve: 262px; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; container-type: size; }
-.pp-board { flex: none; align-self: center; width: min(100cqw, max(160px, 100cqh - var(--pp-reserve))); display: flex; flex-direction: column; gap: 4px; }
+.pp-board { flex: none; align-self: center; width: calc(min(100cqw, max(160px, 100cqh - var(--pp-reserve))) * var(--board-scale, 1)); display: flex; flex-direction: column; gap: 4px; }
 .pp-board > .player-strip { min-height: 26px; padding-top: 2px; padding-bottom: 2px; font-size: 13px; }
 .pp-info { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .pp-info > .feedback { flex: none; padding: 8px 10px; font-size: 13.5px; }
@@ -831,7 +831,7 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .tp-status .row { gap: 6px; flex-wrap: nowrap; font-size: 14px; white-space: nowrap; }
 .tp-status .row > .muted:not(.small) { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .tp-status .progress { height: 4px; }
-.tp-board { flex: none; align-self: center; width: 100%; width: min(100cqw, max(160px, 100cqh - var(--tp-reserve))); }
+.tp-board { flex: none; align-self: center; width: 100%; width: calc(min(100cqw, max(160px, 100cqh - var(--tp-reserve))) * var(--board-scale, 1)); }
 .tp-line {
   flex: none; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px;
   background: var(--panel); border: 1px solid var(--border-soft); border-radius: var(--radius);
@@ -856,6 +856,28 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .tp-info .movenote-ask { display: none; }
 .tp-info .movenote textarea { min-height: 0; height: 58px; resize: none; }
 .train-phone .train-actions { flex: none; flex-wrap: nowrap; }
+
+/* The grip under a phone board (training, puzzles — the builder's has its own): drag for a smaller or
+   bigger board. It takes no room of its own: it sits in the gaps around it. */
+.board-grip {
+  flex: none; position: relative; z-index: 3; height: 16px; margin-block: -12px; display: flex; align-items: center; justify-content: center;
+  touch-action: none; cursor: ns-resize; -webkit-user-select: none; user-select: none;
+}
+.board-grip > span { width: 38px; height: 4px; border-radius: 2px; background: var(--border); }
+.board-grip:active > span { background: var(--accent); }
+@media (min-width: 701px) {
+  .board-grip { display: none; }
+}
+.pp-nav { display: flex; gap: 6px; flex: none; }
+.pp-nav > button { min-height: 40px; min-width: 40px; padding: 0 8px; }
+/* Right thumb (Settings): the main buttons of a phone's bottom row on the right; the move arrows keep
+   their order (in their own group, or by moving the rest to the left). */
+@media (max-width: 700px) {
+  .thumb-right .train-phone .train-actions { flex-direction: row-reverse; }
+  .thumb-right .train-phone .train-nav { justify-content: flex-end; }
+  .thumb-right .pp-actions { flex-direction: row-reverse; }
+  .thumb-right .ps-controls > label.check, .thumb-right .ps-controls > .small:not(button) { order: -1; }
+}
 
 /* ---------- builder: one screen on desktop ---------- */
 .builder { display: flex; flex-direction: column; gap: 12px; }

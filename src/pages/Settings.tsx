@@ -209,6 +209,11 @@ export function SettingsPage() {
           <input type="checkbox" checked={s.trainOnlyLikely} onChange={(e) => set({ trainOnlyLikely: e.target.checked })} />
           Only train positions I'll meet at least as often as each repertoire's coverage target (uses its last Coverage run)
         </label>
+        <label className="check" title="Training, puzzles and the builder on a phone">
+          <input type="checkbox" checked={s.thumbRight} onChange={(e) => set({ thumbRight: e.target.checked })} />
+          Right thumb: on a phone, the main buttons of the bottom row on the right (Continue, Show move, Check, Next; the move arrows in
+          the builder)
+        </label>
         <label className="check" title="As in the Lichess app: keep one finger on the board and drag another from a square to a square for an arrow, or tap with it for a circle. A tap on an empty square clears them.">
           <input type="checkbox" checked={s.twoFingerDraw} onChange={(e) => set({ twoFingerDraw: e.target.checked })} />
           Draw arrows and circles with two fingers on a touch screen: keep one finger on the board, drag another
