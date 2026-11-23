@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gameCards, gameMistakes, isDueCard, missedCard, REVIEW_DAYS, reviewed, startOfDay } from '../lib/tacticCards';
+import { cardPly, gameCards, gameMistakes, isDueCard, missedCard, mistakeAt, needsUpgrade, REVIEW_DAYS, reviewed, startOfDay } from '../lib/tacticCards';
 import { puzzleStart } from '../lib/puzzle';
 import { missedTactics } from '../lib/review';
 import { playSan, startPos } from '../lib/chess';
@@ -55,6 +55,26 @@ describe('mistakes in your games as cards', () => {
     const start = puzzleStart(c.puzzle)!;
     expect([start.color, start.lastMove]).toEqual(['white', 'g8f6']);
     expect(c.due).toBe(startOfDay(noon) + DAY);
+  });
+});
+
+describe('a blunder when you were already losing', () => {
+  it('many moves kept it at about −4, yours lost more: their punishment to find; old cards are sorted again', () => {
+    const sans = ['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6', 'Qxf7#'];
+    const cp = (v: number) => ({ cp: v });
+    // You are Black; before 3...Nf6 White is +3.95, the second-best move +4.47 (barely worse).
+    const evals = [cp(30), cp(30), cp(20), cp(300), cp(380), cp(395), { mate: 1 }, { mate: 0 }];
+    const game = {
+      id: 'lichess:x:y', white: 'Opp', black: 'Me', userColor: 'black', timeClass: 'blitz', playedAt: 5, sans,
+      review: { depth: 18, analyzedAt: 1, complete: true, evals, second: evals.map((_, i) => (i === 5 ? cp(447) : null)), best: ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'd2d3', 'g7g6', 'h5f7', null] },
+    } as unknown as StoredGame;
+    const m = mistakeAt(game, 5);
+    expect([m.kind, m.reply]).toEqual(['punish', 'h5f7']);
+    const [c] = gameCards(game, noon).filter((x) => x.id.endsWith(':5'));
+    // The game's id has colons; the move's index is the last part.
+    expect([cardPly(c), c.game!.best, c.game!.after]).toEqual([5, cp(395), { mate: 1 }]);
+    expect(needsUpgrade(c)).toBe(false);
+    expect(needsUpgrade({ ...c, game: { ...c.game!, kind: undefined } })).toBe(true);
   });
 });
 

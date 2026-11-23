@@ -22,8 +22,9 @@ import { difficultyAdvice, openingAngle, PUZZLE_DIFFICULTIES, PUZZLE_THEMES, puz
 import { clock as fmtClock } from '../lib/quickReview';
 import type { PuzzleAttempt } from '../lib/types';
 import { puzzleTilt } from '../lib/tilt';
-import { cardId, isDueCard, missedCard, MISS_REASONS, reviewed, type MissReason, type TacticCard } from '../lib/tacticCards';
-import { holdsUp } from '../services/tactics';
+import { cardId, isDueCard, missedCard, MISS_REASONS, needsUpgrade, reviewed, type MissReason, type TacticCard } from '../lib/tacticCards';
+import { holdsUp, upgradeGameCard } from '../services/tactics';
+import { formatEvalShort } from '../lib/review';
 import { moveNumberPrefix, playSan } from '../lib/chess';
 import { href } from '../router';
 import { startLichessLogin } from '../services/lichessAuth';
@@ -387,11 +388,21 @@ function PuzzleSession({ onGlicko, toolbar }: { onGlicko: (g: Glicko) => void; t
   // The next puzzle — unless the block is at a breather or its end: a card that's due (every other
   // puzzle, while there are some), else the next from Lichess.
   const solving = !b || b.stage === 'solve';
+  const upgrading = useRef(false);
   useEffect(() => {
-    if (cur || !solving || !due) return;
+    if (cur || !solving || !due || upgrading.current) return;
     const card = due.find((c) => !doneCards.current.has(c.id));
-    if (card && (!lastWasCard.current || !queue.length)) begin(card.puzzle, card);
-    else if (queue.length) begin(queue[0]);
+    if (card && (!lastWasCard.current || !queue.length)) {
+      if (!needsUpgrade(card)) return begin(card.puzzle, card);
+      // Made before blunders became punishment cards: sorted again first.
+      upgrading.current = true;
+      void upgradeGameCard(card)
+        .catch(() => card)
+        .then((c) => {
+          upgrading.current = false;
+          begin(c.puzzle, c);
+        });
+    } else if (queue.length) begin(queue[0]);
   }, [cur, queue, begin, solving, due]);
 
   const budgetMs = settings.puzzleBudgetMin * 60_000;
@@ -822,6 +833,12 @@ function GameNote({ card }: { card: TacticCard }) {
         {moveNumberPrefix(ply, true)}
         {g.played}
       </b>
+      {g.best && g.after && (
+        <span className="muted" title="The evaluation before your move (with best play) and after it (White's view)">
+          {' '}
+          ({formatEvalShort(g.best)} → {formatEvalShort(g.after)})
+        </span>
+      )}
       {reply && (
         <>
           {' '}

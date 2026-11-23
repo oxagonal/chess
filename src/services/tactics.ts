@@ -6,7 +6,7 @@
 import { db } from '../db/db';
 import { keyOf, playSan, playUci, posFromFen, startPos, type Color } from '../lib/chess';
 import { winChanceOf, type Score } from '../lib/review';
-import { cardReady, GAME_MOVE_OK_LOSS, gameCard, gameMistakes, type TacticCard } from '../lib/tacticCards';
+import { cardPly, cardReady, GAME_MOVE_OK_LOSS, gameCard, gameMistakes, mistakeAt, type GameMistake, type TacticCard } from '../lib/tacticCards';
 import type { StoredGame } from '../lib/types';
 import { analyseOnce, cloudLines, winChance } from './engine';
 
@@ -24,25 +24,10 @@ async function engineAt(key: string): Promise<{ best: string; eval: Score } | un
  */
 export async function addGameCards(game: StoredGame): Promise<number> {
   const now = Date.now();
-  const keys: string[] = [];
-  let pos = startPos();
-  keys.push(keyOf(pos));
-  for (const san of game.sans) {
-    const r = playSan(pos, san);
-    if (!r) break;
-    pos = r.pos;
-    keys.push(r.key);
-  }
+  const keys = keysOf(game);
   const cards: TacticCard[] = [];
   for (const m of gameMistakes(game)) {
-    if (!m.best && keys[m.ply]) {
-      const e = await engineAt(keys[m.ply]);
-      if (e) [m.best, m.before] = [e.best, m.before ?? e.eval];
-    }
-    if (m.kind === 'punish' && !m.reply && keys[m.ply + 1]) {
-      const e = await engineAt(keys[m.ply + 1]);
-      if (e) [m.reply, m.after] = [e.best, m.after ?? e.eval];
-    }
+    await fillFromEngine(m, keys);
     if (cardReady(m)) cards.push(gameCard(game, m, now));
   }
   let added = 0;
@@ -54,6 +39,52 @@ export async function addGameCards(game: StoredGame): Promise<number> {
     }
   });
   return added;
+}
+
+/** Each position's key in a game, from the start. */
+function keysOf(game: StoredGame): string[] {
+  const keys: string[] = [];
+  let pos = startPos();
+  keys.push(keyOf(pos));
+  for (const san of game.sans) {
+    const r = playSan(pos, san);
+    if (!r) break;
+    pos = r.pos;
+    keys.push(r.key);
+  }
+  return keys;
+}
+
+/** What the engine hasn't looked at yet: the move to find before yours, their reply after it. */
+async function fillFromEngine(m: GameMistake, keys: string[]) {
+  if ((!m.best || !m.before) && keys[m.ply]) {
+    const e = await engineAt(keys[m.ply]);
+    if (e) [m.best, m.before] = [m.best ?? e.best, m.before ?? e.eval];
+  }
+  if ((m.kind === 'punish' ? !m.reply || !m.after : !m.after) && keys[m.ply + 1]) {
+    const e = await engineAt(keys[m.ply + 1]);
+    if (e) [m.reply, m.after] = [m.reply ?? e.best, m.after ?? e.eval];
+  }
+}
+
+/**
+ * A game card made before blunders became punishment cards, sorted again by today's rules — a blunder
+ * where many moves held becomes their punishment to find — keeping its progress (saved). As it was if
+ * its game is gone or the engine can't say.
+ */
+export async function upgradeGameCard(card: TacticCard): Promise<TacticCard> {
+  const game = card.game && (await db.games.get(card.game.id));
+  let next: TacticCard = { ...card, game: { ...card.game!, kind: 'best' } };
+  if (game) {
+    const m = mistakeAt(game, cardPly(card));
+    await fillFromEngine(m, keysOf(game)).catch(() => undefined);
+    if (cardReady(m)) {
+      const fresh = gameCard(game, m, card.createdAt);
+      next = { ...fresh, step: card.step, streak: card.streak, due: card.due, createdAt: card.createdAt, lastAt: card.lastAt, reason: card.reason, retired: card.retired };
+    }
+  }
+  await db.tacticCards.put(next);
+  return next;
 }
 
 /**

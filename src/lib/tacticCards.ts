@@ -49,7 +49,7 @@ export interface TacticCard {
      * moves held — find their reply that punishes it (from your side of the board), then a better move.
      */
     kind?: 'best' | 'punish';
-    /** punish: the evaluation after your move, with their best reply (White's view). */
+    /** The evaluation after your move, with their best reply (White's view). */
     after?: Score;
     /** punish: the engine's move before yours, shown once you've found a better one. */
     betterMove?: string;
@@ -134,21 +134,9 @@ const WAS_BETTER = 65;
  */
 export function gameMistakes(game: StoredGame): GameMistake[] {
   const you = game.userColor;
-  const merged = withLiveEvals(game.review, game.liveEvals, game.sans.length + 1);
+  const merged = mergedReview(game);
   const out = new Map<number, GameMistake>();
-  const at = (ply: number, kind?: GameMistake['kind']): GameMistake => {
-    const before = merged?.evals[ply] ?? undefined;
-    const gap = merged ? onlyMoveGap(merged, ply) : undefined;
-    const stoodOut = gap !== undefined ? gap >= ONLY_MOVE_GAP : before !== undefined && winFor(before, you) >= WAS_BETTER;
-    return {
-      ply,
-      kind: kind ?? (stoodOut ? 'best' : 'punish'),
-      best: merged?.best[ply] ?? undefined,
-      before,
-      reply: merged?.best[ply + 1] ?? undefined,
-      after: merged?.evals[ply + 1] ?? undefined,
-    };
-  };
+  const at = (ply: number, kind?: GameMistake['kind']) => mistakeAt(game, ply, kind, merged);
   const mine = (ply: number) => ply > 0 && ply < game.sans.length && (ply % 2 === 0 ? 'white' : 'black') === you;
   if (merged) {
     for (const s of crucialSwings(merged, game.timeClass, 8)) if (s.mover === you && mine(s.ply)) out.set(s.ply, at(s.ply));
@@ -166,6 +154,26 @@ export function gameMistakes(game: StoredGame): GameMistake[] {
   return [...out.values()].sort((x, y) => x.ply - y.ply);
 }
 
+const mergedReview = (game: StoredGame) => withLiveEvals(game.review, game.liveEvals, game.sans.length + 1);
+
+/**
+ * Your move at `ply` as a mistake: a missed tactic if one move stood out (above the second best, when
+ * that's known; else you were clearly better), else a blunder where many moves held.
+ */
+export function mistakeAt(game: StoredGame, ply: number, kind?: GameMistake['kind'], merged = mergedReview(game)): GameMistake {
+  const before = merged?.evals[ply] ?? undefined;
+  const gap = merged ? onlyMoveGap(merged, ply) : undefined;
+  const stoodOut = gap !== undefined ? gap >= ONLY_MOVE_GAP : before !== undefined && winFor(before, game.userColor) >= WAS_BETTER;
+  return {
+    ply,
+    kind: kind ?? (stoodOut ? 'best' : 'punish'),
+    best: merged?.best[ply] ?? undefined,
+    before,
+    reply: merged?.best[ply + 1] ?? undefined,
+    after: merged?.evals[ply + 1] ?? undefined,
+  };
+}
+
 /** The game's moves in standard UCI. */
 function ucisOf(sans: readonly string[]): string[] {
   const out: string[] = [];
@@ -178,6 +186,12 @@ function ucisOf(sans: readonly string[]): string[] {
   }
   return out;
 }
+
+/** A card's move index in its game (`g:${gameId}:${ply}` — the game's id can hold colons). */
+export const cardPly = (card: TacticCard) => Number(card.id.slice(card.id.lastIndexOf(':') + 1));
+
+/** A game card from before blunders became punishment cards: sorted again by today's rules. */
+export const needsUpgrade = (card: TacticCard) => card.source === 'game' && !!card.game && !card.game.kind;
 
 /** Has what its card needs: the move to find (best), or their reply (punish). */
 export const cardReady = (m: GameMistake) => (m.kind === 'best' ? !!m.best : !!m.reply);
@@ -213,7 +227,8 @@ export function gameCard(game: StoredGame, m: GameMistake, now: number): TacticC
       opponent: you === 'white' ? game.black : game.white,
       playedAt: game.playedAt,
       kind: m.kind,
-      ...(punish ? { after: m.after, betterMove: m.best, theyPlayed: game.sans[m.ply + 1] } : {}),
+      after: m.after,
+      ...(punish ? { betterMove: m.best, theyPlayed: game.sans[m.ply + 1] } : {}),
     },
     step: 0,
     streak: 0,
