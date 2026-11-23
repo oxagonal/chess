@@ -41,11 +41,11 @@ export function AnnotationMenu({
   latest.current = { annotation, comment, onChange };
   const commentBox = useRef<HTMLTextAreaElement>(null);
 
-  // Straight into the comment, the cursor after what's written. (On a phone the keyboard comes up as
-  // the finger lifts — see annotateProps.)
+  // With a mouse, straight into the comment, the cursor after what's written. Not on a touch screen:
+  // the keyboard would come up over the symbols — tap the box to write.
   useEffect(() => {
     const t = commentBox.current;
-    if (!t) return;
+    if (!t || window.matchMedia?.('(pointer: coarse)').matches) return;
     t.focus({ preventScroll: true });
     t.setSelectionRange(t.value.length, t.value.length);
   }, []);
