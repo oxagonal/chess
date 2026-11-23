@@ -268,9 +268,9 @@ function PuzzlePicker({ canWrite }: { canWrite: boolean }) {
             if (currentBlock && !currentBlock.attempts.length) setBlock({ ...currentBlock, size });
           }}
         >
-          {[5, 10, 15, 20, 30].map((n) => (
+          {[1, 3, 5, 10, 15, 20, 30].map((n) => (
             <option key={n} value={n}>
-              {n} puzzles
+              {n === 1 ? 'Just one' : `${n} puzzles`}
             </option>
           ))}
         </select>
@@ -539,7 +539,7 @@ function PuzzleSession({ onGlicko, toolbar }: { onGlicko: (g: Glicko) => void; t
         timer={{ elapsed: clock.elapsed, budgetMs }}
         onResult={(win, soft) => void finish(cur, win, soft)}
         onNext={next}
-        nextLabel={lastOne ? 'End of the block →' : 'Next puzzle →'}
+        nextLabel={lastOne ? (b?.size === 1 ? 'Done →' : 'End of the block →') : 'Next puzzle →'}
       />
     </div>
   );
@@ -550,9 +550,7 @@ function BlockProgress({ b, current, review, toolbar }: { b: Block; current: boo
   const n = b.attempts.length + (current ? 1 : 0);
   return (
     <div className="row puzzle-block-bar">
-      <b>
-        Puzzle {Math.min(n, b.size)} of {b.size}
-      </b>
+      <b>{b.size === 1 ? 'One puzzle' : `Puzzle ${Math.min(n, b.size)} of ${b.size}`}</b>
       {review && (
         <span className="badge" title={`${review.game ? 'A mistake from your game' : 'You missed it'} ${fmtDate(review.createdAt)}${review.streak ? ` — solved again ${review.streak}× since` : ''}: solve it from scratch`}>
           {review.game ? `↻ from your game vs ${review.game.opponent}` : '↻ one you missed'}
@@ -589,6 +587,31 @@ function BlockSummary({ b, budgetMs, onAnother }: { b: Block; budgetMs: number; 
   const minutes = Math.max(1, Math.round(b.attempts.reduce((s, a) => s + a.ms, 0) / 60_000));
   const rated = b.attempts.filter((a) => a.rated && a.ratingDiff !== undefined);
   const diff = rated.reduce((s, a) => s + (a.ratingDiff ?? 0), 0);
+  // Just one puzzle: how it went, and another if you like — no block's worth of numbers or break.
+  if (b.size === 1 && n === 1) {
+    const a = b.attempts[0];
+    return (
+      <div className="panel col block-summary" style={{ gap: 10 }}>
+        <h2 style={{ margin: 0 }}>{a.win ? (a.soft ? '✓ Solved (soft)' : '✓ Solved') : '✗ Missed'}</h2>
+        <p className="small" style={{ margin: 0 }}>
+          {fmtClock(a.ms)}
+          {a.overTime ? ` — over your ${budgetMin} min` : ''}
+          {rated.length > 0 && (
+            <>
+              {' '}
+              · Lichess rating <b className={diff >= 0 ? 'good-text' : 'warn-text'}>{diff >= 0 ? `+${diff}` : diff}</b>
+            </>
+          )}
+          {!a.win && ' · it comes back from tomorrow, to solve again from scratch'}
+        </p>
+        <div className="row">
+          <button className="primary" onClick={onAnother}>
+            Another puzzle
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="panel col block-summary" style={{ gap: 12 }}>
       <h2 style={{ margin: 0 }}>{n >= b.size ? 'Block done' : `Block ended after ${n} puzzle${n === 1 ? '' : 's'}`}</h2>

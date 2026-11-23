@@ -29,7 +29,7 @@ const DAY_MS = 86_400_000;
 
 export function PlanPage() {
   const settings = useSettings();
-  const [period, setPeriod] = useState<Period>('week');
+  const [period, setPeriod] = useState<Period>('today');
   const now = useNow(60_000);
   const { from, to, days } = periodBounds(period, now);
   const activities = useLiveQuery(() => db.activity.where('start').between(from, to, true, false).toArray(), [from, to]);

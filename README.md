@@ -131,7 +131,7 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   positions where you went wrong): "Done reviewing" a game with a computer review turns your crucial
   mistakes (and the moves you marked ? or ??) into the same cards — "what should you have played?", the engine's move or any other that
   Stockfish says holds up, and afterwards what you played in the game, with a link to it. The Puzzles page
-  shows why you miss most often, with what to do about it, and how many cards are coming back. Blocks guard against tilt: your rating stays hidden
+  shows why you miss most often, with what to do about it, and how many cards are coming back. Blocks (pick the size before you start — 10 by default, or just one) guard against tilt: your rating stays hidden
   until the block ends; three misses in a row, or a quick miss right after a miss, bring up a breather. With Lichess connected they're picked around your
   Lichess puzzle rating and, if you let them, count toward it. Every puzzle is kept in your history with
   the time it took (synced), for the balance of the three. On a phone it's one screen, like training: the
