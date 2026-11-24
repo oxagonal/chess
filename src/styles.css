@@ -876,6 +876,8 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
   .thumb-right .train-phone .train-actions { flex-direction: row-reverse; }
   .thumb-right .train-phone .train-nav { justify-content: flex-end; }
   .thumb-right .pp-actions { flex-direction: row-reverse; }
+  /* "Show the solution?": the safe answer under the thumb. */
+  .thumb-right .give-up-confirm > button:not(.danger-ghost) { order: 1; }
   .thumb-right .ps-controls > label.check, .thumb-right .ps-controls > .small:not(button) { order: -1; }
 }
 

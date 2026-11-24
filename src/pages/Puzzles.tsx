@@ -217,6 +217,7 @@ function useOpeningAngles(): { color: Color; name: string; angle: string }[] {
 
 function PuzzlePicker({ canWrite }: { canWrite: boolean }) {
   const settings = useSettings();
+  const phone = useMediaQuery(PHONE_QUERY);
   const openings = useOpeningAngles();
   const known = settings.puzzleAngle === 'mix' || PUZZLE_THEMES.some(([k]) => k === settings.puzzleAngle) || openings.some((o) => o.angle === settings.puzzleAngle);
   return (
@@ -294,6 +295,14 @@ function PuzzlePicker({ canWrite }: { canWrite: boolean }) {
         <input type="checkbox" disabled={!canWrite} checked={canWrite && settings.puzzleRated} onChange={(e) => updateSettings({ puzzleRated: e.target.checked })} />
         <span className="small">Count toward my Lichess puzzle rating</span>
       </label>
+      {phone && (
+        <label className="check" title="Also in training and the builder (Settings)">
+          <input type="checkbox" checked={settings.thumbRight} onChange={(e) => updateSettings({ thumbRight: e.target.checked })} />
+          <span className="small">
+            <b>Right thumb</b> — Check, Next and Replay on the right of the bottom row (the move arrows on the left)
+          </span>
+        </label>
+      )}
     </div>
   );
 }

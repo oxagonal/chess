@@ -64,8 +64,10 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   board stays on screen, the moves, explorer, computer review and the rest are tabs under it (each
   scrolling in its own box), and the move buttons sit at the bottom. Drag the grip under the board to make it
   smaller (an evaluation bar appears beside it); in a review, where the game left your prep pops up at that move.
-  Training and puzzles on a phone have the same grip under the board. Settings → Right thumb puts the main
-  buttons of the bottom row on the right (Continue, Show move, Check, Next; the arrows in the builder).
+  Training and puzzles on a phone have the same grip under the board. Right thumb (in Settings, training's
+  options or the puzzles' ⚙) puts the main buttons of the bottom row on the right (Continue, Show move,
+  Check, Next, Replay; the arrows in the builder), and "Keep trying" under the thumb when you ask for a
+  puzzle's solution.
   Arrows and circles work as in the Lichess app: keep one finger on the board and drag another (a tap with
   it draws a circle; a tap on an empty square clears them; it can be turned off in Settings).
 - **Players** — a tab next to the explorer in the builder for scouting opponents: save a player with their
