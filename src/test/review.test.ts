@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { db } from '../db/db';
 import { saveAnnotation } from '../db/annotations';
 import { canPromote, glyphsFromNags, lineTree, moveGlyph, nagsOf, otherGlyphs, promoteLine, sanWithGlyphs, sortGlyphs, toggleGlyph, withLineNote, withSharedLineNote, type SavedLine } from '../lib/annotations';
-import { biggestSwingsFor, formatEvalShort, withLiveEvals, type GameReview } from '../lib/review';
+import { biggestSwingsFor, formatEvalShort, swings, withLiveEvals, type GameReview } from '../lib/review';
 import { clocksAt, formatClock, formatMoveTime, inferIncrement, moveTimes, timeSpent } from '../lib/clocks';
 import { materialBalance } from '../lib/material';
 import { WORK_ON_TAGS, tagOptions, toggleTag } from '../lib/takeaways';
@@ -248,5 +248,19 @@ describe('the live engine and the computer review', () => {
     expect(m.complete).toBeUndefined();
     expect(withLiveEvals(undefined, undefined, 6)).toBeUndefined();
     expect(withLiveEvals(review, {}, 4)).toBe(review);
+  });
+  it('the engine’s own best move is never a mistake, even when the next position was looked at less deeply', () => {
+    // The Stockfish box saw +3.7 before White's move (depth 18, best d5e6); the review, shallower, +2.6 after it.
+    const r: GameReview = { depth: 12, analyzedAt: 1, evals: [{ cp: 20 }, { cp: 30 }, { cp: 260 }, { cp: 250 }], best: ['e2e4', 'e7e5', 'd5e6', null] };
+    const live = { 2: { cp: 373, depth: 18, best: 'd5e6' } };
+    const played = ['e2e4', 'e7e5', 'd5e6'];
+    expect(swings(withLiveEvals(r, live, 4)!).find((x) => x.ply === 2)?.judgement).toBe('inaccuracy');
+    const s = swings(withLiveEvals(r, live, 4, played)!).find((x) => x.ply === 2)!;
+    expect([s.loss, s.judgement]).toEqual([0, undefined]);
+    // Another move there is still judged by the drop.
+    const other = swings(withLiveEvals(r, live, 4, ['e2e4', 'e7e5', 'a2a4'])!).find((x) => x.ply === 2)!;
+    expect(other.judgement).toBe('inaccuracy');
+    // Without the Stockfish box too.
+    expect(withLiveEvals(r, undefined, 4, played)!.played).toEqual(played);
   });
 });

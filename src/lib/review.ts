@@ -24,6 +24,12 @@ export interface GameReview {
   second?: (Score | null)[];
   /** false while the analysis is still running (or was interrupted): evals cover only the start. */
   complete?: boolean;
+  /**
+   * played[i] = the move played in position i (standard UCI) — attached when the review is shown, not
+   * stored: the engine's own best move is never a mistake, whatever a deeper (or shallower) look at
+   * the next position says.
+   */
+  played?: (string | null)[];
 }
 
 export type Judgement = 'inaccuracy' | 'mistake' | 'blunder';
@@ -78,7 +84,11 @@ export function swings(review: GameReview): Swing[] {
     const before = winChanceOf(a);
     const after = winChanceOf(b);
     const mover: Color = ply % 2 === 0 ? 'white' : 'black';
-    const loss = mover === 'white' ? before - after : after - before;
+    const drop = mover === 'white' ? before - after : after - before;
+    // The engine's best move loses nothing: a drop is just two searches disagreeing (the Stockfish
+    // box went deeper before the move than the review did after it, say).
+    const best = review.best[ply];
+    const loss = best && review.played?.[ply] === best ? Math.min(0, drop) : drop;
     out.push({ ply, mover, before, after, scoreBefore: a, scoreAfter: b, loss, judgement: judge(loss), best: review.best[ply] ?? undefined });
   }
   return out;
@@ -115,9 +125,15 @@ export interface LiveEval extends Score {
  * once it has gone further than the review did. Without a computer review, just the live evaluations
  * (positions you haven't looked at stay empty). `positions`: the game's positions (moves + 1).
  */
-export function withLiveEvals(review: GameReview | undefined, live: Record<string, LiveEval> | undefined, positions: number): GameReview | undefined {
+export function withLiveEvals(
+  review: GameReview | undefined,
+  live: Record<string, LiveEval> | undefined,
+  positions: number,
+  /** The game's moves (standard UCI): judged knowing which were the engine's own. */
+  played?: readonly string[],
+): GameReview | undefined {
   const keys = live ? Object.keys(live) : [];
-  if (!keys.length) return review;
+  if (!keys.length) return review && played ? { ...review, played: [...played] } : review;
   const evals: (Score | null)[] = Array.from({ length: Math.max(positions, review?.evals.length ?? 0) }, (_, i) => review?.evals[i] ?? null);
   const best: (string | null)[] = evals.map((_, i) => review?.best[i] ?? null);
   const second: (Score | null)[] = evals.map((_, i) => review?.second?.[i] ?? null);
@@ -140,6 +156,7 @@ export function withLiveEvals(review: GameReview | undefined, live: Record<strin
     best: best.slice(0, Math.max(n, review?.evals.length ?? 0)),
     ...(second.some(Boolean) ? { second: second.slice(0, Math.max(n, review?.evals.length ?? 0)) } : {}),
     ...(review?.complete === false ? { complete: false } : {}),
+    ...(played ? { played: [...played] } : {}),
   };
 }
 

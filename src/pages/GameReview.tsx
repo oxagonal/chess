@@ -296,7 +296,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
   // Arrows: where you left your prep (your prepared moves vs what was played), and at the computer's
   // swings the move played (red) vs the engine's choice (green).
   // The computer review with what the live engine found deeper (or instead of one).
-  const review = withLiveEvals(game.review, game.liveEvals, replay.positions.length);
+  const review = withLiveEvals(game.review, game.liveEvals, replay.positions.length, replay.ucis);
   if (!inLine) visitedRef.current.plies.add(cur);
   const allSwings = review ? swings(review) : [];
   const judged = new Map(allSwings.filter((s) => s.judgement).map((s) => [s.ply, s]));

@@ -154,7 +154,7 @@ export function gameMistakes(game: StoredGame): GameMistake[] {
   return [...out.values()].sort((x, y) => x.ply - y.ply);
 }
 
-const mergedReview = (game: StoredGame) => withLiveEvals(game.review, game.liveEvals, game.sans.length + 1);
+const mergedReview = (game: StoredGame) => withLiveEvals(game.review, game.liveEvals, game.sans.length + 1, ucisOf(game.sans));
 
 /**
  * Your move at `ply` as a mistake: a missed tactic if one move stood out (above the second best, when
