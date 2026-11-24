@@ -47,7 +47,10 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .app { display: flex; flex-direction: column; min-height: 100%; }
 .topbar {
   display: flex; align-items: center; gap: 4px;
-  padding: 0 20px; height: 56px;
+  /* Installed on an iPad (or a phone sideways) the app runs under the status bar: the clock, the
+     battery and a sideways notch get room of their own. */
+  padding: env(safe-area-inset-top) max(20px, env(safe-area-inset-right)) 0 max(20px, env(safe-area-inset-left));
+  height: calc(56px + env(safe-area-inset-top));
   background: rgba(18, 17, 16, 0.82);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border-soft);
@@ -72,7 +75,7 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 }
 .nav .badge { margin-left: 0; }
 .nav-icon { display: none; }
-.main { flex: 1; padding: 24px; max-width: 1440px; width: 100%; margin: 0 auto; min-width: 0; }
+.main { flex: 1; padding: 24px max(24px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); max-width: 1440px; width: 100%; margin: 0 auto; min-width: 0; }
 
 /* Phones: navigation moves to a bottom tab bar so every tab is reachable with a thumb. The app runs
    edge to edge (viewport-fit=cover, translucent status bar), so the safe areas are padded here. */
@@ -260,7 +263,7 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .board-layout { display: grid; grid-template-columns: minmax(280px, 640px) minmax(340px, 1fr); gap: 24px; align-items: start; }
 .board-layout > * { min-width: 0; }
 @media (max-width: 900px) { .board-layout { grid-template-columns: 1fr; gap: 14px; } }
-.board-col { position: sticky; top: 76px; }
+.board-col { position: sticky; top: calc(76px + env(safe-area-inset-top)); }
 @media (max-width: 900px) { .board-col { position: static; } }
 .board-wrap { position: relative; width: 100%; border-radius: 6px; transition: box-shadow .15s; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.5); }
 .board-wrap .cg-wrap-host { width: 100%; aspect-ratio: 1 / 1; border-radius: 6px; overflow: hidden; }
@@ -895,8 +898,8 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .inline-field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 .inline-field select { padding: 3px 6px; }
 /* Desktop builder "studio": edge to edge, a dockview workspace (tabs, rows, columns, floating). */
-.main:has(.studio) { max-width: none; padding: 8px 10px 10px; }
-.studio { height: calc(100vh - 56px - 18px); gap: 8px; }
+.main:has(.studio) { max-width: none; padding: 8px max(10px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+.studio { height: calc(100dvh - 56px - env(safe-area-inset-top) - 18px - env(safe-area-inset-bottom)); gap: 8px; }
 .studio .builder-head h1 { font-size: 19px; }
 .studio-wrap { flex: 1; min-height: 0; }
 .studio-dock {
