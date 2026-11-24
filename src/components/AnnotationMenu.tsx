@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { touchGuarded } from './NotePopover';
 import { MOVE_GLYPHS, OBSERVATION_GLYPHS, POSITION_GLYPHS, glyphClass, toggleGlyph, type Glyph, type MoveAnnotation } from '../lib/annotations';
 
 export interface AnnotationTarget {
@@ -40,6 +41,8 @@ export function AnnotationMenu({
   const latest = useRef({ annotation, comment, onChange });
   latest.current = { annotation, comment, onChange };
   const commentBox = useRef<HTMLTextAreaElement>(null);
+  // Opened by a finger still on the screen (a long press): beside it, not under it.
+  const byTouch = useRef(touchGuarded()).current;
 
   // With a mouse, straight into the comment, the cursor after what's written. Not on a touch screen:
   // the keyboard would come up over the symbols — tap the box to write.
@@ -56,10 +59,18 @@ export function AnnotationMenu({
     if (!el) return;
     const place = () => {
       const { width, height } = el.getBoundingClientRect();
-      setPos({
-        left: Math.max(8, Math.min(target.x + 6, window.innerWidth - width - 8)),
-        top: Math.max(8, Math.min(target.y + 6, window.innerHeight - height - 8)),
-      });
+      const clampX = (x: number) => Math.max(8, Math.min(x, window.innerWidth - width - 8));
+      const clampY = (y: number) => Math.max(8, Math.min(y, window.innerHeight - height - 8));
+      if (!byTouch) return setPos({ left: clampX(target.x + 6), top: clampY(target.y + 6) });
+      // Clear of the fingertip: below it if there's room, else above, else to the side.
+      const FINGER = 40;
+      const below = target.y + FINGER;
+      const above = target.y - FINGER - height;
+      if (below + height <= window.innerHeight - 8) return setPos({ left: clampX(target.x - width / 2), top: below });
+      if (above >= 8) return setPos({ left: clampX(target.x - width / 2), top: above });
+      const right = target.x + FINGER;
+      const left = right + width <= window.innerWidth - 8 ? right : target.x - FINGER - width;
+      setPos({ left: clampX(left), top: clampY(target.y - height / 2) });
     };
     place();
     const ro = new ResizeObserver(place);
@@ -69,7 +80,7 @@ export function AnnotationMenu({
       ro.disconnect();
       window.removeEventListener('resize', place);
     };
-  }, [target.x, target.y]);
+  }, [target.x, target.y, byTouch]);
 
   // Close on a tap outside or Escape (the comment is saved on the way out).
   useEffect(() => {
@@ -118,7 +129,17 @@ export function AnnotationMenu({
   const moveNo = `${Math.floor(target.ply / 2) + 1}${target.ply % 2 ? '…' : '.'}`;
 
   return createPortal(
-    <div className="anno-popover" ref={box} style={pos} onContextMenu={(e) => e.preventDefault()} role="dialog" aria-label={`Annotate ${moveNo} ${target.san}`}>
+    <div
+      className="anno-popover"
+      ref={box}
+      style={pos}
+      onContextMenu={(e) => e.preventDefault()}
+      // The finger that opened it is still down (or just lifted): not a tap on a symbol.
+      onClickCapture={(e) => {
+        if (!touchGuarded()) return;
+        e.preventDefault();
+        e.stopPropagation();
+      }} role="dialog" aria-label={`Annotate ${moveNo} ${target.san}`}>
       <div className="row anno-head">
         <b className="keep-case">
           {moveNo} {target.san}
