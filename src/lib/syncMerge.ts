@@ -12,6 +12,7 @@
 import { RepGraph } from './graph';
 import type { Color } from './chess';
 import type { RepMove } from './types';
+import { mergeSettings } from './settingsMerge';
 import { cardIdOf, migrateCardRows } from './chapters';
 
 export const SYNC_TABLES = ['repertoires', 'moves', 'cards', 'reviewLog', 'games', 'coverage', 'kv', 'players', 'collections', 'puzzleLog', 'activity', 'tacticCards'] as const;
@@ -145,6 +146,12 @@ export function sameRow(a: Row | undefined, b: Row | undefined): boolean {
 function resolve(table: SyncTable, l: Row, r: Row): Row {
   const vl = rowVersion(table, l);
   const vr = rowVersion(table, r);
+  if (table === 'kv' && l.key === 'settings' && !sameRow(l, r)) {
+    // Setting by setting: a change on one device doesn't undo another's (a plan, a toggle).
+    const value = mergeSettings(l.value ?? {}, vl, r.value ?? {}, vr);
+    const row = { ...(vl > vr ? l : r), value };
+    return sameRow(row, r) ? r : sameRow(row, l) ? l : row;
+  }
   if (vl === vr) return r;
   const newer = vl > vr ? l : r;
   const older = newer === l ? r : l;

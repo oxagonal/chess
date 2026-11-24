@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
+import { patchSettings } from '../lib/settingsMerge';
 import type { ProbabilitySource, StudyTopic, Third } from '../lib/types';
 import type { RatingPool } from '../lib/ratings';
 import type { TimeClass } from '../lib/importers/common';
@@ -230,7 +231,8 @@ export async function getSettings(): Promise<AppSettings> {
 export async function updateSettings(patch: Partial<AppSettings>): Promise<void> {
   await db.transaction('rw', db.kv, async () => {
     const row = await db.kv.get(KEY);
-    await db.kv.put({ key: KEY, value: { ...((row?.value as Partial<AppSettings>) ?? {}), ...patch } });
+    // With when each setting changed: devices merge settings one by one (src/lib/settingsMerge.ts).
+    await db.kv.put({ key: KEY, value: patchSettings(row?.value as Record<string, unknown> | undefined, row?.modifiedAt, patch, Date.now()) });
   });
 }
 

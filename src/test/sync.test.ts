@@ -9,6 +9,7 @@ import { syncOnce } from '../services/cloudSync';
 import { GistTransport, RemoteChangedError, decode, docGroups, encode, MANIFEST, type Transport } from '../services/gist';
 import { exportBackup, importBackup } from '../services/backup';
 import { markQuiet } from '../db/changes';
+import { mergeSettings, patchSettings } from '../lib/settingsMerge';
 
 /** The synced copy, kept in memory (stands in for the gist). */
 class MemoryRemote implements Transport {
@@ -213,6 +214,47 @@ describe('sync between two devices', () => {
     expect(s.newPerDay).toBe(7);
     expect(s.lichessToken).toBe('lip_phone');
     expect(s.lichessAccount).toBe('phone_account');
+  });
+
+  it('settings merge one by one: a toggle on one device doesn’t wipe a plan written on another', async () => {
+    const slot = { id: 's1', day: 1, time: '09:00', minutes: 45, third: 'games', task: 'Play' };
+    const phoneSettings = async (patch: Record<string, unknown>) => {
+      const row = await phone.kv.get('settings');
+      await phone.kv.put({ key: 'settings', value: patchSettings(row?.value as Record<string, unknown> | undefined, row?.modifiedAt, patch, clock) });
+    };
+    // Both devices start from the same settings.
+    await updateSettings({ newPerDay: 5 });
+    await sync(db);
+    await sync(phone);
+    // The plan is written on the computer; later the phone (not synced since) changes a toggle.
+    tick();
+    await updateSettings({ planSlots: [slot] as never });
+    tick();
+    await phoneSettings({ thumbRight: true });
+    await sync(phone);
+    await sync(db);
+    await sync(phone);
+    for (const d of [db, phone]) {
+      const v = (await d.kv.get('settings'))!.value as Record<string, unknown>;
+      expect([(v.planSlots as { id: string }[]).map((x) => x.id), v.thumbRight, v.newPerDay]).toEqual([['s1'], true, 5]);
+    }
+    // Deleting it later on the phone deletes it everywhere.
+    tick();
+    await phoneSettings({ planSlots: [] });
+    await sync(phone);
+    await sync(db);
+    expect(((await db.kv.get('settings'))!.value as Record<string, unknown>).planSlots).toEqual([]);
+  });
+
+  it('settings written before this: a plan on either device survives the other’s newer settings', () => {
+    const a = { planSlots: [{ id: 'a' }], newPerDay: 3 };
+    const b = { planSlots: [{ id: 'b' }], newPerDay: 9, thumbRight: true };
+    const m = mergeSettings(a, 10, b, 20);
+    expect([(m.planSlots as { id: string }[]).map((x) => x.id).sort(), m.newPerDay, m.thumbRight]).toEqual([['a', 'b'], 9, true]);
+    // Once a device has changed it since, its time decides.
+    const a2 = patchSettings(a, 10, { newPerDay: 4 }, 30);
+    expect(mergeSettings(a2, 30, b, 20).newPerDay).toBe(4);
+    expect(mergeSettings(b, 20, a2, 30).newPerDay).toBe(4);
   });
 
   it('syncs scouted players and over-the-board games', async () => {
