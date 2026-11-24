@@ -39,6 +39,7 @@ import type { AppSettings } from '../db/settings';
 import { type CoverageResult, type PositionStats, type RepMove, type Repertoire } from '../lib/types';
 import { isDue, isNew } from '../lib/srs';
 import { RepGraph } from '../lib/graph';
+import { confetti } from '../components/Confetti';
 
 export function RepertoirePage({ route }: PageProps) {
   const id = route.path[1];
@@ -382,6 +383,46 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     return { ...pick, label: formatLine(pick.sans) || 'the starting position' };
   }, [freshCoverage, graph, openingNames, rep?.name, colorMode]);
 
+  // Done: nothing left to answer down to your goal in this chapter (holes rarer than it don't count) —
+  // once the live coverage has caught up with your last edit.
+  const settled = !!freshCoverage && !live.running && !live.stale;
+  const chapterDone = settled && (!biggestGap || biggestGap.beyondTarget);
+  const goalText = `1 in ${goalN.toLocaleString()} games${settings.chapterOneInN > 0 && !colorMode ? ` (and 1 in ${settings.chapterOneInN} of the chapter's own)` : ''}`;
+  const [cheer, setCheer] = useState<string>();
+  useEffect(() => {
+    if (!rep || !settled) return;
+    // Once per chapter and goal on this device: done again after it wasn't (a goal raised, lines
+    // removed) celebrates again.
+    const k = `chess-prep:doneCheer:${repId}`;
+    const goal = `${goalN}|${settings.chapterOneInN}`;
+    const read = () => {
+      try {
+        return localStorage.getItem(k);
+      } catch {
+        return null;
+      }
+    };
+    const write = (v: string | null) => {
+      try {
+        if (v === null) localStorage.removeItem(k);
+        else localStorage.setItem(k, v);
+      } catch {
+        /* not remembered: may cheer again */
+      }
+    };
+    if (!chapterDone) {
+      if (read() !== null) write(null);
+      return;
+    }
+    if (read() === goal) return;
+    write(goal);
+    confetti();
+    setCheer(`${colorMode ? `All your ${rep.color === 'white' ? 'White' : 'Black'} chapters are` : `“${rep.name}” is`} done — every position you'll meet at least ${goalText} has an answer.`);
+    const t = setTimeout(() => setCheer(undefined), 8000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settled, chapterDone, repId, goalN, settings.chapterOneInN]);
+
   const jumpToBiggestGap = () => {
     if (!biggestGap) return;
     const l = lineFromSans(biggestGap.sans);
@@ -517,8 +558,18 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   );
   const header = (
     <div className="builder-head">
+      {cheer && (
+        <div className="cheer-toast" role="status" onClick={() => setCheer(undefined)}>
+          <span aria-hidden>🎉</span> {cheer}
+        </div>
+      )}
       <ChapterSwitcher chapter={rep} line={line.slice(0, cursor).map((m) => m.san)} />
       <ColorPill color={rep.color} />
+      {chapterDone && (
+        <span className="badge good" title={`Done: every position you'll meet at least ${goalText} has an answer. The biggest gap now is beyond your goal.`}>
+          ✓ Done
+        </span>
+      )}
       {!phone && <span className="muted small">{counts}</span>}
       {phone && <span className="spacer" />}
       <button
@@ -672,7 +723,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               onClick={jumpToBiggestGap}
               title={
                 biggestGap
-                  ? `Most common position you have no answer for: ${biggestGap.label} (${oneIn(biggestGap.prob)} games)`
+                  ? `${chapterDone ? `Done down to your goal (${goalText}). Beyond it, the most` : 'Most'} common position you have no answer for: ${biggestGap.label} (${oneIn(biggestGap.prob)} games)`
                   : live.running || live.stale
                     ? 'Calculating coverage…'
                     : 'No gaps found in this chapter'
@@ -783,6 +834,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const reachMark = !reach.error && (reach.prob !== undefined || reach.loading) && (
     <span className="ps-reach" style={{ opacity: reach.loading ? 0.5 : 1 }} title="How often games reach this position">
       {reach.prob === undefined ? '…' : reach.prob === 0 ? 'never' : `1 in ${oneInShort(reach.prob)}`}
+      {inRep && doneFrom(coverage?.coverage?.[key]) && !(live.running || live.stale) && <span className="good-text"> ✓</span>}
     </span>
   );
   // Lichess analysis and the FEN to copy (e.g. into Chessable) — not while playing from memory.
@@ -1170,6 +1222,11 @@ function useLineReach(
  * How often you reach this position, and how much of what follows is prepared — two numbers; the
  * explanations live in the tooltips.
  */
+/** "Prepared from here" this high is all of it (a rounding hair short of 1). */
+const ALL_PREPARED = 0.9999;
+/** Everything from this position is prepared down to your goal. */
+const doneFrom = (score: number | undefined) => score !== undefined && score >= ALL_PREPARED;
+
 function CoverageBox({
   reach,
   within,
@@ -1199,8 +1256,9 @@ function CoverageBox({
   const p = reach.prob;
   const rare = prob === undefined || prob < 1 / oneInN;
   const err = reach.error ?? error;
+  const done = inRep && doneFrom(score) && !running;
   return (
-    <div className="panel coverage-box">
+    <div className={`panel coverage-box ${done ? 'done' : ''}`}>
       <div
         className="cov-stat"
         title={`How often this position appears in your games, if you play your moves and opponents answer like ${source}. Every move order in all your ${colorLabel} counts.`}
@@ -1217,12 +1275,19 @@ function CoverageBox({
       {inRep && (
         <div
           className="cov-stat"
-          title={`Of the games that reach this position, the share that stays in your prep until positions get rarer than 1 in ${oneInN} games.`}
+          title={
+            done
+              ? rare
+                ? `Rarer than your goal (1 in ${oneInN} games): nothing more to prepare from here.`
+                : `Every line from here is prepared down to your goal: the games that reach this position stay in your prep until positions get rarer than 1 in ${oneInN} games.`
+              : `Of the games that reach this position, the share that stays in your prep until positions get rarer than 1 in ${oneInN} games.`
+          }
         >
-          <b style={{ color: score !== undefined && !rare ? coverColor(score) : undefined, opacity: running ? 0.5 : 1 }}>
-            {score === undefined ? (running ? '…' : '—') : rare ? '—' : `${Math.round(score * 100)}%`}
+          <b style={{ color: done ? 'var(--good)' : score !== undefined ? coverColor(score) : undefined, opacity: running ? 0.5 : 1 }}>
+            {/* Rounded down: 100% only when it's all of it. */}
+            {score === undefined ? (running ? '…' : '—') : done ? '✓ Done' : `${Math.floor(score * 100)}%`}
           </b>
-          <span>{score !== undefined && rare ? `rarer than 1 in ${oneInN}` : 'prepared from here'}</span>
+          <span>{done ? (rare ? 'rarer than your goal' : 'prepared from here') : 'prepared from here'}</span>
         </div>
       )}
       <span className="spacer" />

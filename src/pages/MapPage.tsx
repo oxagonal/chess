@@ -337,7 +337,9 @@ function GapsCard({ data, gaps, onOpen }: { data: MapData; gaps: ScopeGap[]; onO
       {!run ? (
         <p className="muted small">Run Coverage (above) to find the common positions your lines don't answer yet.</p>
       ) : !gaps.length ? (
-        <p className="muted small">None — everything you'll meet at least 1 in {Math.round(1 / run.threshold)} games has an answer.</p>
+        <p className="small">
+          <b className="good-text">✓ Done</b> <span className="muted">— everything you'll meet at least 1 in {Math.round(1 / run.threshold)} games has an answer.</span>
+        </p>
       ) : (
         <>
           <p className="muted small">

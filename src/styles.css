@@ -353,6 +353,16 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .cov-stat { display: flex; flex-direction: column; cursor: help; }
 .cov-stat b { font-size: 24px; line-height: 1.1; }
 .cov-stat span { color: var(--muted); font-size: 12px; }
+.coverage-box.done { border-color: color-mix(in srgb, var(--good) 55%, transparent); background: color-mix(in srgb, var(--good) 8%, var(--panel)); }
+/* Finished a chapter: a message over the page for a few seconds (tap to close). */
+.cheer-toast {
+  position: fixed; z-index: 1001; left: 50%; top: calc(70px + env(safe-area-inset-top)); transform: translateX(-50%);
+  width: max-content; max-width: min(560px, calc(100vw - 24px)); padding: 12px 16px; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--good) 22%, var(--panel)); border: 1px solid var(--good); color: var(--text);
+  font-weight: 600; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); cursor: pointer; animation: cheer-in .35s ease-out;
+}
+@keyframes cheer-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .cheer-toast { animation: none; } }
 .cov-error { color: var(--warn); max-width: 260px; }
 
 /* Engine box. */

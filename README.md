@@ -43,7 +43,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   asks whether to carry on in that chapter instead, and says so while you're on such a position. A live **coverage score** shows, for the
   position you're on (the start position or any move you click), the share of games reaching it that stay
   inside your prep until positions get rarer than 1 in N games — with a score per reply, recalculated as
-  you edit. Import PGN (with variations and comments),
+  you edit; once everything from a position is prepared it says **✓ Done** (100% only when it's all of it).
+  A chapter with nothing left to answer down to your goal gets a ✓ Done badge, and finishing one — the
+  last gap filled — sets off confetti (once per chapter and goal). Import PGN (with variations and comments),
   `.pgn` files or public Lichess studies; export back to PGN.
 - **Game review** — each game opens in the same dockable studio as the builder: board with both clocks,
   Stockfish, the game's moves as a scoresheet (always the game itself, with each move's clock), and a
@@ -104,8 +106,10 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   at your rating, how often does each position appear? Finds the opponent moves you'll face at least once
   every N games that your repertoire doesn't answer (*gaps*), positions where it's your move with nothing
   prepared, and the positions worth knowing cold. A color's run measures each of its chapters too (another
-  chapter's answer to a move counts); a repertoire has its own. Optionally restrict training to positions
-  above the threshold.
+  chapter's answer to a move counts); a repertoire has its own. Each chapter also covers the positions in
+  at least 1 in 100 of its own games — the games that reach its opening — so a rare opening still gets
+  prepared properly (Map → Details → Change target; 0 turns it off). Optionally restrict training to
+  positions above the threshold.
 - **Games** — downloads your Lichess and Chess.com games (incrementally), and takes **over-the-board games** you
   enter (play the moves on a board, or paste PGN — a multi-game PGN is matched to your name) and checks each one against your
   repertoires: where *you* left your prep ("forgot prep"), where the *opponent* did (gaps), or where the
