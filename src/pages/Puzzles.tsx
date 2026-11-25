@@ -837,7 +837,7 @@ function GameNote({ card }: { card: TacticCard }) {
   const found = punish && g.theyPlayed && playSanOf(card, g.theyPlayed) === card.puzzle.puzzle.solution[0];
   return (
     <span>
-      In your game vs <span className="keep-case">{g.opponent}</span> ({fmtDate(g.playedAt)}) you played{' '}
+      Against <span className="keep-case">{g.opponent}</span> on {fmtDate(g.playedAt)} you played{' '}
       <b className="warn-text">
         {moveNumberPrefix(ply, true)}
         {g.played}
@@ -850,13 +850,12 @@ function GameNote({ card }: { card: TacticCard }) {
       )}
       {reply && (
         <>
-          {' '}
-          — and they {found ? 'found it' : <>let you off with {reply}</>}
+          , and they {found ? 'found it' : <>let you off with {reply}</>}
         </>
       )}{' '}
       ·{' '}
       <a href={href(`games/${encodeURIComponent(g.id)}`, { ply: String(ply) })} title="Open the game's review at this move">
-        the game
+        open the game
       </a>
     </span>
   );

@@ -30,12 +30,11 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   behind with a button to it, and your week's plan: slots with a day, time, third and the exact task. The
   games bar shows playing and reviewing side by side, with how many of your games you've reviewed (the goal
   is all of them), a link to the latest one that isn't, and a warning once 3 are waiting.
-- **Stop rule** (Plan tab) — decided before you play: stop after N games in a session, X losses in a row, Y
-  rating points down, or a loss on time (a session is games less than 45 minutes apart). Home says when it's
-  time to stop, and a **phone check** holds you to it: an iPhone/iPad Shortcuts automation that runs when you
-  open the Chess.com app, asks `/api/stop` (your latest Chess.com and Lichess games, by your rule) and sends
-  you back to the Home Screen when the answer is STOP. With device sync on, the check reads the rule from a
-  small secret gist Tabiya keeps up to date, so changing it in Tabiya is enough.
+- **Stop rule** (Plan tab) — pick it before you play: stop after so many games, losses in a row, rating points
+  down, or a loss on time. Games less than 45 minutes apart count as one session. Home tells you when you hit
+  it, and your phone can too: an iPhone/iPad Shortcut runs when you open Chess.com, asks `/api/stop` about your
+  latest Chess.com and Lichess games, and sends you back to the Home Screen if it says STOP. With device sync
+  on, the rule lives in a private gist that Tabiya keeps up to date, so you only ever change it in Tabiya.
 - **Split into chapters** — a chapter's ⋯ menu suggests chapters from the opening names of its lines (by
   position, so transposed move orders land together); rename, merge or leave out suggestions first.
 - **Import wizard** — Repertoire → *Import a Lichess study or PGN*: study chapters become chapters (or go into

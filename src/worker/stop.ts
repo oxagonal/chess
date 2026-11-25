@@ -5,7 +5,7 @@
  * date: `?rule=<github user>/<gist id>`), or from the link itself (`?cc=&li=&games=&losses=&drop=&ontime=`).
  * Runs on Cloudflare (worker/index.ts); `fetcher` is swappable for tests.
  */
-import { normalRule, pointsLost, ruleText, sessionText, STOP_FILE, stopCheck, stopText, type SessionGame, type StopCheck, type StopRule, type StopRuleDoc } from '../lib/stopRule';
+import { normalRule, pointsLost, reasonsSentence, ruleText, sessionText, STOP_FILE, stopCheck, stopText, type SessionGame, type StopCheck, type StopRule, type StopRuleDoc } from '../lib/stopRule';
 
 const UA = 'Tabiya stop check (+https://chess.oxagon.workers.dev)';
 /** How far back to look: a session ends after STILL_PLAYING without a game, and sessions run long. */
@@ -38,15 +38,15 @@ export async function handleStop(url: URL, now = Date.now(), fetcher: Fetcher = 
   const ref = q.get('rule');
   if (ref) {
     const m = /^([A-Za-z0-9-]{1,39})\/([0-9a-f]{20,40})$/.exec(ref);
-    if (!m) return text('OK — this stop-check link is broken: copy it again from Tabiya → Plan.', 400);
+    if (!m) return text("OK. This link doesn't look right. Copy it again from Tabiya's Plan tab.", 400);
     try {
       const res = await fetcher(`https://gist.githubusercontent.com/${m[1]}/${m[2]}/raw/${STOP_FILE}?t=${Math.floor(now / 60_000)}`, {
         headers: { 'User-Agent': UA },
       });
-      if (!res.ok) return text(`OK — couldn't read your stop rule (GitHub said ${res.status}). Open Tabiya → Plan to set it up again.`);
+      if (!res.ok) return text(`OK. Couldn't load your stop rule (GitHub said ${res.status}). Set it up again from Tabiya's Plan tab.`);
       doc = (await res.json()) as StopRuleDoc;
     } catch {
-      return text("OK — couldn't read your stop rule right now.");
+      return text("OK. Couldn't load your stop rule just now.");
     }
   } else {
     const n = (k: string) => (q.has(k) ? Number(q.get(k)) : undefined);
@@ -56,7 +56,7 @@ export async function handleStop(url: URL, now = Date.now(), fetcher: Fetcher = 
   const sources: [string, Promise<SessionGame[]>][] = [];
   if (doc.chesscom?.trim()) sources.push(['Chess.com', chesscomGames(doc.chesscom.trim(), now, fetcher)]);
   if (doc.lichess?.trim()) sources.push(['Lichess', lichessGames(doc.lichess.trim(), now, fetcher)]);
-  if (!sources.length) return text('OK — no Chess.com or Lichess username in your stop rule: add one in Tabiya → Settings.');
+  if (!sources.length) return text("OK. There's no Chess.com or Lichess username to check. Add yours in Tabiya's Settings.");
   const games: SessionGame[] = [];
   const failed: string[] = [];
   for (const [name, p] of sources) {
@@ -73,15 +73,14 @@ export async function handleStop(url: URL, now = Date.now(), fetcher: Fetcher = 
     });
   }
   if (page) return new Response(stopPage(check, rule, failed), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
-  return text(stopText(check, rule) + (failed.length ? `\n(Couldn't reach ${failed.join(' and ')}.)` : ''));
+  return text(stopText(check, rule) + (failed.length ? ` (Couldn't reach ${failed.join(' or ')}.)` : ''));
 }
 
 const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
-/** The answer as a page: STOP or keep going, why, this session's games and your rule. */
+/** The answer as a page: stop or not, why, this session's games and your rule. */
 export function stopPage(c: StopCheck, rule: StopRule, failed: string[] = []): string {
   const stop = c.reasons.length > 0;
-  const cap = (x: string) => x[0].toUpperCase() + x.slice(1);
   // Oldest first, like a scoresheet: a dot per game.
   const dots = [...c.session]
     .reverse()
@@ -89,37 +88,32 @@ export function stopPage(c: StopCheck, rule: StopRule, failed: string[] = []): s
     .join('');
   const lost = pointsLost(c.session);
   const rating = c.session[0]?.rating;
-  // Under the dots: the session (when the line above doesn't already say it), your rating, points lost.
-  const meta = [stop && cap(sessionText(c, rule)), rating !== undefined && `rating ${rating}`, lost && `${lost} points down`].filter(Boolean).join(' · ');
+  const meta = [rating !== undefined && `Rating ${rating}`, lost && `down ${lost} since you started`].filter(Boolean).join(', ');
+  const ruleLine = ruleText(rule);
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1a1917"><title>${stop ? 'Time for a break' : 'Keep going'} · Tabiya</title>
+<meta name="theme-color" content="#1a1917"><title>${stop ? 'Time to stop' : 'OK to play'} · Tabiya</title>
 <style>
 :root { color-scheme: dark; --bg: #161513; --panel: #22201d; --text: #ece9e3; --muted: #9c978e; --good: #74b95a; --bad: #e05d5d; --draw: #9c978e; }
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
-  background: radial-gradient(900px 500px at 50% -10%, ${stop ? '#3a1c1c' : '#1d2a18'} 0%, transparent 70%), var(--bg); color: var(--text);
-  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; }
-.card { width: min(420px, 100%); background: var(--panel); border: 1px solid ${stop ? 'rgba(224,93,93,.45)' : 'rgba(116,185,90,.45)'}; border-radius: 18px; padding: 26px 22px 22px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
-.icon { font-size: 54px; line-height: 1; }
-h1 { margin: 12px 0 6px; font-size: 28px; letter-spacing: -0.02em; color: ${stop ? 'var(--bad)' : 'var(--good)'}; }
-.sub { color: var(--muted); margin: 0 0 16px; }
-ul { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 8px; }
-li { background: rgba(224,93,93,.12); border-radius: 10px; padding: 9px 12px; font-weight: 600; }
-.dots { display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; margin: 4px 0 6px; }
+  background: var(--bg); color: var(--text); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; }
+.card { width: min(400px, 100%); background: var(--panel); border-radius: 16px; padding: 24px 22px 22px; text-align: center; }
+h1 { margin: 0 0 12px; font-size: 26px; letter-spacing: -0.02em; color: ${stop ? 'var(--bad)' : 'var(--good)'}; }
+.why { margin: 0 0 16px; font-size: 17px; }
+.dots { display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; margin: 4px 0 8px; }
 .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--draw); }
 .dot.w { background: var(--good); } .dot.l { background: var(--bad); }
-.meta { color: var(--muted); font-size: 14px; margin: 0 0 4px; }
+.meta { color: var(--muted); font-size: 14px; margin: 0; }
 .rule { margin-top: 16px; padding-top: 14px; border-top: 1px solid #34312c; color: var(--muted); font-size: 14px; }
-a.btn { display: inline-block; margin-top: 16px; padding: 10px 18px; border-radius: 10px; background: ${stop ? '#3b6fb6' : '#3d6b2c'}; color: #fff; font-weight: 700; text-decoration: none; }
+a.btn { display: inline-block; margin-top: 16px; padding: 10px 18px; border-radius: 10px; background: #34312c; color: var(--text); font-weight: 600; text-decoration: none; }
 </style></head><body><main class="card">
-<div class="icon" aria-hidden="true">${stop ? '🛑' : '✅'}</div>
-<h1>${stop ? 'Time for a break' : 'Keep going'}</h1>
-<p class="sub">${esc(stop ? 'Review a game in Tabiya, or come back fresh.' : c.session.length ? cap(sessionText(c, rule)) : 'A fresh session — decide how many games before you start.')}</p>
-${stop ? `<ul>${c.reasons.map((r) => `<li>${esc(cap(r))}</li>`).join('')}</ul>` : ''}
-${c.session.length ? `<div class="dots" aria-label="This session's games">${dots}</div>${meta ? `<p class="meta">${esc(meta)}</p>` : ''}` : ''}
-${failed.length ? `<p class="meta">Couldn't reach ${esc(failed.join(' and '))} just now.</p>` : ''}
-<div class="rule">Your rule: ${esc(ruleText(rule))}</div>
+<h1>${stop ? 'Time to stop' : esc(sessionText(c, rule))}</h1>
+${stop ? `<p class="why">${esc(reasonsSentence(c.reasons))} That's where you said you'd stop.</p>` : ''}
+${c.session.length ? `<div class="dots" aria-label="This session's games">${dots}</div>` : ''}
+${meta ? `<p class="meta">${esc(meta)}</p>` : ''}
+${failed.length ? `<p class="meta">Couldn't reach ${esc(failed.join(' or '))} just now.</p>` : ''}
+<div class="rule">Your rule: ${esc(ruleLine)}</div>
 <a class="btn" href="/#/${stop ? 'games' : 'plan'}">${stop ? 'Review a game' : 'Open Tabiya'}</a>
 </main></body></html>`;
 }

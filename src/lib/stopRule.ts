@@ -80,16 +80,16 @@ export function stopCheck(games: readonly SessionGame[], rule: StopRule, now: nu
   if (!session.length) return { reasons, session };
   let streak = 0;
   while (streak < session.length && session[streak].score === 0) streak++;
-  if (rule.losses > 0 && streak >= rule.losses) reasons.push(`${streak} losses in a row`);
+  if (rule.losses > 0 && streak >= rule.losses) reasons.push(`you've lost ${streak} in a row`);
   if (rule.onTime) {
     const flagged = session.slice(0, 2).findIndex((g) => g.lostOnTime);
-    if (flagged >= 0) reasons.push(flagged === 0 ? 'you just lost on time' : 'you lost on time a game ago');
+    if (flagged >= 0) reasons.push(flagged === 0 ? 'you just lost on time' : 'you lost on time the game before');
   }
   if (rule.drop > 0) {
     const lost = pointsLost(session);
-    if (lost !== undefined && lost >= rule.drop) reasons.push(`${lost} points down this session`);
+    if (lost !== undefined && lost >= rule.drop) reasons.push(`you're down ${lost} points`);
   }
-  if (rule.games > 0 && session.length >= rule.games) reasons.push(`${session.length} games in this session`);
+  if (rule.games > 0 && session.length >= rule.games) reasons.push(`that's ${session.length} games`);
   return { reasons, session };
 }
 
@@ -101,31 +101,41 @@ export function pointsLost(session: readonly SessionGame[]): number | undefined 
   return Math.max(0, same[same.length - 1].rating! - same[0].rating!);
 }
 
-/** Your rule in words: "5 games · 2 losses in a row · 40 points down · a loss on time". */
+/** "a, b and c" */
+function list(xs: readonly string[], last = 'and'): string {
+  return xs.length < 2 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} ${last} ${xs[xs.length - 1]}`;
+}
+
+const cap = (x: string) => (x ? x[0].toUpperCase() + x.slice(1) : x);
+
+/** The reasons as a sentence: "You've lost 2 in a row and you're down 45 points." */
+export function reasonsSentence(reasons: readonly string[]): string {
+  return `${cap(list(reasons))}.`;
+}
+
+/** Your rule in words: "stop after 5 games, 2 losses in a row, 40 points down or a loss on time". */
 export function ruleText(rule: StopRule): string {
   const parts = [
     rule.games > 0 && `${rule.games} game${rule.games === 1 ? '' : 's'}`,
     rule.losses > 0 && `${rule.losses} loss${rule.losses === 1 ? '' : 'es'} in a row`,
     rule.drop > 0 && `${rule.drop} points down`,
     rule.onTime && 'a loss on time',
-  ].filter(Boolean);
-  return parts.length ? parts.join(' · ') : 'no limits';
+  ].filter((x): x is string => !!x);
+  return parts.length ? `stop after ${list(parts, 'or')}` : 'no limits set';
 }
 
-/** "3 of 5 games this session" */
+/** "3 of 5 games so far" / "No games yet" */
 export function sessionText(c: StopCheck, rule: StopRule): string {
   const n = c.session.length;
-  return `${n}${rule.games > 0 ? ` of ${rule.games}` : ''} game${n === 1 && rule.games <= 1 ? '' : 's'} this session`;
+  if (!n) return 'No games yet';
+  return `${n}${rule.games > 0 ? ` of ${rule.games}` : ''} game${n === 1 && rule.games <= 1 ? '' : 's'} so far`;
 }
 
 /**
- * The phone check's answer, for the Shortcut's alert: its first word is STOP or OK (the Shortcut
- * looks at that), then why, one reason a line, and your rule.
+ * The phone check's answer, for the Shortcut's alert. It starts with STOP or OK (the Shortcut
+ * looks at that).
  */
 export function stopText(c: StopCheck, rule: StopRule): string {
-  const cap = (x: string) => x[0].toUpperCase() + x.slice(1);
-  if (c.reasons.length)
-    return [`STOP 🛑 Time for a break`, '', ...c.reasons.map((r) => `• ${cap(r)}`), '', 'Review a game in Tabiya, or come back fresh.', `Your rule: ${ruleText(rule)}`].join('\n');
-  if (!c.session.length) return `OK ✅ A fresh session\nYour rule: ${ruleText(rule)}`;
-  return `OK ✅ ${cap(sessionText(c, rule))}\nYour rule: ${ruleText(rule)}`;
+  if (c.reasons.length) return `STOP. ${reasonsSentence(c.reasons)} That's where you said you'd stop.`;
+  return `OK. ${sessionText(c, rule)}.`;
 }

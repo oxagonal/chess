@@ -429,7 +429,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     const t = setTimeout(() => {
       write(goal);
       confetti();
-      setCheer(`${colorMode ? `All your ${rep.color === 'white' ? 'White' : 'Black'} chapters are` : `“${rep.name}” is`} done — every position you'll meet at least ${goalText} has an answer.`);
+      setCheer(`${colorMode ? `All your ${rep.color === 'white' ? 'White' : 'Black'} chapters are` : `${rep.name} is`} done. You have an answer for everything that comes up in at least 1 in ${goalN.toLocaleString()} games.`);
       setTimeout(() => setCheer(undefined), 8000);
     }, 1500);
     return () => clearTimeout(t);

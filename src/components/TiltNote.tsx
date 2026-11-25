@@ -5,7 +5,7 @@ import { useNow } from '../hooks';
 import { tiltCheck } from '../lib/tilt';
 import { checkRecentGames } from '../services/sync';
 import { useSettings } from '../db/settings';
-import { normalRule } from '../lib/stopRule';
+import { normalRule, reasonsSentence } from '../lib/stopRule';
 
 const DISMISSED_KEY = 'chess-prep:tiltDismissed';
 
@@ -36,15 +36,13 @@ export function TiltNote() {
       /* not remembered: it just shows again */
     }
   };
-  const why = tilt.reasons.join(', ');
   return (
     <div className="panel row tilt-note" role="status">
       <span className="tilt-icon" aria-hidden="true">
         ☕
       </span>
       <span className="small">
-        <b>Time to stop, by your rule:</b> {why[0].toUpperCase() + why.slice(1)}. Play only when you're fresh, decide how many games
-        before you start, and stop after a big blunder or a loss on time — review a game instead, or come back later.
+        <b>Time to stop.</b> {reasonsSentence(tilt.reasons)} That's where you said you'd stop, so maybe review a game instead.
       </span>
       <span className="spacer" />
       <button className="small ghost" aria-label="Close" onClick={close}>

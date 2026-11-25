@@ -144,8 +144,8 @@ export function PuzzleSolver({
         kind: 'info',
         text: betterMove ? (
           <>
-            You played <b>{betterMove.played}</b>. <b>Find {you === 'white' ? 'White' : 'Black'}'s punishment</b> — their best reply, from your side of
-            the board{mode === 'write' ? ' (write their line: tap or drag their moves, or type them)' : ''}.
+            You played <b>{betterMove.played}</b>. How does {you === 'white' ? 'White' : 'Black'} punish it?
+            {mode === 'write' ? ' Tap, drag or type their moves.' : ''}
           </>
         ) :
           mode === 'write' && phone ? (
@@ -195,7 +195,7 @@ export function PuzzleSolver({
       kind: 'info',
       text: (
         <>
-          Now <b>a better move than {betterMove!.played}</b> — back before it, any move that holds.
+          Now find a better move than <b>{betterMove!.played}</b>. Anything that holds counts.
         </>
       ),
     });
@@ -205,7 +205,7 @@ export function PuzzleSolver({
     const played = playUci(from.pos, uci);
     if (!played) return;
     if (from.children.includes(startId) && tree.get(startId).uci === played.uci) {
-      setFeedback({ kind: 'bad', text: <>That's the move you played — find another.</> });
+      setFeedback({ kind: 'bad', text: <>That's what you played. Try something else.</> });
       flashFor('bad');
       return;
     }
@@ -221,8 +221,8 @@ export function PuzzleSolver({
     bump();
     setFeedback(
       ok
-        ? { kind: 'good', text: <>✓ {played.san} holds{engine && engine !== played.san ? <> — the engine's choice was <b>{engine}</b></> : ''}.</> }
-        : { kind: 'bad', text: <>✗ {played.san} doesn't hold either{engine ? <> — the engine's choice was <b>{engine}</b></> : ''}.</> },
+        ? { kind: 'good', text: <>✓ {played.san} holds.{engine && engine !== played.san ? <> Stockfish's pick was <b>{engine}</b>.</> : ''}</> }
+        : { kind: 'bad', text: <>✗ {played.san} doesn't hold either.{engine ? <> Stockfish's pick was <b>{engine}</b>.</> : ''}</> },
     );
     flashFor(ok ? 'good' : 'bad');
     setBetter('done');
@@ -268,7 +268,7 @@ export function PuzzleSolver({
       addSolution();
       setFeedback({
         kind: 'good',
-        text: betterMove ? <>✓ Right — that's the punishment.</> : <>✓ Right — your lines have the solution, their best defence included.</>,
+        text: betterMove ? <>✓ That's it.</> : <>✓ Right — your lines have the solution, their best defence included.</>,
       });
       flashFor('good');
       return finish(true);
@@ -761,8 +761,8 @@ export function PuzzleSolver({
     phase === 'done' &&
     (betterMove && better !== 'done' ? (
       better === 'todo' && (
-        <button className="primary" onClick={startBetter} disabled={locked} title={locked ? 'Replay the solution first' : `Then: a better move than ${betterMove.played}`}>
-          Now a better move →
+        <button className="primary" onClick={startBetter} disabled={locked} title={locked ? 'Replay the solution first' : `Then find a better move than ${betterMove.played}`}>
+          Find a better move →
         </button>
       )
     ) : (
@@ -903,9 +903,9 @@ export function PuzzleSolver({
         </div>
         <p className="muted small puzzle-note" style={{ margin: 0 }}>
           {review && betterMove
-            ? 'A blunder from your game, to solve again cold (not rated): their punishment from your side of the board, then a better move — both right counts. Solved twice in a row within your time, it’s done.'
+            ? 'A blunder from one of your games (not rated). Find how they punish it, then a better move. You need both. Get it right twice in a row in time and it’s retired.'
             : review && judgeAlt
-            ? 'A position from your game, to solve again cold (not rated) — another good move counts too. Solved twice in a row within your time, it’s done.'
+            ? 'A position from one of your games (not rated). Any good move counts, not just Stockfish’s. Get it right twice in a row in time and it’s retired.'
             : review
             ? 'A puzzle you missed before, to solve again cold: it stays here (not rated). Solved twice in a row within your time, it’s done.'
             : report

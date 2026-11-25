@@ -76,10 +76,7 @@ export function StopRuleCard() {
 
   return (
     <div className="panel col stop-rule" style={{ gap: 10 }}>
-      <div className="row" style={{ gap: 8 }}>
-        <h3 style={{ margin: 0 }}>Stop rule</h3>
-        <span className="muted small">decided before you play — a session is games less than 45 min apart</span>
-      </div>
+      <h3 style={{ margin: 0 }}>Stop rule</h3>
       <div className="row" style={{ gap: '8px 18px', flexWrap: 'wrap' }}>
         {num('games', 'Stop after', 'games', 'Games in one session (0 = no limit)')}
         {num('losses', 'or', 'losses in a row', 'Losses in a row (0 = off)')}
@@ -90,8 +87,8 @@ export function StopRuleCard() {
         </label>
       </div>
       <p className="muted small" style={{ margin: 0 }}>
-        Home tells you when it's time to stop. On your phone, a Shortcut can check each time you open the Chess.com app and send you
-        back to the Home Screen.{' '}
+        Games less than 45 minutes apart count as one session. Set a number to 0 to turn it off. Home will tell you when you hit
+        your rule, and your phone can check every time you open Chess.com.{' '}
         <button className="linklike small" onClick={() => setShowSetup(!showSetup)} aria-expanded={showSetup}>
           {showSetup ? 'Hide the phone check' : 'Set up the phone check'}
         </button>
@@ -100,15 +97,15 @@ export function StopRuleCard() {
         <div className="col stop-setup" style={{ gap: 8 }}>
           {!names && (
             <div className="note small">
-              First add your Chess.com (or Lichess) username in <a href={href('settings')}>Settings</a> — the check looks at your games there.
+              Add your Chess.com or Lichess username in <a href={href('settings')}>Settings</a> first, so it knows whose games to look at.
             </div>
           )}
           {sync.connected && !s.stopGist ? (
             <div className="row" style={{ gap: 8 }}>
               <button className="primary small" onClick={setUp} disabled={busy || !names}>
-                {busy ? 'Setting up…' : 'Make my check link'}
+                {busy ? 'Setting up…' : 'Make my link'}
               </button>
-              <span className="muted small">Saves your rule in a small secret gist of yours that the check reads — change it here and the check follows.</span>
+              <span className="muted small">This saves your rule to a private gist on your GitHub, so your phone always has your latest numbers.</span>
             </div>
           ) : (
             link && (
@@ -124,8 +121,8 @@ export function StopRuleCard() {
                 </div>
                 {!sync.connected && (
                   <div className="muted small">
-                    This link has your rule written in it: change the rule and you'll need the new link in the Shortcut. With device sync on
-                    (Settings), the link reads your rule from Tabiya instead.
+                    Your numbers are part of this link, so if you change them you'll need to paste the new link into the Shortcut. With
+                    device sync on (Settings), the link keeps up by itself.
                   </div>
                 )}
               </>
@@ -134,23 +131,23 @@ export function StopRuleCard() {
           {error && <div className="error small">{error}</div>}
           <ol className="small stop-steps">
             <li>
-              On your iPhone or iPad, open <b>Shortcuts</b> → <b>Automation</b> → <b>+</b> → <b>App</b>: choose <b>Chess.com</b>, tick{' '}
-              <b>Is Opened</b>, choose <b>Run Immediately</b> → Next → <b>New Blank Automation</b>.
+              In the Shortcuts app, go to <b>Automation</b>, tap <b>+</b> and pick <b>App</b>. Choose <b>Chess.com</b>, tick <b>Is Opened</b>{' '}
+              and <b>Run Immediately</b>, then tap Next and <b>New Blank Automation</b>.
             </li>
             <li>
               Add <b>Get Contents of URL</b> and paste the link.
             </li>
             <li>
-              Add <b>If</b>: <i>Contents of URL</i> <b>begins with</b> <code>STOP</code>.
+              Add <b>If</b>. Tap <i>Contents of URL</i>, set its type to <b>Text</b>, then pick <b>begins with</b> and type <code>STOP</code>.
             </li>
             <li>
-              Inside the If, add <b>Show Alert</b> with <i>Contents of URL</i> as its message (turn off <b>Show Cancel Button</b>), then{' '}
-              <b>Go to Home Screen</b>. Done.
+              Inside the If, add <b>Show Alert</b> with <i>Contents of URL</i> as the message (turn off Show Cancel Button), then add{' '}
+              <b>Go to Home Screen</b>.
             </li>
           </ol>
           <div className="muted small">
-            It answers "STOP 🛑 Time for a break" with your reasons, or "OK ✅ 3 of 5 games this session" (tap Test to see). It can't lock the app — closing
-            the alert and opening Chess.com again runs it again — and a game shows up a few seconds after it ends.
+            It can't actually lock Chess.com. If you close the alert and open the app again, it just checks again. Games show up a few
+            seconds after they finish.
           </div>
         </div>
       )}

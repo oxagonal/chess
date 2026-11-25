@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_STOP_RULE, stopCheck, stopText, type SessionGame } from '../lib/stopRule';
+import { DEFAULT_STOP_RULE, ruleText, stopCheck, stopText, type SessionGame } from '../lib/stopRule';
 import { handleStop } from '../worker/stop';
 
 const now = Date.UTC(2026, 10, 25, 20, 0);
@@ -12,14 +12,13 @@ describe('the stop rule', () => {
     // Newest first: lost, lost, won, won — 2 losses in a row; 2000 → 1955.
     const session = [g(3, 0, 1955), g(10, 0, 1963), g(17, 1, 1971), g(24, 1, 1990), g(31, 0, 2000)];
     const c = stopCheck(session, rule, now);
-    expect(c.reasons).toEqual(['2 losses in a row', '45 points down this session', '5 games in this session']);
-    expect(stopText(c, rule)).toBe(
-      'STOP 🛑 Time for a break\n\n• 2 losses in a row\n• 45 points down this session\n• 5 games in this session\n\nReview a game in Tabiya, or come back fresh.\nYour rule: 5 games · 2 losses in a row · 40 points down · a loss on time',
-    );
+    expect(c.reasons).toEqual(["you've lost 2 in a row", "you're down 45 points", "that's 5 games"]);
+    expect(stopText(c, rule)).toBe("STOP. You've lost 2 in a row, you're down 45 points and that's 5 games. That's where you said you'd stop.");
     // One game in: carry on.
-    expect(stopText(stopCheck([g(3, 1, 2008)], rule, now), rule)).toBe('OK ✅ 1 of 5 games this session\nYour rule: 5 games · 2 losses in a row · 40 points down · a loss on time');
+    expect(stopText(stopCheck([g(3, 1, 2008)], rule, now), rule)).toBe('OK. 1 of 5 games so far.');
     // An hour and a half without a game: a fresh session.
-    expect(stopText(stopCheck(session.map((x) => ({ ...x, at: x.at - 120 * min })), rule, now), rule)).toMatch(/^OK ✅ A fresh session\n/);
+    expect(stopText(stopCheck(session.map((x) => ({ ...x, at: x.at - 120 * min })), rule, now), rule)).toBe('OK. No games yet.');
+    expect(ruleText(rule)).toBe('stop after 5 games, 2 losses in a row, 40 points down or a loss on time');
     // 0 turns a part off.
     expect(stopCheck(session, { games: 0, losses: 0, drop: 0, onTime: false }, now).reasons).toEqual([]);
     // Points at the speed you're playing now only.
@@ -48,10 +47,10 @@ describe('the phone check (/api/stop)', () => {
     const rule = { chesscom: 'MyName', games: 5, losses: 2, drop: 0, onTime: true };
     const f = fetcher({ 'gist.githubusercontent.com/me/0123456789abcdef0123/raw/tabiya-stop-rule.json': rule, 'api.chess.com/pub/player/myname/games/2026/11': ccArchive });
     const res = await handleStop(new URL('https://x/api/stop?rule=me/0123456789abcdef0123'), now, f);
-    expect(await res.text()).toMatch(/^STOP 🛑 Time for a break\n\n• 2 losses in a row\n• You just lost on time\n/);
+    expect(await res.text()).toBe("STOP. You've lost 2 in a row and you just lost on time. That's where you said you'd stop.");
     // Your limit raised to 3 losses in a row (and no loss-on-time rule): still fine.
     const f2 = fetcher({ 'gist.githubusercontent.com': { ...rule, losses: 3, onTime: false }, 'api.chess.com': ccArchive });
-    expect(await (await handleStop(new URL('https://x/api/stop?rule=me/0123456789abcdef0123'), now, f2)).text()).toMatch(/^OK ✅ 3 of 5 games this session\n/);
+    expect(await (await handleStop(new URL('https://x/api/stop?rule=me/0123456789abcdef0123'), now, f2)).text()).toBe('OK. 3 of 5 games so far.');
   });
   it('the rule can be in the link instead; Lichess counts too; a site that is down does not block you', async () => {
     const li = [
@@ -61,15 +60,15 @@ describe('the phone check (/api/stop)', () => {
       .map((x) => JSON.stringify(x))
       .join('\n');
     const f = fetcher({ 'lichess.org/api/games/user/me': li });
-    expect(await (await handleStop(new URL('https://x/api/stop?li=Me&games=5&losses=2'), now, f)).text()).toMatch(/^STOP 🛑 Time for a break\n\n• 2 losses in a row\n/);
+    expect(await (await handleStop(new URL('https://x/api/stop?li=Me&games=5&losses=2'), now, f)).text()).toMatch(/^STOP\. You've lost 2 in a row\./);
     const down = async (url: string) => (url.includes('chess.com') ? new Response('', { status: 503 }) : new Response(li));
-    expect(await (await handleStop(new URL('https://x/api/stop?cc=MyName&li=me&games=5&losses=3'), now, down)).text()).toMatch(/^OK ✅ 2 of 5 games this session\n.*\n\(Couldn't reach Chess\.com\.\)$/);
-    expect(await (await handleStop(new URL('https://x/api/stop?rule=not-a-gist'), now, f)).text()).toMatch(/broken/);
+    expect(await (await handleStop(new URL('https://x/api/stop?cc=MyName&li=me&games=5&losses=3'), now, down)).text()).toBe("OK. 2 of 5 games so far. (Couldn't reach Chess.com.)");
+    expect(await (await handleStop(new URL('https://x/api/stop?rule=not-a-gist'), now, f)).text()).toMatch(/doesn't look right/);
     // A browser gets a page; the Shortcut (not a browser) plain text.
     const safari = new Headers({ accept: 'text/html,application/xhtml+xml', 'user-agent': 'Mozilla/5.0 (iPhone) Safari' });
     const shortcut = new Headers({ accept: '*/*', 'user-agent': 'Shortcuts/2610 CFNetwork Darwin' });
     const pageRes = await handleStop(new URL('https://x/api/stop?li=Me&games=5&losses=2'), now, f, safari);
-    expect([pageRes.headers.get('content-type'), (await pageRes.text()).includes('Time for a break')]).toEqual(['text/html; charset=utf-8', true]);
+    expect([pageRes.headers.get('content-type'), (await pageRes.text()).includes('Time to stop')]).toEqual(['text/html; charset=utf-8', true]);
     expect((await handleStop(new URL('https://x/api/stop?li=Me&games=5&losses=2'), now, f, shortcut)).headers.get('content-type')).toMatch(/^text\/plain/);
   });
 });

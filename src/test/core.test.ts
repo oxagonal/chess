@@ -381,7 +381,7 @@ describe('tilt', () => {
     ({ id: `g${minAgo}`, source, playedAt: now - minAgo * 60_000, userScore: score, termination }) as unknown as StoredGame;
   it('flags a losing streak and a loss on time in the session you are playing', () => {
     const t = tiltCheck([game(5, 0, 'outoftime'), game(15, 0), game(25, 0), game(35, 1)], now)!;
-    expect(t.reasons).toEqual(['3 losses in a row', 'you just lost on time']);
+    expect(t.reasons).toEqual(["you've lost 3 in a row", 'you just lost on time']);
     expect(t.session.map((g) => g.id)).toEqual(['g5', 'g15', 'g25', 'g35']);
   });
   it('only looks at this session, and only while you are still playing', () => {
@@ -395,7 +395,7 @@ describe('tilt', () => {
   });
   it('a long session is a reason too', () => {
     const games = Array.from({ length: 10 }, (_, i) => game(5 + i * 10, i % 2));
-    expect(tiltCheck(games, now)!.reasons).toEqual(['10 games in this session']);
+    expect(tiltCheck(games, now)!.reasons).toEqual(["that's 10 games"]);
   });
   it('puzzles: three misses in a row, or a quick miss right after a miss', () => {
     const a = (win: boolean, s = 60) => ({ win, ms: s * 1000 });
