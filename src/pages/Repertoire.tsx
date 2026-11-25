@@ -177,8 +177,15 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const openingPath = (chapterOpening?.moves ?? []).map((m) => ({ fromKey: m.fromKey, san: m.san, key: m.toKey }));
   const openingReach = useLineReach(openingPath, rep?.color, colorGraph, settings, freshCoverage);
   const here = line.slice(0, cursor);
+  // Past the chapter's opening: on this line, or by the chapter's own move order to here (a line from
+  // training can come another way).
+  const hereKey = here.length ? here[here.length - 1].key : undefined;
   const pastOpening =
-    !!chapterOpening && chapterOpening.moves.length > 0 && here.length > chapterOpening.moves.length && here.some((m) => m.key === chapterOpening.key);
+    !!chapterOpening &&
+    chapterOpening.moves.length > 0 &&
+    hereKey !== chapterOpening.key &&
+    ((here.length > chapterOpening.moves.length && here.some((m) => m.key === chapterOpening.key)) ||
+      (!!hereKey && !!graph?.pathTo(hereKey)?.some((m) => m.toKey === chapterOpening.key)));
   const within =
     pastOpening && reach.prob !== undefined && openingReach.prob ? { prob: Math.min(1, reach.prob / openingReach.prob), loading: reach.loading || openingReach.loading } : undefined;
   const [flipped, setFlipped] = useState(false);
@@ -211,6 +218,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
 
   const children = graph?.childrenOf(key) ?? [];
   const inRep = graph?.has(key) ?? false;
+  // Coverage is of all this color's chapters: a position another chapter has is prepared there.
+  const inColor = inRep || (colorGraph?.has(key) ?? false);
   const myTurn = rep ? pos.turn === rep.color : false;
   const cardById = useMemo(() => new Map((cards ?? []).map((c) => [c.id, c])), [cards]);
   const lineInRep = line.map((m) => !!graph?.edge(m.fromKey, m.san));
@@ -826,7 +835,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
       within={within}
       openingLabel={formatLine((chapterOpening?.moves ?? []).map((m) => m.san))}
       colorLabel={rep ? `${rep.color === 'white' ? 'White' : 'Black'} chapters` : ''}
-      inRep={inRep}
+      inRep={inColor}
       score={coverage?.coverage?.[key]}
       prob={prob}
       oneInN={goalN}
@@ -838,7 +847,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   const reachMark = !reach.error && (reach.prob !== undefined || reach.loading) && (
     <span className="ps-reach" style={{ opacity: reach.loading ? 0.5 : 1 }} title="How often games reach this position">
       {reach.prob === undefined ? '…' : reach.prob === 0 ? 'never' : `1 in ${oneInShort(reach.prob)}`}
-      {inRep && doneFrom(coverage?.coverage?.[key]) && !(live.running || live.stale) && <span className="good-text"> ✓</span>}
+      {inColor && doneFrom(coverage?.coverage?.[key]) && !(live.running || live.stale) && <span className="good-text"> ✓</span>}
     </span>
   );
   // Lichess analysis and the FEN to copy (e.g. into Chessable) — not while playing from memory.
@@ -1274,6 +1283,12 @@ function CoverageBox({
         <div className="cov-stat" title={`How often this position comes up if this chapter's opening (${openingLabel}) came up in every game.`}>
           <b style={{ opacity: within.loading ? 0.5 : 1 }}>{within.prob === 0 ? 'never' : oneIn(within.prob)}</b>
           <span>within this opening</span>
+        </div>
+      )}
+      {!inRep && (
+        <div className="cov-stat" title={`This position isn't in any of your ${colorLabel}: add a line to it to see how much of what follows is prepared.`}>
+          <b style={{ color: 'var(--faint)' }}>—</b>
+          <span>not in your lines</span>
         </div>
       )}
       {inRep && (

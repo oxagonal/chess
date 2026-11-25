@@ -5,7 +5,7 @@
  * date: `?rule=<github user>/<gist id>`), or from the link itself (`?cc=&li=&games=&losses=&drop=&ontime=`).
  * Runs on Cloudflare (worker/index.ts); `fetcher` is swappable for tests.
  */
-import { normalRule, STOP_FILE, stopCheck, stopText, type SessionGame, type StopRuleDoc } from '../lib/stopRule';
+import { normalRule, pointsLost, ruleText, sessionText, STOP_FILE, stopCheck, stopText, type SessionGame, type StopCheck, type StopRule, type StopRuleDoc } from '../lib/stopRule';
 
 const UA = 'Tabiya stop check (+https://chess.oxagon.workers.dev)';
 /** How far back to look: a session ends after STILL_PLAYING without a game, and sessions run long. */
@@ -21,8 +21,19 @@ function text(body: string, status = 200): Response {
   });
 }
 
-export async function handleStop(url: URL, now = Date.now(), fetcher: Fetcher = fetch): Promise<Response> {
+/**
+ * A browser (the Test link, or the link opened in Safari) gets a page; the Shortcut gets plain text.
+ * `view=page` / `view=text` pick one outright.
+ */
+export function wantsPage(url: URL, headers?: Headers): boolean {
+  const view = url.searchParams.get('view');
+  if (view) return view === 'page';
+  return !!headers && /text\/html/.test(headers.get('accept') ?? '') && /^Mozilla\//.test(headers.get('user-agent') ?? '');
+}
+
+export async function handleStop(url: URL, now = Date.now(), fetcher: Fetcher = fetch, headers?: Headers): Promise<Response> {
   const q = url.searchParams;
+  const page = wantsPage(url, headers);
   let doc: StopRuleDoc;
   const ref = q.get('rule');
   if (ref) {
@@ -61,7 +72,56 @@ export async function handleStop(url: URL, now = Date.now(), fetcher: Fetcher = 
       headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' },
     });
   }
-  return text(stopText(check, rule) + (failed.length ? ` (Couldn't reach ${failed.join(' and ')}.)` : ''));
+  if (page) return new Response(stopPage(check, rule, failed), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+  return text(stopText(check, rule) + (failed.length ? `\n(Couldn't reach ${failed.join(' and ')}.)` : ''));
+}
+
+const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+/** The answer as a page: STOP or keep going, why, this session's games and your rule. */
+export function stopPage(c: StopCheck, rule: StopRule, failed: string[] = []): string {
+  const stop = c.reasons.length > 0;
+  const cap = (x: string) => x[0].toUpperCase() + x.slice(1);
+  // Oldest first, like a scoresheet: a dot per game.
+  const dots = [...c.session]
+    .reverse()
+    .map((g) => `<span class="dot ${g.score === 1 ? 'w' : g.score === 0 ? 'l' : 'd'}" title="${g.score === 1 ? 'Win' : g.score === 0 ? 'Loss' : 'Draw'}"></span>`)
+    .join('');
+  const lost = pointsLost(c.session);
+  const rating = c.session[0]?.rating;
+  // Under the dots: the session (when the line above doesn't already say it), your rating, points lost.
+  const meta = [stop && cap(sessionText(c, rule)), rating !== undefined && `rating ${rating}`, lost && `${lost} points down`].filter(Boolean).join(' · ');
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a1917"><title>${stop ? 'Time for a break' : 'Keep going'} · Tabiya</title>
+<style>
+:root { color-scheme: dark; --bg: #161513; --panel: #22201d; --text: #ece9e3; --muted: #9c978e; --good: #74b95a; --bad: #e05d5d; --draw: #9c978e; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+  background: radial-gradient(900px 500px at 50% -10%, ${stop ? '#3a1c1c' : '#1d2a18'} 0%, transparent 70%), var(--bg); color: var(--text);
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; }
+.card { width: min(420px, 100%); background: var(--panel); border: 1px solid ${stop ? 'rgba(224,93,93,.45)' : 'rgba(116,185,90,.45)'}; border-radius: 18px; padding: 26px 22px 22px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
+.icon { font-size: 54px; line-height: 1; }
+h1 { margin: 12px 0 6px; font-size: 28px; letter-spacing: -0.02em; color: ${stop ? 'var(--bad)' : 'var(--good)'}; }
+.sub { color: var(--muted); margin: 0 0 16px; }
+ul { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 8px; }
+li { background: rgba(224,93,93,.12); border-radius: 10px; padding: 9px 12px; font-weight: 600; }
+.dots { display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; margin: 4px 0 6px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; background: var(--draw); }
+.dot.w { background: var(--good); } .dot.l { background: var(--bad); }
+.meta { color: var(--muted); font-size: 14px; margin: 0 0 4px; }
+.rule { margin-top: 16px; padding-top: 14px; border-top: 1px solid #34312c; color: var(--muted); font-size: 14px; }
+a.btn { display: inline-block; margin-top: 16px; padding: 10px 18px; border-radius: 10px; background: ${stop ? '#3b6fb6' : '#3d6b2c'}; color: #fff; font-weight: 700; text-decoration: none; }
+</style></head><body><main class="card">
+<div class="icon" aria-hidden="true">${stop ? '🛑' : '✅'}</div>
+<h1>${stop ? 'Time for a break' : 'Keep going'}</h1>
+<p class="sub">${esc(stop ? 'Review a game in Tabiya, or come back fresh.' : c.session.length ? cap(sessionText(c, rule)) : 'A fresh session — decide how many games before you start.')}</p>
+${stop ? `<ul>${c.reasons.map((r) => `<li>${esc(cap(r))}</li>`).join('')}</ul>` : ''}
+${c.session.length ? `<div class="dots" aria-label="This session's games">${dots}</div>${meta ? `<p class="meta">${esc(meta)}</p>` : ''}` : ''}
+${failed.length ? `<p class="meta">Couldn't reach ${esc(failed.join(' and '))} just now.</p>` : ''}
+<div class="rule">Your rule: ${esc(ruleText(rule))}</div>
+<a class="btn" href="/#/${stop ? 'games' : 'plan'}">${stop ? 'Review a game' : 'Open Tabiya'}</a>
+</main></body></html>`;
 }
 
 interface ChesscomSide {

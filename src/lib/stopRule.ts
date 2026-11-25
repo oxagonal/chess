@@ -101,13 +101,31 @@ export function pointsLost(session: readonly SessionGame[]): number | undefined 
   return Math.max(0, same[same.length - 1].rating! - same[0].rating!);
 }
 
-/** The phone check's answer: "STOP — …" or "OK — …" (a Shortcut looks at the first word). */
-export function stopText(c: StopCheck, rule: StopRule): string {
-  if (c.reasons.length) {
-    const why = c.reasons.join(' · ');
-    return `STOP — ${why[0].toUpperCase()}${why.slice(1)}. Take a break: review a game, or come back fresh.`;
-  }
-  if (!c.session.length) return 'OK — a fresh session.' + (rule.games > 0 ? ` Your limit: ${rule.games} games.` : '');
+/** Your rule in words: "5 games · 2 losses in a row · 40 points down · a loss on time". */
+export function ruleText(rule: StopRule): string {
+  const parts = [
+    rule.games > 0 && `${rule.games} game${rule.games === 1 ? '' : 's'}`,
+    rule.losses > 0 && `${rule.losses} loss${rule.losses === 1 ? '' : 'es'} in a row`,
+    rule.drop > 0 && `${rule.drop} points down`,
+    rule.onTime && 'a loss on time',
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'no limits';
+}
+
+/** "3 of 5 games this session" */
+export function sessionText(c: StopCheck, rule: StopRule): string {
   const n = c.session.length;
-  return `OK — ${n}${rule.games > 0 ? ` of ${rule.games}` : ''} game${n === 1 && rule.games <= 1 ? '' : 's'} this session.`;
+  return `${n}${rule.games > 0 ? ` of ${rule.games}` : ''} game${n === 1 && rule.games <= 1 ? '' : 's'} this session`;
+}
+
+/**
+ * The phone check's answer, for the Shortcut's alert: its first word is STOP or OK (the Shortcut
+ * looks at that), then why, one reason a line, and your rule.
+ */
+export function stopText(c: StopCheck, rule: StopRule): string {
+  const cap = (x: string) => x[0].toUpperCase() + x.slice(1);
+  if (c.reasons.length)
+    return [`STOP 🛑 Time for a break`, '', ...c.reasons.map((r) => `• ${cap(r)}`), '', 'Review a game in Tabiya, or come back fresh.', `Your rule: ${ruleText(rule)}`].join('\n');
+  if (!c.session.length) return `OK ✅ A fresh session\nYour rule: ${ruleText(rule)}`;
+  return `OK ✅ ${cap(sessionText(c, rule))}\nYour rule: ${ruleText(rule)}`;
 }

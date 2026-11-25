@@ -118,7 +118,7 @@ export function StopRuleCard() {
                   <button className="small" onClick={copy}>
                     {copied ? 'Copied ✓' : 'Copy link'}
                   </button>
-                  <a className="btn small" href={link} target="_blank" rel="noreferrer" title="What the check says right now">
+                  <a className="btn small" href={`${link}${link.includes('?') ? '&' : '?'}view=page`} target="_blank" rel="noreferrer" title="What the check says right now">
                     Test ↗
                   </a>
                 </div>
@@ -149,7 +149,7 @@ export function StopRuleCard() {
             </li>
           </ol>
           <div className="muted small">
-            It answers "STOP — 2 losses in a row…" or "OK — 3 of 5 games this session" (tap Test to see). It can't lock the app — closing
+            It answers "STOP 🛑 Time for a break" with your reasons, or "OK ✅ 3 of 5 games this session" (tap Test to see). It can't lock the app — closing
             the alert and opening Chess.com again runs it again — and a game shows up a few seconds after it ends.
           </div>
         </div>
