@@ -17,5 +17,5 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "gamesdb", "vite.config.ts"]
+  "include": ["src", "gamesdb", "worker", "vite.config.ts"]
 }

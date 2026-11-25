@@ -30,6 +30,12 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   behind with a button to it, and your week's plan: slots with a day, time, third and the exact task. The
   games bar shows playing and reviewing side by side, with how many of your games you've reviewed (the goal
   is all of them), a link to the latest one that isn't, and a warning once 3 are waiting.
+- **Stop rule** (Plan tab) — decided before you play: stop after N games in a session, X losses in a row, Y
+  rating points down, or a loss on time (a session is games less than 45 minutes apart). Home says when it's
+  time to stop, and a **phone check** holds you to it: an iPhone/iPad Shortcuts automation that runs when you
+  open the Chess.com app, asks `/api/stop` (your latest Chess.com and Lichess games, by your rule) and sends
+  you back to the Home Screen when the answer is STOP. With device sync on, the check reads the rule from a
+  small secret gist Tabiya keeps up to date, so changing it in Tabiya is enough.
 - **Split into chapters** — a chapter's ⋯ menu suggests chapters from the opening names of its lines (by
   position, so transposed move orders land together); rename, merge or leave out suggestions first.
 - **Import wizard** — Repertoire → *Import a Lichess study or PGN*: study chapters become chapters (or go into
@@ -178,7 +184,7 @@ It's a static site, hosted on **Cloudflare** (Workers static assets, free plan) 
 - **Build command:** `npm run build`
 - **Deploy command:** `npx wrangler deploy` (the default)
 
-`wrangler.jsonc` tells Cloudflare to serve `dist/`; `public/_headers` sets caching so a new deploy reaches
+`wrangler.jsonc` tells Cloudflare to serve `dist/` (and runs `worker/index.ts` for `/api/stop`, the phone stop check); `public/_headers` sets caching so a new deploy reaches
 phones right away. Node 22 is pinned in `.node-version`. Every push to `main` deploys automatically; other
 branches get their own preview URL. No rewrite rules are needed because the app uses `#/` URLs. The bottom
 of Settings shows which version (commit) is live.
@@ -251,6 +257,7 @@ src/
                   device sync (cloudSync.ts) over a GitHub gist (gist.ts)
   components/     chessground Board, explorer panel, small UI pieces
   pages/          one component per tab
+  worker/         the phone stop check (/api/stop), run on Cloudflare by worker/index.ts
   App.tsx         tab registry + hash router
 ```
 

@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
 import { patchSettings } from '../lib/settingsMerge';
+import { DEFAULT_STOP_RULE, type StopRule } from '../lib/stopRule';
 import type { ProbabilitySource, StudyTopic, Third } from '../lib/types';
 import type { RatingPool } from '../lib/ratings';
 import type { TimeClass } from '../lib/importers/common';
@@ -123,6 +124,13 @@ export interface AppSettings {
   planSlots: PlanSlot[];
   /** Plan: the speeds whose games count as training games (time spent playing). */
   trainingSpeeds: string[];
+  /**
+   * When to stop a playing session (games, losses in a row, points down, a loss on time): Tabiya's
+   * tilt flag, and the phone check that runs when you open the Chess.com app.
+   */
+  stopRule: StopRule;
+  /** The secret gist the phone check reads your stop rule from (in your GitHub account, via sync). */
+  stopGist?: string;
 }
 
 /** A slot in your weekly plan: a day, a time, a third and the exact task (Studer: plan it beforehand). */
@@ -195,6 +203,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   weeklyMinutes: 420,
   studyFocus: 'openings',
   planSlots: [],
+  stopRule: DEFAULT_STOP_RULE,
   trainingSpeeds: ['blitz', 'rapid', 'classical'],
 };
 

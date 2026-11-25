@@ -15,6 +15,7 @@ import type { Activity, StudyTopic, Third } from '../lib/types';
 import { deleteActivity, logActivity } from '../services/activity';
 import { href } from '../router';
 import { fmtDate } from '../components/ui';
+import { StopRuleCard } from '../components/StopRuleCard';
 
 type Period = 'today' | 'week' | 'last' | '30d';
 const PERIODS: [Period, string][] = [
@@ -61,6 +62,7 @@ export function PlanPage() {
       </div>
       <Balance totals={totals} target={target} thirdTargets={thirdTargets} planned={!!planned} focus={settings.studyFocus} period={period} />
       {(period === 'week' || period === 'today') && <WeekPlan slots={settings.planSlots} activities={activities} now={now} onlyToday={period === 'today'} />}
+      <StopRuleCard />
       <LogTime focus={settings.studyFocus} />
       <Recent activities={activities} />
       <PlanSettings />

@@ -4,6 +4,8 @@ import { db } from '../db/db';
 import { useNow } from '../hooks';
 import { tiltCheck } from '../lib/tilt';
 import { checkRecentGames } from '../services/sync';
+import { useSettings } from '../db/settings';
+import { normalRule } from '../lib/stopRule';
 
 const DISMISSED_KEY = 'chess-prep:tiltDismissed';
 
@@ -23,7 +25,8 @@ export function TiltNote() {
       return null;
     }
   });
-  const tilt = recent && tiltCheck(recent, now);
+  const rule = normalRule(useSettings().stopRule);
+  const tilt = recent && tiltCheck(recent, now, rule);
   if (!tilt || dismissed === tilt.session[0].id) return null;
   const close = () => {
     setDismissed(tilt.session[0].id);
@@ -40,8 +43,8 @@ export function TiltNote() {
         ☕
       </span>
       <span className="small">
-        <b>Maybe stop for now:</b> {why[0].toUpperCase() + why.slice(1)}. Play only when you're fresh, decide how many games before you
-        start, and stop after a big blunder or a loss on time — review a game instead, or come back later.
+        <b>Time to stop, by your rule:</b> {why[0].toUpperCase() + why.slice(1)}. Play only when you're fresh, decide how many games
+        before you start, and stop after a big blunder or a loss on time — review a game instead, or come back later.
       </span>
       <span className="spacer" />
       <button className="small ghost" aria-label="Close" onClick={close}>

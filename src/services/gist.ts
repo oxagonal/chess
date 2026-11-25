@@ -61,7 +61,7 @@ interface Gist {
   history?: { version: string }[];
 }
 
-async function gh<T>(token: string, path: string, init: { method?: string; json?: unknown } = {}): Promise<T> {
+export async function gh<T>(token: string, path: string, init: { method?: string; json?: unknown } = {}): Promise<T> {
   let res: Response;
   try {
     res = await fetch(API + path, {

@@ -1384,3 +1384,7 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
 @media (min-width: 701px) {
   .puzzle-layout > .board-col { max-width: calc(100dvh - 140px); }
 }
+
+/* Plan → Stop rule: the phone check's link and steps. */
+.stop-link { padding: 4px 8px; border-radius: var(--radius-sm); background: var(--panel2); overflow-wrap: anywhere; user-select: all; }
+.stop-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
