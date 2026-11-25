@@ -3,7 +3,7 @@
  * finds for a scope, and the details (how the numbers come about, the positions to know).
  * The analysis itself is lib/coverage; running it, services/coverage.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { repTarget, updateSettings, useSettings } from '../db/settings';
 import { setScopeTarget, useScopeGraph, type Scope } from '../db/scopes';
 import { OneInNSlider } from '../components/OneInNSlider';
@@ -19,6 +19,9 @@ import { href } from '../router';
 import type { CoverageResult, ProbabilitySource, GapBoost } from '../lib/types';
 import { bandLabel } from '../lib/ratings';
 
+/** Scopes whose coverage is being worked out right now (by any run bar). */
+const activeRuns = new Set<string>();
+
 /**
  * Running the coverage analysis of a scope (a color or a repertoire): its 1-in-N target, when it last
  * ran and with what, and Run / Re-run — with progress, and a note when the run is out of date.
@@ -33,9 +36,11 @@ export function CoverageRunBar({ scopeId, within }: { scopeId: string; within?: 
   const [error, setError] = useState<string | null>(null);
   const [changing, setChanging] = useState(false);
   const ctrl = useRef<AbortController | null>(null);
-  if (!scope || !graph) return null;
 
   const run = async () => {
+    // One run per scope at a time (the bar can be on screen twice, and runs go on in the background).
+    if (activeRuns.has(scopeId)) return;
+    activeRuns.add(scopeId);
     setRunning(true);
     setError(null);
     setQueried(0);
@@ -45,18 +50,37 @@ export function CoverageRunBar({ scopeId, within }: { scopeId: string; within?: 
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setError((e as Error).message);
     } finally {
+      activeRuns.delete(scopeId);
       setRunning(false);
     }
   };
-  const n = repTarget(scope, settings);
-  const stale = !!result && scope.updatedAt > result.computedAt;
+  const n = scope ? repTarget(scope, settings) : 0;
+  const stale = !!result && !!scope && scope.updatedAt > result.computedAt;
   const paramsChanged =
     !!result &&
+    settings.loaded &&
     (result.paramsLabel !== sourceLabel(settings) ||
       Math.abs(result.threshold - 1 / n) > 1e-12 ||
       (result.chapterOneInN ?? 0) !== (settings.chapterOneInN || 0) ||
       result.algo !== COVERAGE_ALGO);
   const outdated = stale || paramsChanged;
+
+  // Out of date (your chapters changed, here or on another device, or the settings did): it runs again
+  // by itself, in the background — the explorer lookups it made before are cached, so it's quick.
+  // Once per change: after a Cancel or an error it waits for you (or the next change).
+  const tried = useRef<string | undefined>(undefined);
+  const autoSig = result && scope ? `${scope.updatedAt}|${n}|${sourceLabel(settings)}|${settings.chapterOneInN}` : undefined;
+  useEffect(() => {
+    if (!outdated || running || !autoSig || !graph?.size || tried.current === autoSig) return;
+    const t = setTimeout(() => {
+      tried.current = autoSig;
+      void run();
+    }, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outdated, running, autoSig, graph?.size]);
+
+  if (!scope || !graph) return null;
 
   return (
     <div className="map-runbar col">
@@ -112,10 +136,11 @@ export function CoverageRunBar({ scopeId, within }: { scopeId: string; within?: 
         </>
       )}
       {error && <div className="error">{error}</div>}
-      {outdated && !running && (
+      {outdated && (
         <div className="note">
           {stale ? 'Your chapters changed since this run. ' : ''}
-          {paramsChanged ? 'Settings differ from the last run. ' : ''}Re-run to bring the map up to date.
+          {paramsChanged ? 'Settings differ from the last run. ' : ''}
+          {running ? 'Bringing the map up to date…' : tried.current === autoSig ? 'Re-run to bring the map up to date.' : 'Updating in a moment…'}
         </div>
       )}
       {settings.probabilitySource === 'lichess' && !result && !running && (
