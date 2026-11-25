@@ -9,7 +9,9 @@ import type { PuzzleAttempt, StoredGame } from './types';
 import type { Color } from './chess';
 import { crucialSwings } from './quickReview';
 import { missedTactics, ONLY_MOVE_GAP, onlyMoveGap, winFor, withLiveEvals, type Score } from './review';
-import { playSan, startPos } from './chess';
+import { playSan, playUci, startPos } from './chess';
+import { materialBalance } from './material';
+import type { Position } from 'chessops/chess';
 
 /** Why a puzzle was missed (the tap after a miss) — the pattern says what to work on. */
 export type MissReason = NonNullable<PuzzleAttempt['reason']>;
@@ -55,6 +57,8 @@ export interface TacticCard {
     betterMove?: string;
     /** punish: what they actually replied in the game (did they find it?). */
     theyPlayed?: string;
+    /** The solution has been made the engine's whole line (solutionLine), not just its first move. */
+    lineChecked?: boolean;
   };
   reason?: MissReason;
   /** Index into REVIEW_DAYS of the wait before it's due. */
@@ -249,3 +253,41 @@ export function gameCards(game: StoredGame, now: number): TacticCard[] {
 
 /** A win chance lost (0–100, by the side to move) that still counts as a good move in your game's position. */
 export const GAME_MOVE_OK_LOSS = 10;
+
+/** Points `side` is ahead (behind: negative). */
+function pointsFor(pos: Position, side: Color): number {
+  const m = materialBalance(pos);
+  return side === 'white' ? m.white.plus - m.black.plus : m.black.plus - m.white.plus;
+}
+
+/** What a card's line must win (points), and keep after the reply, before it ends. */
+export const LINE_GAIN = 2;
+/** The longest line a card asks for (plies: 6 of your moves). */
+export const LINE_MAX_PLIES = 11;
+
+/**
+ * The moves a card asks for, from the engine's line `pv` (standard UCI, starting with the solver's
+ * move): through the solver's move that mates, or after which they're LINE_GAIN points up on the start
+ * and still are after the reply. A sacrifice's whole point — 33.Rxg7+ Kxg7 34.Bc3+ Kg6 35.Bxb2 — not
+ * just its first move. A line that wins nothing that soon (a quiet best move): only its first move.
+ */
+export function solutionLine(start: Position, pv: readonly string[]): string[] {
+  const side = start.turn;
+  const base = pointsFor(start, side);
+  let pos = start;
+  const out: string[] = [];
+  for (let i = 0; i < pv.length && i < LINE_MAX_PLIES; i++) {
+    const r = playUci(pos, pv[i]);
+    if (!r) break;
+    out.push(r.uci);
+    pos = r.pos;
+    if (i % 2) continue;
+    if (pos.isCheckmate()) return out;
+    const reply = pv[i + 1] ? playUci(pos, pv[i + 1]) : undefined;
+    if (pointsFor(reply?.pos ?? pos, side) - base >= LINE_GAIN) return out;
+  }
+  return out.slice(0, 1);
+}
+
+/** A game card whose solution is still only the engine's first move. */
+export const needsLine = (card: TacticCard) => card.source === 'game' && !!card.game && !card.game.lineChecked;

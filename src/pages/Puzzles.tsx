@@ -22,8 +22,8 @@ import { difficultyAdvice, openingAngle, PUZZLE_DIFFICULTIES, PUZZLE_THEMES, puz
 import { clock as fmtClock } from '../lib/quickReview';
 import type { PuzzleAttempt } from '../lib/types';
 import { puzzleTilt } from '../lib/tilt';
-import { cardId, isDueCard, missedCard, MISS_REASONS, needsUpgrade, reviewed, type MissReason, type TacticCard } from '../lib/tacticCards';
-import { holdsUp, upgradeGameCard } from '../services/tactics';
+import { cardId, isDueCard, missedCard, MISS_REASONS, needsLine, needsUpgrade, reviewed, type MissReason, type TacticCard } from '../lib/tacticCards';
+import { holdsUp, prepareGameCard } from '../services/tactics';
 import { formatEvalShort } from '../lib/review';
 import { moveNumberPrefix, playSan } from '../lib/chess';
 import { href } from '../router';
@@ -402,10 +402,11 @@ function PuzzleSession({ onGlicko, toolbar }: { onGlicko: (g: Glicko) => void; t
     if (cur || !solving || !due || upgrading.current) return;
     const card = due.find((c) => !doneCards.current.has(c.id));
     if (card && (!lastWasCard.current || !queue.length)) {
-      if (!needsUpgrade(card)) return begin(card.puzzle, card);
-      // Made before blunders became punishment cards: sorted again first.
+      if (!needsUpgrade(card) && !needsLine(card)) return begin(card.puzzle, card);
+      // Made before blunders became punishment cards (sorted again), or before cards asked for the
+      // engine's whole line: brought up to date first.
       upgrading.current = true;
-      void upgradeGameCard(card)
+      void prepareGameCard(card)
         .catch(() => card)
         .then((c) => {
           upgrading.current = false;

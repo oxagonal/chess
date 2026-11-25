@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardPly, gameCards, gameMistakes, isDueCard, missedCard, mistakeAt, needsUpgrade, REVIEW_DAYS, reviewed, startOfDay } from '../lib/tacticCards';
+import { cardPly, gameCards, gameMistakes, isDueCard, missedCard, mistakeAt, needsUpgrade, REVIEW_DAYS, reviewed, solutionLine, startOfDay } from '../lib/tacticCards';
 import { puzzleStart } from '../lib/puzzle';
 import { missedTactics } from '../lib/review';
 import { playSan, startPos } from '../lib/chess';
@@ -132,5 +132,39 @@ describe('missed tactics', () => {
     const cards = gameCards(game, noon);
     expect(cards.map((c) => [c.id, c.game!.kind, c.game!.played, c.puzzle.puzzle.solution[0], c.game!.theyPlayed])).toContainEqual(['g:g3:7', 'punish', 'g6', 'c3d5', 'Nxe5']);
     expect(cards.every((c) => Number(c.id.split(':').pop()) % 2 === 1)).toBe(true);
+  });
+});
+
+describe('a game card asks for the whole line', () => {
+  const play = (sans: string[]) => {
+    let pos = startPos();
+    const ucis: string[] = [];
+    for (const san of sans) {
+      const r = playSan(pos, san)!;
+      ucis.push(r.uci);
+      pos = r.pos;
+    }
+    return { pos, ucis };
+  };
+  const game =
+    'd4 c6 c4 Nf6 Nf3 d5 g3 g6 Bg2 Bg7 O-O dxc4 Ne5 O-O Nc3 Nbd7 Nxc4 Re8 Bg5 h6 Bf4 g5 Bd2 Nb6 Ne5 Nfd7 Nf3 f5 e3 Nf6 Ne5 Be6 Rc1 Bf7 Na4 Nbd5 Nc5 Rb8 Nxf7 Kxf7 e4 fxe4 Nxe4 Nxe4 Bxe4 Nf6 Qb3+ Kf8 Qd3 Nxe4 Qxe4 e5 Bb4+ Kg8 dxe5 Rxe5 Qg6 Re2 Rcd1 Qe8 Qxe8+ Rbxe8 Rd7 Rxb2'.split(' ');
+  it('a sacrifice: through the move that wins the material back (33.Rxg7+ Kxg7 34.Bc3+ Kg6 35.Bxb2)', () => {
+    const { pos } = play(game);
+    const after = (sans: string[]) => {
+      let p = pos;
+      return sans.map((san) => {
+        const r = playSan(p, san)!;
+        p = r.pos;
+        return r.uci;
+      });
+    };
+    const pv = after(['Rxg7+', 'Kxg7', 'Bc3+', 'Kg6', 'Bxb2', 'Re2', 'Rb1']);
+    expect(solutionLine(pos, pv)).toEqual(pv.slice(0, 5));
+  });
+  it('a quiet best move: just that move; a mate: through the mate', () => {
+    const quiet = play(['e4', 'e5']);
+    expect(solutionLine(quiet.pos, play(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6']).ucis.slice(2))).toEqual([play(['e4', 'e5', 'Nf3']).ucis[2]]);
+    const scholars = play(['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6']);
+    expect(solutionLine(scholars.pos, play([...['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6'], 'Qxf7#']).ucis.slice(6))).toEqual(['h5f7']);
   });
 });
