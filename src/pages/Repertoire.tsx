@@ -385,7 +385,8 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
 
   // Done: nothing left to answer down to your goal in this chapter (holes rarer than it don't count) —
   // once the live coverage has caught up with your last edit.
-  const settled = !!freshCoverage && !live.running && !live.stale;
+  // (Only once the lines and the opening names have loaded: before, there are no gaps to see.)
+  const settled = !!freshCoverage && !live.running && !live.stale && !loading && !!graph && graph.size > 0 && !!openingNames;
   const chapterDone = settled && (!biggestGap || biggestGap.beyondTarget);
   const goalText = `1 in ${goalN.toLocaleString()} games${settings.chapterOneInN > 0 && !colorMode ? ` (and 1 in ${settings.chapterOneInN} of the chapter's own)` : ''}`;
   const [cheer, setCheer] = useState<string>();
@@ -415,13 +416,16 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
       return;
     }
     if (read() === goal) return;
-    write(goal);
-    confetti();
-    setCheer(`${colorMode ? `All your ${rep.color === 'white' ? 'White' : 'Black'} chapters are` : `“${rep.name}” is`} done — every position you'll meet at least ${goalText} has an answer.`);
-    const t = setTimeout(() => setCheer(undefined), 8000);
+    // Done for a moment and it holds (not a passing state while things load or recalculate).
+    const t = setTimeout(() => {
+      write(goal);
+      confetti();
+      setCheer(`${colorMode ? `All your ${rep.color === 'white' ? 'White' : 'Black'} chapters are` : `“${rep.name}” is`} done — every position you'll meet at least ${goalText} has an answer.`);
+      setTimeout(() => setCheer(undefined), 8000);
+    }, 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settled, chapterDone, repId, goalN, settings.chapterOneInN]);
+  }, [settled, chapterDone, repId, goalN, settings.chapterOneInN, biggestGap?.label]);
 
   const jumpToBiggestGap = () => {
     if (!biggestGap) return;
