@@ -130,9 +130,28 @@ function normalize(key: string, raw: RawResponse): PositionStats {
   };
 }
 
+/**
+ * What's been read from the cache this session: a coverage run asks about thousands of positions, and
+ * reading each from IndexedDB one at a time is most of what a run takes once everything is cached.
+ */
+const memo = new Map<string, { fetchedAt: number; data: PositionStats }>();
+
 export async function getCachedExplorer(p: ExplorerParams, key: string): Promise<PositionStats | undefined> {
-  const row = await db.explorerCache.get(cacheKey(p, key));
+  const k = cacheKey(p, key);
+  let row = memo.get(k);
+  if (!row) {
+    const r = await db.explorerCache.get(k);
+    if (r) memo.set(k, (row = { fetchedAt: r.fetchedAt, data: r.data }));
+  }
   return row && Date.now() - row.fetchedAt < MAX_AGE ? row.data : undefined;
+}
+
+/** Read many positions from the cache at once (one IndexedDB request), ahead of a coverage run. */
+export async function prefetchExplorer(p: ExplorerParams, keys: Iterable<string>): Promise<void> {
+  const wanted = [...new Set([...keys].map((k) => cacheKey(p, k)))].filter((k) => !memo.has(k));
+  if (!wanted.length) return;
+  const rows = await db.explorerCache.bulkGet(wanted);
+  for (const r of rows) if (r) memo.set(r.key, { fetchedAt: r.fetchedAt, data: r.data });
 }
 
 /**
@@ -199,7 +218,9 @@ export async function fetchExplorer(p: ExplorerParams, key: string, signal?: Abo
       if (res.status === 401 || res.status === 403) throw new LichessLoginRequired(true);
       if (!res.ok) throw new Error(`Opening explorer returned HTTP ${res.status}`);
       const data = normalize(key, (await res.json()) as RawResponse);
-      await db.explorerCache.put({ key: cacheKey(p, key), fetchedAt: Date.now(), data });
+      const row = { key: cacheKey(p, key), fetchedAt: Date.now(), data };
+      await db.explorerCache.put(row);
+      memo.set(row.key, row);
       return data;
     }
     throw new Error('The opening explorer is rate limiting us or not answering — try again in a few minutes.');
@@ -207,6 +228,7 @@ export async function fetchExplorer(p: ExplorerParams, key: string, signal?: Abo
 }
 
 export async function clearExplorerCache() {
+  memo.clear();
   await db.explorerCache.clear();
 }
 

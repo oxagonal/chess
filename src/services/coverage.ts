@@ -12,7 +12,7 @@ import { gamesInRange, rangeLabel } from '../lib/gameRange';
 import { RepGraph } from '../lib/graph';
 import { chapterPosition, trainable } from '../lib/chapters';
 import { loadOpeningIndex } from '../lib/openingNames';
-import { fetchExplorer, paramsLabel, type ExplorerParams, type Priority } from './explorer';
+import { fetchExplorer, paramsLabel, prefetchExplorer, type ExplorerParams, type Priority } from './explorer';
 
 export function effectiveBands(s: AppSettings): number[] {
   if (s.bandsMode === 'manual' && s.manualBands.length) return [...s.manualBands].sort((a, b) => a - b);
@@ -153,6 +153,7 @@ async function runCoverageNow(
   const s = await getSettings();
   const n = opts.oneInN ?? repTarget(await loadScope(repId), s);
   const provider = await statsProvider(s, graph.color, opts.signal, 'low');
+  await prefetchFor(s, graph).catch(() => undefined);
   const result = await computeCoverage(graph, provider, {
     repId,
     threshold: 1 / n,
@@ -195,6 +196,13 @@ export async function statsProvider(s: AppSettings, color: Color, signal?: Abort
   }
   const params = s.probabilitySource === 'masters' ? MASTERS : lichessParams(s);
   return (key) => fetchExplorer(params, key, signal, priority);
+}
+
+/** Load what's cached for a repertoire's positions in one go, before a run walks them one by one. */
+async function prefetchFor(s: AppSettings, graph: RepGraph): Promise<void> {
+  if (s.probabilitySource === 'mygames') return;
+  const params = s.probabilitySource === 'masters' ? MASTERS : lichessParams(s);
+  await prefetchExplorer(params, graph.reachableKeys());
 }
 
 /**
@@ -244,11 +252,15 @@ export async function measureDepth(
 
 /** Whether a stored result still matches the repertoire (its moves and coverage target) and the current settings. */
 export function isCoverageFresh(result: CoverageResult | undefined, rep: Pick<Repertoire, 'updatedAt' | 'oneInN'>, s: AppSettings): boolean {
+  return !!result && result.computedAt >= rep.updatedAt && coverageMatchesSettings(result, rep, s);
+}
+
+/** A result made with today's settings and target — though maybe before your latest edits. */
+export function coverageMatchesSettings(result: CoverageResult | undefined, rep: Pick<Repertoire, 'oneInN'>, s: AppSettings): boolean {
   return (
     !!result &&
     !!result.coverage &&
     result.algo === COVERAGE_ALGO &&
-    result.computedAt >= rep.updatedAt &&
     result.paramsLabel === sourceLabel(s) &&
     Math.abs(result.threshold - 1 / repTarget(rep, s)) < 1e-12 &&
     (result.chapterOneInN ?? 0) === (s.chapterOneInN || 0)

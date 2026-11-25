@@ -33,7 +33,7 @@ import { href, navigate, openScope, scopeHref } from '../router';
 import { nextMemoryTarget, type MemoryStep } from '../lib/fromMemory';
 import { compactLine, formatLine, moveNumberPrefix, playSan, playUci, posFromFen, START_KEY, turnOfKey, type Color } from '../lib/chess';
 import { DEEPER, oneIn, oneInShort } from '../lib/coverage';
-import { isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
+import { coverageMatchesSettings, isCoverageFresh, reachAlongLine, runCoverageForGraph, sourceLabel, statsProvider } from '../services/coverage';
 import { sharpProvider } from '../services/sharpness';
 import type { AppSettings } from '../db/settings';
 import { type CoverageResult, type PositionStats, type RepMove, type Repertoire } from '../lib/types';
@@ -384,13 +384,17 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
   // The most common hole: an opponent reply you don't answer, or your move with nothing prepared.
   // Only this chapter's: a gap in another chapter is fixed there.
   // (Rarer than the target too: the real biggest hole, not "none".)
+  // Right after an edit, while the new run works it out, the last run's holes minus those you've just
+  // filled — so the next gap is a tap away, not a wait.
+  const lastCoverage = !freshCoverage && colorScope && settings.loaded && coverageMatchesSettings(coverage, colorScope, settings) ? coverage : undefined;
   const biggestGap = useMemo(() => {
-    if (!freshCoverage || !graph) return undefined;
+    const cov = freshCoverage ?? (lastCoverage && graph ? withoutFilled(lastCoverage, colorGraph ?? graph) : undefined);
+    if (!cov || !graph) return undefined;
     // (All of a color's chapters: the whole repertoire's biggest hole, not one opening's.)
-    const pick = chapterGap(graph, freshCoverage, openingNames, rep?.name, colorMode);
+    const pick = chapterGap(graph, cov, openingNames, rep?.name, colorMode);
     if (!pick) return undefined;
-    return { ...pick, label: formatLine(pick.sans) || 'the starting position' };
-  }, [freshCoverage, graph, openingNames, rep?.name, colorMode]);
+    return { ...pick, label: formatLine(pick.sans) || 'the starting position', provisional: !freshCoverage };
+  }, [freshCoverage, lastCoverage, graph, colorGraph, openingNames, rep?.name, colorMode]);
 
   // Done: nothing left to answer down to your goal in this chapter (holes rarer than it don't count) —
   // once the live coverage has caught up with your last edit.
@@ -736,7 +740,7 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
               onClick={jumpToBiggestGap}
               title={
                 biggestGap
-                  ? `${chapterDone ? `Done down to your goal (${goalText}). Beyond it, the most` : 'Most'} common position you have no answer for: ${biggestGap.label} (${oneIn(biggestGap.prob)} games)`
+                  ? `${chapterDone ? `Done down to your goal (${goalText}). Beyond it, the most` : 'Most'} common position you have no answer for: ${biggestGap.label} (${oneIn(biggestGap.prob)} games)${biggestGap.provisional ? '. (From the last run while the new one finishes.)' : ''}`
                   : live.running || live.stale
                     ? 'Calculating coverage…'
                     : 'No gaps found in this chapter'
@@ -1235,6 +1239,13 @@ function useLineReach(
  * How often you reach this position, and how much of what follows is prepared — two numbers; the
  * explanations live in the tooltips.
  */
+/** A run's holes without those your lines now fill (an opponent move you've added, a position you've answered). */
+function withoutFilled(cov: CoverageResult, graph: RepGraph): CoverageResult {
+  const open = <G extends { fromKey: string; san: string }>(gs: G[] | undefined) => gs?.filter((g) => !graph.edge(g.fromKey, g.san));
+  const unanswered = <U extends { key: string }>(us: U[] | undefined) => us?.filter((u) => !graph.childrenOf(u.key).length);
+  return { ...cov, gaps: open(cov.gaps)!, minorGaps: open(cov.minorGaps), unfinished: unanswered(cov.unfinished)!, minorUnfinished: unanswered(cov.minorUnfinished) };
+}
+
 /** "Prepared from here" this high is all of it (a rounding hair short of 1). */
 const ALL_PREPARED = 0.9999;
 /** Everything from this position is prepared down to your goal. */

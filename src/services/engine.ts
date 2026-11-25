@@ -44,6 +44,11 @@ const cloudCache = new Map<string, EngineLine[] | null>();
 let cloudPausedUntil = 0;
 
 /** Lichess's cloud analysis of a position (its best lines), if it has one. */
+/** Lichess's cloud said it doesn't have this position (asked this session). */
+export function cloudHasNot(key: string): boolean {
+  return cloudCache.has(key) && cloudCache.get(key) === null;
+}
+
 export async function cloudLines(key: string, signal?: AbortSignal): Promise<EngineLine[] | undefined> {
   if (cloudCache.has(key)) return cloudCache.get(key) ?? undefined;
   if (Date.now() < cloudPausedUntil) return undefined;
