@@ -39,7 +39,7 @@ export function sourceLabel(s: AppSettings): string {
 /** Coverage of a scope ('white', 'black', a chapter or `set:<id>`): its chapters' union graph. */
 export async function runCoverage(
   scopeId: string,
-  opts: { signal?: AbortSignal; onProgress?: (queried: number) => void; oneInN?: number } = {},
+  opts: { signal?: AbortSignal; onProgress?: (queried: number) => void; oneInN?: number; localEngine?: boolean } = {},
 ): Promise<CoverageResult> {
   const loaded = await loadScopeGraph(scopeId);
   if (!loaded) throw new Error('Not found');
@@ -96,8 +96,50 @@ export async function compareTargets(
   return rows.sort((a, b) => a.n - b.n);
 }
 
+/**
+ * The runs going on now, one per scope: asked again while one runs (the builder, the Map, the
+ * background updater), you get the same run — unless it was cancelled. With how far each has got.
+ */
+const inFlight = new Map<string, { promise: Promise<CoverageResult>; signal?: AbortSignal; queried: number }>();
+const runListeners = new Set<() => void>();
+const notifyRuns = () => runListeners.forEach((f) => f());
+
+export function subscribeCoverageRuns(f: () => void): () => void {
+  runListeners.add(f);
+  return () => void runListeners.delete(f);
+}
+
+/** Positions looked up so far by the run going on for a scope (undefined: none running). */
+export function coverageRunProgress(scopeId: string): number | undefined {
+  return inFlight.get(scopeId)?.queried;
+}
+
 /** Run the analysis on an in-memory graph (the builder uses this to keep scores live). */
-export async function runCoverageForGraph(
+export function runCoverageForGraph(
+  repId: string,
+  graph: RepGraph,
+  opts: Parameters<typeof runCoverageNow>[2] = {},
+): Promise<CoverageResult> {
+  const running = inFlight.get(repId);
+  if (running && !running.signal?.aborted) return running.promise;
+  const entry: { promise: Promise<CoverageResult>; signal?: AbortSignal; queried: number } = { promise: Promise.resolve(undefined as never), signal: opts.signal, queried: 0 };
+  entry.promise = runCoverageNow(repId, graph, {
+    ...opts,
+    onProgress: (q) => {
+      entry.queried = q;
+      notifyRuns();
+      opts.onProgress?.(q);
+    },
+  }).finally(() => {
+    if (inFlight.get(repId) === entry) inFlight.delete(repId);
+    notifyRuns();
+  });
+  inFlight.set(repId, entry);
+  notifyRuns();
+  return entry.promise;
+}
+
+async function runCoverageNow(
   repId: string,
   graph: RepGraph,
   opts: {

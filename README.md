@@ -113,8 +113,10 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   prepared, and the positions worth knowing cold. A color's run measures each of its chapters too (another
   chapter's answer to a move counts); a repertoire has its own. Each chapter also covers the positions in
   at least 1 in 100 of its own games — the games that reach its opening — so a rare opening still gets
-  prepared properly (Map → Details → Change target; 0 turns it off). Optionally restrict training to
-  positions above the threshold.
+  prepared properly (Map → Details → Change target; 0 turns it off). It keeps itself up to date: when your
+  chapters change (on this device or another) or its settings do, it runs again in the background, so
+  Home's "lines you know well" bars and the Map stay current. Optionally restrict training to positions
+  above the threshold.
 - **Games** — downloads your Lichess and Chess.com games (incrementally), and takes **over-the-board games** you
   enter (play the moves on a board, or paste PGN — a multi-game PGN is matched to your name) and checks each one against your
   repertoires: where *you* left your prep ("forgot prep"), where the *opponent* did (gaps), or where the

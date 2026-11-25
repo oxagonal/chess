@@ -8,6 +8,7 @@ import { App } from './App';
 import { completeLichessLogin } from './services/lichessAuth';
 import { startAutoSync } from './services/cloudSync';
 import { creditPracticedMoves } from './services/practiceCredit';
+import { startAutoCoverage } from './services/autoCoverage';
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
@@ -19,7 +20,9 @@ navigator.storage?.persist?.().catch(() => {});
 // Sync with your other devices (if connected in Settings) — then, up to date, one-time fixes.
 void startAutoSync()
   .then((upToDate) => (upToDate ? creditPracticedMoves() : undefined))
-  .catch(() => {});
+  .catch(() => {})
+  // Then keep Coverage up to date in the background (Home's bars, the Map, the builder read it).
+  .finally(() => startAutoCoverage());
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

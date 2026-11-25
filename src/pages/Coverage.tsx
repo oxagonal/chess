@@ -3,14 +3,14 @@
  * finds for a scope, and the details (how the numbers come about, the positions to know).
  * The analysis itself is lib/coverage; running it, services/coverage.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { repTarget, updateSettings, useSettings } from '../db/settings';
 import { setScopeTarget, useScopeGraph, type Scope } from '../db/scopes';
 import { OneInNSlider } from '../components/OneInNSlider';
 import { GameRangeSelect } from '../components/GameRangeSelect';
 import { repertoireDepth } from '../lib/depth';
 import { useCoverage } from '../hooks';
-import { compareTargets, runCoverage, sourceLabel, effectiveBands, type TargetRow } from '../services/coverage';
+import { compareTargets, coverageRunProgress, runCoverage, sourceLabel, subscribeCoverageRuns, effectiveBands, type TargetRow } from '../services/coverage';
 import { COVERAGE_ALGO, likelyPositions, oneIn, pct } from '../lib/coverage';
 import { formatLine } from '../lib/chess';
 import type { RepGraph } from '../lib/graph';
@@ -31,8 +31,12 @@ export function CoverageRunBar({ scopeId, within }: { scopeId: string; within?: 
   const { scope, graph } = useScopeGraph(scopeId);
   const result = useCoverage(scopeId);
   const settings = useSettings();
-  const [running, setRunning] = useState(false);
-  const [queried, setQueried] = useState(0);
+  const [runningHere, setRunning] = useState(false);
+  const [queriedHere, setQueried] = useState(0);
+  // A run started elsewhere (in the background, or by the builder) shows here too.
+  const elsewhere = useSyncExternalStore(subscribeCoverageRuns, () => coverageRunProgress(scopeId));
+  const running = runningHere || elsewhere !== undefined;
+  const queried = elsewhere ?? queriedHere;
   const [error, setError] = useState<string | null>(null);
   const [changing, setChanging] = useState(false);
   const ctrl = useRef<AbortController | null>(null);
@@ -109,9 +113,11 @@ export function CoverageRunBar({ scopeId, within }: { scopeId: string; within?: 
         ) : (
           <>
             <span className="muted small">Looked up {queried} positions…</span>
-            <button className="small" onClick={() => ctrl.current?.abort()}>
-              Cancel
-            </button>
+            {runningHere && (
+              <button className="small" onClick={() => ctrl.current?.abort()}>
+                Cancel
+              </button>
+            )}
           </>
         )}
       </div>
