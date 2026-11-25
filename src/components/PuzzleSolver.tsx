@@ -214,20 +214,24 @@ export function PuzzleSolver({
     bump();
     setChecking(true);
     setFeedback({ kind: 'info', text: <>Checking {played.san} with Stockfish…</> });
-    const ok = await betterMove!.judge(from.key, uci).catch(() => false);
+    // undefined: it couldn't be checked (Stockfish didn't answer) — not held against you.
+    const ok = await betterMove!.judge(from.key, uci).catch(() => undefined);
     setChecking(false);
     const engine = betterMove!.engine ? playUci(from.pos, betterMove!.engine)?.san : undefined;
     if (engine && engine !== played.san) tree.add(built.beforeId, betterMove!.engine!, 'solution');
     bump();
+    const pick = engine && engine !== played.san ? <> Stockfish's pick was <b>{engine}</b>.</> : '';
     setFeedback(
-      ok
-        ? { kind: 'good', text: <>✓ {played.san} holds.{engine && engine !== played.san ? <> Stockfish's pick was <b>{engine}</b>.</> : ''}</> }
-        : { kind: 'bad', text: <>✗ {played.san} doesn't hold either.{engine ? <> Stockfish's pick was <b>{engine}</b>.</> : ''}</> },
+      ok === undefined
+        ? { kind: 'info', text: <>Couldn't check {played.san} just now, so it counts as fine.{pick}</> }
+        : ok
+          ? { kind: 'good', text: <>✓ {played.san} holds.{pick}</> }
+          : { kind: 'bad', text: <>✗ {played.san} doesn't hold either.{engine ? <> Stockfish's pick was <b>{engine}</b>.</> : ''}</> },
     );
-    flashFor(ok ? 'good' : 'bad');
+    flashFor(ok === false ? 'bad' : 'good');
     setBetter('done');
     const first = firstPart.current ?? { win: false, soft: false };
-    onResult(first.win && ok, first.soft);
+    onResult(first.win && ok !== false, first.soft);
   };
 
   /* ---- writing ---- */

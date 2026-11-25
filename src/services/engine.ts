@@ -92,13 +92,19 @@ interface Job {
   depth: number;
   onUpdate: (lines: EngineLine[], depth: number) => void;
   resolve: (lines: EngineLine[]) => void;
+  /**
+   * A one-off search whose answer something waits on (is this move good?): it runs to its depth —
+   * the Stockfish box asking about a position doesn't cut it short; the box's search waits instead.
+   */
+  keep?: boolean;
 }
 
 class Stockfish {
   private worker?: Worker;
   private ready?: Promise<void>;
   private current?: Job & { lines: Map<number, EngineLine>; whiteToMove: boolean };
-  private queued?: Job;
+  /** Waiting to run: one-off searches (kept, in order), then at most one of the box's. */
+  private waiting: Job[] = [];
 
   private start(): Promise<void> {
     if (this.ready) return this.ready;
@@ -139,11 +145,8 @@ class Stockfish {
     } else if (line.startsWith('bestmove')) {
       this.current = undefined;
       job.resolve(this.sorted(job));
-      if (this.queued) {
-        const next = this.queued;
-        this.queued = undefined;
-        this.run(next);
-      }
+      const next = this.waiting.shift();
+      if (next) this.run(next);
     }
   }
 
@@ -159,20 +162,24 @@ class Stockfish {
 
   async analyse(job: Job) {
     await this.start();
-    if (this.current) {
-      // Replace whatever was waiting and stop the running search; its bestmove starts this one.
-      this.queued?.resolve([]);
-      this.queued = job;
-      this.worker!.postMessage('stop');
-    } else {
-      this.run(job);
+    if (!this.current) return this.run(job);
+    // The box's search: replaces the box's search that was waiting (a newer position wins).
+    if (!job.keep) {
+      for (const w of this.waiting.filter((x) => !x.keep)) w.resolve([]);
+      this.waiting = this.waiting.filter((x) => x.keep);
     }
+    // One-off searches go before the box's.
+    if (job.keep) this.waiting.splice(this.waiting.filter((x) => x.keep).length, 0, job);
+    else this.waiting.push(job);
+    // Stop the running search unless it's a one-off something waits on; its bestmove starts the next.
+    if (!this.current.keep) this.worker!.postMessage('stop');
   }
 
+  /** Stop the box's search (one-off searches finish). */
   stop() {
-    this.queued?.resolve([]);
-    this.queued = undefined;
-    if (this.current) this.worker?.postMessage('stop');
+    for (const w of this.waiting.filter((x) => !x.keep)) w.resolve([]);
+    this.waiting = this.waiting.filter((x) => x.keep);
+    if (this.current && !this.current.keep) this.worker?.postMessage('stop');
   }
 }
 
@@ -255,7 +262,7 @@ export async function analyseOnce(key: string, depth: number, multiPv: number): 
   const cacheKey = `${key}|${depth}|${multiPv}`;
   const cached = localCache.get(cacheKey);
   if (cached) return cached;
-  const lines = await new Promise<EngineLine[]>((resolve) => void engine.analyse({ fen: `${key} 0 1`, multiPv, depth, resolve, onUpdate: () => {} }));
+  const lines = await new Promise<EngineLine[]>((resolve) => void engine.analyse({ fen: `${key} 0 1`, multiPv, depth, resolve, onUpdate: () => {}, keep: true }));
   if (lines.length) localCache.set(cacheKey, lines);
   return lines;
 }

@@ -90,17 +90,21 @@ export async function upgradeGameCard(card: TacticCard): Promise<TacticCard> {
 /**
  * Does `uci` hold up in a position of your game (`key`) where best play scores `best` (White's view)?
  * It does if it loses less than GAME_MOVE_OK_LOSS of the win chance — Lichess's cloud analysis of the
- * position after it, else Stockfish here.
+ * position after it, else Stockfish here. The engine's own choice there (`engineBest`) always does.
+ * Throws when neither can say (Stockfish didn't answer): not the same as "it doesn't hold".
  */
-export async function holdsUp(key: string, uci: string, best: Score | undefined, you: Color): Promise<boolean> {
+export async function holdsUp(key: string, uci: string, best: Score | undefined, you: Color, engineBest?: string): Promise<boolean> {
   const pos = posFromFen(key);
   const played = pos && playUci(pos, uci);
   if (!played) return false;
   if (played.pos.isCheckmate()) return true;
+  if (engineBest && pos && playUci(pos, engineBest)?.uci === played.uci) return true;
   if (!best) return false;
   const cloud = await cloudLines(played.key).catch(() => undefined);
-  const after = cloud?.[0]?.eval ?? (await analyseOnce(played.key, 16, 1))[0]?.eval;
-  if (!after) return false;
+  let after = cloud?.[0]?.eval;
+  // Once more if the first search came back empty.
+  for (let i = 0; !after && i < 2; i++) after = (await analyseOnce(played.key, 16, 1))[0]?.eval;
+  if (!after) throw new Error("Stockfish didn't answer");
   const loss = you === 'white' ? winChanceOf(best) - winChance(after) : winChance(after) - winChanceOf(best);
   return loss < GAME_MOVE_OK_LOSS;
 }

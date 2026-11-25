@@ -823,7 +823,7 @@ function gameCardProps(card: TacticCard | undefined) {
     orientation: g.you,
     // Their other replies that keep the win count too.
     judgeAlt: (key: string, uci: string) => holdsUp(key, uci, g.after, them),
-    betterMove: { played: `${moveNumberPrefix(ply, true)}${g.played}`, engine: g.betterMove, judge: (key: string, uci: string) => holdsUp(key, uci, g.best, g.you) },
+    betterMove: { played: `${moveNumberPrefix(ply, true)}${g.played}`, engine: g.betterMove, judge: (key: string, uci: string) => holdsUp(key, uci, g.best, g.you, g.betterMove) },
     gameNote: note,
   };
 }

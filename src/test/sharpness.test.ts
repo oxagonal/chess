@@ -25,3 +25,15 @@ describe('sharp lines: what the cloud doesn’t know', () => {
     expect(await db.engineCache.get(other)).toBeUndefined();
   });
 });
+
+describe('a better move in your game', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it('Stockfish’s own pick holds without asking anything; no answer is not "it doesn’t hold"', async () => {
+    const { holdsUp } = await import('../services/tactics');
+    const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
+    vi.stubGlobal('fetch', async () => {
+      throw new Error('no network needed');
+    });
+    expect(await holdsUp(start, 'e2e4', { cp: 30 }, 'white', 'e2e4')).toBe(true);
+  });
+});
