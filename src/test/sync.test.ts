@@ -6,7 +6,7 @@ import { updateSettings } from '../db/settings';
 import { Rating } from '../lib/srs';
 import { mergeSync, emptySnapshot, rowKey, SYNC_TABLES, type Row, type SyncDoc, type SyncTable } from '../lib/syncMerge';
 import { syncOnce } from '../services/cloudSync';
-import { GistTransport, RemoteChangedError, decode, docGroups, encode, MANIFEST, type Transport } from '../services/gist';
+import { GistTransport, GitHubError, RemoteChangedError, decode, docGroups, encode, MANIFEST, type Transport } from '../services/gist';
 import { exportBackup, importBackup } from '../services/backup';
 import { markQuiet } from '../db/changes';
 import { mergeSettings, patchSettings } from '../lib/settingsMerge';
@@ -388,7 +388,7 @@ describe('gist storage', () => {
     await syncOnce(db, t);
     expect(gh.files['moves.0.txt']).toBeDefined();
     expect(gh.files['moves.1.txt']).toBeDefined(); // split at 200 characters
-    expect(gh.files['games.2025.0.txt']).toBeDefined();
+    expect(gh.files['games.2025-04.0.txt']).toBeDefined();
 
     // Another device reads it back.
     await syncOnce(phone, new GistTransport('token', 'g1', 200));
@@ -405,6 +405,21 @@ describe('gist storage', () => {
     expect(last.some((n) => n.startsWith('cards.'))).toBe(true);
     expect(last.some((n) => n.startsWith('reviewLog.'))).toBe(true);
     expect(last.some((n) => n.startsWith('moves.') || n.startsWith('games.'))).toBe(false);
+  });
+
+  it('gives up on GitHub after a while instead of waiting forever', async () => {
+    vi.useFakeTimers();
+    try {
+      // A request that never answers (a dropped connection) — until it's aborted.
+      vi.stubGlobal('fetch', (_url: string, init: RequestInit = {}) => new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(new Error('aborted')))));
+      const p = new GistTransport('token', 'g1').read();
+      const caught = p.catch((e: Error) => e);
+      await vi.advanceTimersByTimeAsync(61_000);
+      const e = (await caught) as GitHubError;
+      expect([e instanceof GitHubError, e.status, e.message]).toEqual([true, 0, 'GitHub didn’t answer in time. Trying again in a moment.']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('round-trips the encoding and groups the review log by month', async () => {

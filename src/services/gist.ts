@@ -61,11 +61,33 @@ interface Gist {
   history?: { version: string }[];
 }
 
-export async function gh<T>(token: string, path: string, init: { method?: string; json?: unknown } = {}): Promise<T> {
-  let res: Response;
+/**
+ * How long to wait for GitHub before giving up (and trying again later): a request that never
+ * answers — a dropped connection, the app put in the background — must not hold up syncing forever.
+ */
+const TIMEOUT_MS = { read: 60_000, write: 180_000 };
+
+/** fetch, given up on after `ms`. */
+async function fetchWithin(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
   try {
-    res = await fetch(API + path, {
-      method: init.method ?? 'GET',
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } catch {
+    throw ctrl.signal.aborted
+      ? new GitHubError('GitHub didn’t answer in time. Trying again in a moment.', 0)
+      : new GitHubError('Offline — will sync when you’re back online', 0);
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+export async function gh<T>(token: string, path: string, init: { method?: string; json?: unknown } = {}): Promise<T> {
+  const method = init.method ?? 'GET';
+  const res = await fetchWithin(
+    API + path,
+    {
+      method,
       cache: 'no-store',
       headers: {
         Accept: 'application/vnd.github+json',
@@ -73,10 +95,9 @@ export async function gh<T>(token: string, path: string, init: { method?: string
         ...(init.json !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
       body: init.json !== undefined ? JSON.stringify(init.json) : undefined,
-    });
-  } catch {
-    throw new GitHubError('Offline — will sync when you’re back online', 0);
-  }
+    },
+    method === 'GET' ? TIMEOUT_MS.read : TIMEOUT_MS.write,
+  );
   if (!res.ok) {
     let detail = '';
     try {
@@ -210,12 +231,15 @@ export class GistTransport implements Transport {
 async function fileText(f: GistFile): Promise<string> {
   if (!f.truncated && f.content !== undefined) return f.content;
   if (!f.raw_url) throw new Error('Synced data could not be read');
-  const res = await fetch(f.raw_url, { cache: 'no-store' });
+  const res = await fetchWithin(f.raw_url, { cache: 'no-store' }, TIMEOUT_MS.read);
   if (!res.ok) throw new GitHubError(`GitHub returned HTTP ${res.status}`, res.status);
   return res.text();
 }
 
-/** Split into groups of rows (one file each): review log by month, games by year, the rest whole; plus tombstones. */
+/**
+ * Split into groups of rows (one file each): review log and games by month (a new game re-uploads only
+ * its month, not a year of games), the rest whole; plus tombstones.
+ */
 export function docGroups(doc: SyncDoc): Map<string, string> {
   const out = new Map<string, string>();
   for (const t of SYNC_TABLES) {
@@ -239,7 +263,7 @@ export function docGroups(doc: SyncDoc): Map<string, string> {
 
 function shardOf(t: SyncTable, row: Row): string {
   if (t === 'reviewLog') return `${t}.${new Date(row.reviewedAt ?? 0).toISOString().slice(0, 7)}`;
-  if (t === 'games') return `${t}.${new Date(row.playedAt ?? 0).toISOString().slice(0, 4)}`;
+  if (t === 'games') return `${t}.${new Date(row.playedAt ?? 0).toISOString().slice(0, 7)}`;
   return t;
 }
 

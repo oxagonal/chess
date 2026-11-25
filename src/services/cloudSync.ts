@@ -161,15 +161,22 @@ export interface SyncReport {
 const toSets = (b: SyncBook['base']): BaseKeys | null => (b ? (Object.fromEntries(SYNC_TABLES.map((t) => [t, new Set(b[t] ?? [])])) as BaseKeys) : null);
 const toArrays = (k: BaseKeys) => Object.fromEntries(SYNC_TABLES.map((t) => [t, [...k[t]]])) as Record<SyncTable, string[]>;
 
-export async function syncOnce(db: ChessDB, transport: Transport, opts: { replaceLocal?: boolean; now?: () => number } = {}): Promise<SyncReport> {
+export async function syncOnce(
+  db: ChessDB,
+  transport: Transport,
+  opts: { replaceLocal?: boolean; now?: () => number; onStep?: (step: string) => void } = {},
+): Promise<SyncReport> {
   const now = opts.now ?? Date.now;
+  const step = opts.onStep ?? (() => {});
   const book: SyncBook = (await getState<SyncBook>(db, BOOK)) ?? { base: null };
   const replace = !!opts.replaceLocal;
   for (let attempt = 0; ; attempt++) {
+    step('Downloading from GitHub');
     const remote = await transport.read();
     if (remote.doc && remote.doc.format > SYNC_FORMAT) throw new Error('Your synced data was saved by a newer version of Tabiya — reload the app to update.');
     // Saved by an older version: bring it up to date first (e.g. cards from before chapters).
     if (remote.doc) remote.doc = upgradeSyncDoc(remote.doc);
+    step('Comparing with this device');
     const read = await readLocal(db);
     const result = mergeSync({
       local: replace ? emptySnapshot() : read.snap,
@@ -181,12 +188,14 @@ export async function syncOnce(db: ChessDB, transport: Transport, opts: { replac
     let version = remote.version;
     if (result.remoteChanged.length) {
       try {
+        step('Uploading to GitHub');
         version = await transport.write(result.doc, remote.version);
       } catch (e) {
         if (e instanceof RemoteChangedError && attempt < 3) continue;
         throw e;
       }
     }
+    step('Saving on this device');
     const skipped = await applyLocal(db, result, read, replace);
     await db.transaction('rw', db.syncState, async () => {
       // A backup restored while this sync ran still has to win next time.
@@ -212,6 +221,8 @@ export interface SyncStatus {
   login?: string;
   gistId?: string;
   state: 'idle' | 'syncing' | 'error' | 'offline';
+  /** While syncing: since when (one sync after another counts as one). */
+  since?: number;
   lastSyncAt?: number;
   message?: string;
 }
@@ -283,9 +294,9 @@ export function runSync(opts: { replaceLocal?: boolean } = {}): Promise<void> {
       clearTimeout(timer);
       const c: SyncConfig | undefined = config;
       if (!c) break;
-      setStatus({ state: 'syncing' });
+      setStatus({ state: 'syncing', message: undefined, since: status.state === 'syncing' ? status.since : Date.now() });
       try {
-        await withLock(() => syncOnce(appDb, transportFor(c), opts));
+        await withLock(() => syncOnce(appDb, transportFor(c), { ...opts, onStep: (m) => setStatus({ message: m }) }));
         opts = {};
         failures = 0;
         setStatus({ state: 'idle', lastSyncAt: Date.now(), message: undefined });

@@ -81,7 +81,13 @@ export function SyncPanel({ embedded = false }: { embedded?: boolean }) {
           <span className={`sync-dot ${st.state}`} />
           <span>{statusText(st)}</span>
         </div>
-        {st.message && st.state !== 'idle' && <div className={`note ${st.state === 'error' ? 'bad' : ''}`}>{st.message}</div>}
+        {st.message && st.state !== 'idle' && (
+          <div className={`note ${st.state === 'error' ? 'bad' : ''}`}>
+            {st.message}
+            {st.state === 'syncing' ? '…' : ''}
+            {st.state === 'syncing' && st.since && Date.now() - st.since > 60_000 ? ` (syncing for ${Math.round((Date.now() - st.since) / 60_000)} min)` : ''}
+          </div>
+        )}
         <div className="row">
           <button className="primary" disabled={st.state === 'syncing'} onClick={() => void runSync()}>
             Sync now
