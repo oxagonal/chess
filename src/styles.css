@@ -1400,11 +1400,14 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
   :root { --safe-top: calc(env(safe-area-inset-top) + 20px); --studio-top: 12px; }
 }
 
-/* The top-of-screen ruler (Settings → About): lines every 5pt from the very top, on white. */
-.ruler { position: fixed; inset: 0; z-index: 5000; background: #fff; color: #000; overflow: hidden; }
-.ruler-line { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid #000; display: flex; justify-content: space-between; padding: 0 6px; }
-.ruler-line.minor { border-top: 1px dashed #999; left: 12%; right: 62%; }
-.ruler-line span { font: 600 10px/1 ui-monospace, Menlo, monospace; transform: translateY(1px); background: #fff; padding: 0 2px; }
-.ruler-line span.mid { color: #c00; }
-.ruler-info { position: absolute; top: 230px; left: 16px; right: 16px; color: #000; font-size: 15px; }
-.ruler-info .btn { color: #000; border-color: #000; background: #eee; }
+/* The top-of-screen ruler (Settings → About): lines every 5pt from the very top, on the app's dark
+   background (iOS shades the top in the page's own colour: white on white would hide it), with a white
+   bar down the middle that shows the shading plainly. */
+.ruler { position: fixed; inset: 0; z-index: 5000; background: var(--bg2); color: #ece9e3; overflow: hidden; }
+.ruler-bar { position: absolute; top: 0; left: calc(50% - 22px); width: 44px; height: 205px; background: #fff; }
+.ruler-line { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid rgba(236, 233, 227, 0.7); display: flex; justify-content: space-between; padding: 0 6px; }
+.ruler-line.minor { border-top: 1px dashed rgba(236, 233, 227, 0.45); left: 12%; right: 62%; }
+.ruler-line span { font: 600 10px/1 ui-monospace, Menlo, monospace; transform: translateY(1px); padding: 0 2px; color: #fff; }
+.ruler-line span.mid { color: #000; position: relative; z-index: 1; }
+.ruler-info { position: absolute; top: 230px; left: 16px; right: 16px; font-size: 15px; }
+.ruler-info .btn { color: #fff; }
