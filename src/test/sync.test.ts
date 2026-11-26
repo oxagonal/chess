@@ -435,3 +435,16 @@ describe('gist storage', () => {
     expect([...docGroups(doc).keys()]).toEqual(['reviewLog.2026-01', 'reviewLog.2026-02']);
   });
 });
+
+describe('the chapters’ own goal: 1 in 20', () => {
+  it('settings at the old 1 in 100 move to 1 in 20 once; a goal set later stays', async () => {
+    const { lowerChapterGoal } = await import('../services/chapterGoal');
+    const { getSettings } = await import('../db/settings');
+    await updateSettings({ chapterOneInN: 100 });
+    await lowerChapterGoal();
+    expect((await getSettings()).chapterOneInN).toBe(20);
+    await updateSettings({ chapterOneInN: 100 });
+    await lowerChapterGoal();
+    expect((await getSettings()).chapterOneInN).toBe(100);
+  });
+});

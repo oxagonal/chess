@@ -114,7 +114,7 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   every N games that your repertoire doesn't answer (*gaps*), positions where it's your move with nothing
   prepared, and the positions worth knowing cold. A color's run measures each of its chapters too (another
   chapter's answer to a move counts); a repertoire has its own. Each chapter also covers the positions in
-  at least 1 in 100 of its own games — the games that reach its opening — so a rare opening still gets
+  at least 1 in 20 of its own games — the games that reach its opening — so a rare opening still gets
   prepared properly (Map → Details → Change target; 0 turns it off). It keeps itself up to date: when your
   chapters change (on this device or another) or its settings do, it runs again in the background, so
   Home's "lines you know well" bars and the Map stay current. Optionally restrict training to positions

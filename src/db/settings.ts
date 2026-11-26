@@ -113,7 +113,8 @@ export interface AppSettings {
   workOnTags: string[];
   /**
    * Each chapter also covers the positions reached in at least 1 in this many of its own games (the
-   * games reaching its opening), where that goes deeper than the overall goal; 0 = off.
+   * games reaching its opening), where that goes deeper than the overall goal; 0 = off. 1 in 20 by
+   * default (1 in 100 meant about 100 lines a chapter).
    */
   chapterOneInN: number;
   /** Plan: chess training a week, in minutes (split into thirds: tactics, your games, study). */
@@ -199,7 +200,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   opponentRange: '1y',
   explorerColumns: ['games', 'share', 'reach', 'result', 'last'],
   workOnTags: [],
-  chapterOneInN: 100,
+  chapterOneInN: 20,
   weeklyMinutes: 420,
   studyFocus: 'openings',
   planSlots: [],
