@@ -353,7 +353,9 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 
 /* Coverage box: two numbers. */
 .coverage-box { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; }
-.cov-stat { display: flex; flex-direction: column; cursor: help; }
+.cov-stats { display: flex; align-items: center; gap: 28px; flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; }
+.cov-stat { display: flex; flex-direction: column; cursor: help; min-width: 0; }
+.cov-stat b, .cov-stat span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cov-stat b { font-size: 24px; line-height: 1.1; }
 .cov-stat span { color: var(--muted); font-size: 12px; }
 .coverage-box.done { border-color: color-mix(in srgb, var(--good) 55%, transparent); background: color-mix(in srgb, var(--good) 8%, var(--panel)); }
@@ -1211,6 +1213,7 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
   .phone-studio .memory-panel h3 { font-size: 10.5px; }
   .phone-studio .memory-status { margin-top: 4px; font-size: 12.5px; line-height: 1.45; }
   .phone-studio .coverage-box { gap: 20px; }
+  .phone-studio .cov-stats { gap: 16px; }
   .phone-studio .cov-stat b { font-size: 19px; }
   .phone-studio .cov-stat span { font-size: 11.5px; }
   .phone-studio .engine-line { font-size: 12px; }

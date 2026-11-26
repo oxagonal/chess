@@ -59,12 +59,16 @@ function addPanel(api: DockviewApi, def: StudioPanelDef, group?: IDockviewHeader
   });
 }
 
+/** How long a fitted pane's content must stay smaller before the pane shrinks to it. */
+const SHRINK_AFTER_MS = 1500;
+
 function PanelBody({ api, params }: IDockviewPanelProps<{ type: string }>) {
   const { defs } = useContext(Ctx);
   const def = defs.get(params.type);
   const inner = useRef<HTMLDivElement>(null);
   /** The height the pane last snapped to (0 = not constrained). */
   const snapped = useRef(0);
+  const shrinkTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Snap: a fitHeight pane can't be taller than its content (+ its tab bar) while it's alone in its
   // group — no blank space under Stockfish's lines. While it sits at that height it follows the
@@ -83,6 +87,21 @@ function PanelBody({ api, params }: IDockviewPanelProps<{ type: string }>) {
         return;
       }
       const max = content + chrome + 2;
+      // Grows with its content at once; shrinks only once the content has stayed smaller for a moment
+      // — a position still loading (fewer numbers for a split second) mustn't make the board beside
+      // or above it jump as you step through moves.
+      clearTimeout(shrinkTimer.current);
+      if (snapped.current > 0 && max < snapped.current - 3) {
+        shrinkTimer.current = setTimeout(() => {
+          const now = el.scrollHeight + chrome + 2;
+          if (now >= snapped.current - 3) return;
+          const was = group.api.height >= snapped.current - 3;
+          group.api.setConstraints({ maximumHeight: now });
+          if (was || group.api.height > now) group.api.setSize({ height: now });
+          snapped.current = now;
+        }, SHRINK_AFTER_MS);
+        return;
+      }
       const wasSnapped = snapped.current > 0 && group.api.height >= snapped.current - 3;
       group.api.setConstraints({ maximumHeight: max });
       if (wasSnapped || group.api.height > max) group.api.setSize({ height: max });
@@ -94,6 +113,7 @@ function PanelBody({ api, params }: IDockviewPanelProps<{ type: string }>) {
     apply();
     return () => {
       ro.disconnect();
+      clearTimeout(shrinkTimer.current);
       subs.forEach((s) => s.dispose());
       api.group?.api.setConstraints({ maximumHeight: Number.MAX_SAFE_INTEGER });
     };

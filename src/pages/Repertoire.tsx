@@ -186,8 +186,10 @@ export function Builder({ repId, initialLine, onDone }: { repId: string; initial
     hereKey !== chapterOpening.key &&
     ((here.length > chapterOpening.moves.length && here.some((m) => m.key === chapterOpening.key)) ||
       (!!hereKey && !!graph?.pathTo(hereKey)?.some((m) => m.toKey === chapterOpening.key)));
-  const within =
-    pastOpening && reach.prob !== undefined && openingReach.prob ? { prob: Math.min(1, reach.prob / openingReach.prob), loading: reach.loading || openingReach.loading } : undefined;
+  // (Its place is kept while it loads — "…" — so the coverage box doesn't change size from move to move.)
+  const within = pastOpening
+    ? { prob: reach.prob !== undefined && openingReach.prob ? Math.min(1, reach.prob / openingReach.prob) : undefined, loading: reach.loading || openingReach.loading }
+    : undefined;
   const [flipped, setFlipped] = useState(false);
   // The move whose annotation menu (symbols and note) is open, from a right-click.
   const [noteTarget, setNoteTarget] = useState<RepAnnotationTarget | null>(null);
@@ -1266,7 +1268,7 @@ function CoverageBox({
 }: {
   reach: LineReach;
   /** If the chapter's opening came up every game (only past the opening's position). */
-  within?: { prob: number; loading: boolean };
+  within?: { prob?: number; loading: boolean };
   openingLabel: string;
   colorLabel: string;
   inRep: boolean;
@@ -1283,16 +1285,18 @@ function CoverageBox({
   const done = inRep && doneFrom(score) && !running;
   return (
     <div className={`panel coverage-box ${done ? 'done' : ''}`}>
+      {/* One row, short labels: the box keeps its height from move to move (the board beside it doesn't jump). */}
+      <div className="cov-stats">
       <div
         className="cov-stat"
         title={`How often this position appears in your games, if you play your moves and opponents answer like ${source}. Every move order in all your ${colorLabel} counts.`}
       >
         <b style={{ opacity: reach.loading ? 0.5 : 1 }}>{reach.error ? '—' : p === undefined ? '…' : p === 0 ? 'never' : oneIn(p)}</b>
-        <span>{p !== undefined && p >= 1 / 1.05 ? 'you reach this position' : `games reach here (all ${colorLabel})`}</span>
+        <span>{p !== undefined && p >= 1 / 1.05 ? 'reaches here' : 'games reach here'}</span>
       </div>
       {within && (
         <div className="cov-stat" title={`How often this position comes up if this chapter's opening (${openingLabel}) came up in every game.`}>
-          <b style={{ opacity: within.loading ? 0.5 : 1 }}>{within.prob === 0 ? 'never' : oneIn(within.prob)}</b>
+          <b style={{ opacity: within.loading ? 0.5 : 1 }}>{within.prob === undefined ? '…' : within.prob === 0 ? 'never' : oneIn(within.prob)}</b>
           <span>within this opening</span>
         </div>
       )}
@@ -1320,6 +1324,7 @@ function CoverageBox({
           <span>{done ? (rare ? 'rarer than your goal' : 'prepared from here') : 'prepared from here'}</span>
         </div>
       )}
+      </div>
       <span className="spacer" />
       {running && <span className="muted small">updating…</span>}
       {err && (
