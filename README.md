@@ -102,7 +102,9 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   from the starting position to the end of the branch (opponent moves are played for you; your other moves you
   play, ungraded) and grades only the due moves. A move on the way you haven't learned yet is taught right
   there — shown with an arrow, then replayed from memory once the line ends, like Learn. A wrong move snaps back and you retry **right there** — the line never restarts. A
-  second miss shows the answer as an arrow. An **answer timer** (⚙ in a session, or Settings → Training; 10 s by
+  second miss shows the answer as an arrow. Another move you have there, or one that transposes into your
+  repertoire (1.d4 g6 2.e4 when you have 1.e4 g6 2.d4), isn't a miss: it says so, and you play the move
+  you've prepared here. An **answer timer** (⚙ in a session, or Settings → Training; 10 s by
   default, 0 turns it off) grades how quickly you find each move in reviews and drills: in time is Good, slower
   Hard — so ones you dig for come back sooner. Easy (which FSRS rewards with a much longer interval) is kept for
   moves you play at once — in the first quarter of the time, 2 s at most — that are already in regular reviews

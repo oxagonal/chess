@@ -523,6 +523,22 @@ function Session({ setup }: { setup: SessionSetup }) {
   const rep = line ? reps.get(line.repId) : undefined;
   const graph = line ? graphsRef.current.get(line.repId) : undefined;
 
+  // Your whole repertoire of a color (all its chapters), to tell a transposition from a mistake.
+  const colorGraphs = useRef(new Map<string, Promise<RepGraph | undefined>>());
+  const transposesInto = async (key: string, color: string | undefined): Promise<string[] | undefined> => {
+    if (!color) return undefined;
+    if (!colorGraphs.current.has(color)) colorGraphs.current.set(color, loadScopeGraph(color).then((l) => l?.graph));
+    const g = (graph?.has(key) ? graph : undefined) ?? (await colorGraphs.current.get(color));
+    return g?.has(key) ? (g.pathTo(key) ?? []).map((m) => m.san) : undefined;
+  };
+
+  // (Loaded ahead, so the first move that isn't your prep doesn't wait for it.)
+  const lineColor = rep?.color ?? graph?.color;
+  useEffect(() => {
+    if (lineColor) void transposesInto('', lineColor);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineColor]);
+
   const onMove = async (uci: string) => {
     if (!line || !step || !waiting) return;
     const r = playUci(pos, uci);
@@ -607,6 +623,21 @@ function Session({ setup }: { setup: SessionSetup }) {
     const alt = graph?.childrenOf(expected.fromKey).find((m) => m.mine && m.san === r.san);
     if (alt) {
       setFeedback({ kind: 'info', text: `${r.san} is also in your repertoire — here we're training your other move.` });
+      return;
+    }
+    // Not your move here, but it gets to a position that is in your repertoire (1.d4 g6 2.e4 = 1.e4 g6
+    // 2.d4): not a mistake, though it's the move you've prepared here that's being trained.
+    const into = await transposesInto(r.key, rep?.color ?? graph?.color);
+    if (into) {
+      setFeedback({
+        kind: 'info',
+        text: (
+          <>
+            {r.san} gets you to a position from your repertoire ({formatLine(into)}), so it's not wrong. Here you've prepared something
+            else, though. Try again.
+          </>
+        ),
+      });
       return;
     }
     flashFor('bad');
