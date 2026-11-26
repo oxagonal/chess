@@ -111,7 +111,7 @@ export async function holdsUp(key: string, uci: string, best: Score | undefined,
 }
 
 /** The engine's line from `key` starting with `first`: Lichess's cloud analysis, else Stockfish after that move. */
-async function engineLine(key: string, first: string): Promise<string[]> {
+export async function engineLine(key: string, first: string): Promise<string[]> {
   const pos = posFromFen(key);
   const r = pos && playUci(pos, first);
   if (!r) return [first];

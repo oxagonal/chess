@@ -56,7 +56,8 @@ A local-first opening trainer in the spirit of Chessbook / Chessable / ChessReps
   Stockfish, the game's moves as a scoresheet (always the game itself, with each move's clock), and a
   computer review (eval graph, your three biggest mistakes and your opponent's, and the missed tactics:
   a winning move that stood out above the second best — it looks at two lines per position — that you
-  didn't play, and your blunders they let you off). Right-click a move — or
+  didn't play, and your blunders they let you off; only real tactics, whose line mates or wins material,
+  not a strong positional move). Right-click a move — or
   long-press it on a phone or iPad — to annotate it like a Lichess study (!!, !, !?, ?!, ?, ??, □, ±, N…, a
   comment) — or, on a line you tried, to delete it and what follows (in the builder, the same menu deletes a
   move from your repertoire). Annotations and the analysis are saved with the game (an interrupted analysis

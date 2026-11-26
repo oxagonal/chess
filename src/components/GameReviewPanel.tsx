@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Chess } from 'chessops/chess';
 import { db } from '../db/db';
-import { fenOf, opposite, playSan, playUci, type Color } from '../lib/chess';
+import { fenOf, keyOf, opposite, playSan, playUci, type Color } from '../lib/chess';
+import { engineLine } from '../services/tactics';
 import { biggestSwingsFor, formatEvalShort, JUDGEMENT_GLYPH, missedTactics, swings, winChanceOf, type GameReview, type MissedTactic, type Score, type Swing } from '../lib/review';
 import type { StoredGame } from '../lib/types';
 import { evaluatePosition } from '../services/engine';
@@ -65,10 +66,13 @@ export function GameReviewPanel({
     // The second-best move's evaluation too: an only move — a tactic to find — stands out from it.
     const second: (Score | null)[] = resume ? (resume.second ?? []).slice(0, total) : [];
     while (second.length < evals.length) second.push(null);
+    // And the best line's first moves: a tactic's wins something, a positional move's doesn't.
+    const lines: (string[] | null)[] = resume ? (resume.lines ?? []).slice(0, total) : [];
+    while (lines.length < evals.length) lines.push(null);
     // A run stopped because another took over doesn't save (the new one owns the result).
     const save = async (complete: boolean) =>
       (run.current === token || !token.cancelled) &&
-      db.games.update(game.id, { review: { depth: d, analyzedAt: Date.now(), evals: [...evals], best: [...best], second: [...second], ...(complete ? {} : { complete: false }) } });
+      db.games.update(game.id, { review: { depth: d, analyzedAt: Date.now(), evals: [...evals], best: [...best], second: [...second], lines: [...lines], ...(complete ? {} : { complete: false }) } });
     setProgress({ done: evals.length, total });
     try {
       for (let i = evals.length; i < total; i++) {
@@ -78,12 +82,14 @@ export function GameReviewPanel({
           evals.push(terminalScore(pos));
           best.push(null);
           second.push(null);
+          lines.push(null);
         } else {
           const r = await evaluatePosition(fenOf(pos), d, 2);
           if (token.cancelled) break;
           evals.push(r ? { cp: r.eval.cp, mate: r.eval.mate } : null);
           best.push(r?.best ?? null);
           second.push(r?.second ? { cp: r.second.cp, mate: r.second.mate } : null);
+          lines.push(r?.line?.length ? r.line : null);
         }
         if (run.current === token) setProgress({ done: i + 1, total });
         if ((i + 1) % SAVE_EVERY === 0 && i + 1 < total) await save(false);
@@ -135,7 +141,38 @@ export function GameReviewPanel({
     );
   // Strong moves that stood out (above the second best) and weren't played.
   const ucis = positions.slice(0, sans.length).map((p, i) => playUciOfSan(p, sans[i]) ?? '');
-  const tactics = shown ? missedTactics(shown, ucis) : [];
+  const candidates = shown ? missedTactics(shown, ucis) : [];
+  // Only real tactics — the line mates or wins material — not a strong positional move (10.h4). A
+  // review from before lines were kept: each candidate's line is looked up once (and kept on the game).
+  const unchecked = candidates.filter((t) => t.tactic === undefined);
+  const uncheckedSig = unchecked.map((t) => `${t.ply}:${t.best}`).join(',');
+  const [checking, setChecking] = useState(false);
+  useEffect(() => {
+    if (!unchecked.length) return;
+    let off = false;
+    setChecking(true);
+    void (async () => {
+      const found: Record<string, string[]> = {};
+      for (const t of unchecked) {
+        if (off) return;
+        const line = await engineLine(keyOf(positions[t.ply]), t.best).catch(() => undefined);
+        if (line && line.length > 1) found[t.ply] = line;
+      }
+      if (off) return;
+      if (Object.keys(found).length) {
+        const g = await db.games.get(game.id);
+        await db.games.update(game.id, { bestLines: { ...(g?.bestLines ?? {}), ...found } });
+      }
+      setChecking(false);
+    })();
+    return () => {
+      off = true;
+      setChecking(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uncheckedSig, game.id]);
+  // (Not known after all — the engine couldn't say: shown, as before.)
+  const tactics = candidates.filter((t) => t.tactic === true || (t.tactic === undefined && !checking));
   const yourTactics = tactics.filter((t) => t.mover === userColor);
   const theirTactics = tactics.filter((t) => t.mover !== userColor);
   const tacticRow = (t: MissedTactic) => <TacticRow key={t.ply} t={t} san={sans[t.ply]} prev={sans[t.ply - 1]} pos={positions[t.ply]} yours={t.mover === userColor} active={cursor === t.ply} onJump={onJump} />;
@@ -146,7 +183,7 @@ export function GameReviewPanel({
       {tactics.length > 0 && (
         <div className="swing-columns">
           <div className="col" style={{ gap: 6 }}>
-            <h3 style={{ margin: 0 }} title="A move that won (or kept a big edge) and stood out above the second best — you played something else">
+            <h3 style={{ margin: 0 }} title="A move that mated or won material (and stood out above the second best) — you played something else">
               Tactics you missed
             </h3>
             {yourTactics.length ? <div className="col" style={{ gap: 6 }}>{yourTactics.map(tacticRow)}</div> : <div className="muted small">None — you found what was there.</div>}

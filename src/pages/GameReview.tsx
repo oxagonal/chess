@@ -14,7 +14,7 @@ import { analyzeGame, PREP_LABEL, type PrepResult } from '../lib/prep';
 import type { RepGraph } from '../lib/graph';
 import { keyOf, opposite, playSan, playUci, startPos } from '../lib/chess';
 import { biggestSwingsFor, formatEvalShort, JUDGEMENT_GLYPH, swings, withLiveEvals, type LiveEval } from '../lib/review';
-import { onEngineLines } from '../services/engine';
+import { LINE_KEPT, onEngineLines } from '../services/engine';
 import {
   canPromote,
   deleteFromMove,
@@ -177,7 +177,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
       const e: LiveEval = {
         depth: top.eval.depth,
         ...(top.eval.mate !== undefined ? { mate: top.eval.mate } : { cp: top.eval.cp ?? 0 }),
-        ...(top.moves[0] ? { best: top.moves[0] } : {}),
+        ...(top.moves[0] ? { best: top.moves[0], line: top.moves.slice(0, LINE_KEPT) } : {}),
         ...(two ? { second: two.mate !== undefined ? { mate: two.mate } : { cp: two.cp ?? 0 } } : {}),
       };
       for (const i of at) if (!pending[i] || pending[i].depth < e.depth) pending[i] = e;
@@ -296,7 +296,7 @@ export function GameReview({ id, initialPly }: { id: string; initialPly?: number
   // Arrows: where you left your prep (your prepared moves vs what was played), and at the computer's
   // swings the move played (red) vs the engine's choice (green).
   // The computer review with what the live engine found deeper (or instead of one).
-  const review = withLiveEvals(game.review, game.liveEvals, replay.positions.length, replay.ucis);
+  const review = withLiveEvals(game.review, game.liveEvals, replay.positions.length, replay.ucis, game.bestLines);
   if (!inLine) visitedRef.current.plies.add(cur);
   const allSwings = review ? swings(review) : [];
   const judged = new Map(allSwings.filter((s) => s.judgement).map((s) => [s.ply, s]));

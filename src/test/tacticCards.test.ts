@@ -168,3 +168,30 @@ describe('a game card asks for the whole line', () => {
     expect(solutionLine(scholars.pos, play([...['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6'], 'Qxf7#']).ucis.slice(6))).toEqual(['h5f7']);
   });
 });
+
+describe('a missed tactic wins something; a strong positional move is not one', () => {
+  it('Légal’s mate is a tactic; a quiet knight move (however good) is not', () => {
+    const sans = ['e4', 'e5', 'Nf3', 'd6', 'Bc4', 'Bg4', 'Nc3', 'g6', 'h3', 'Bxf3'];
+    const ucis: string[] = [];
+    let pos = startPos();
+    for (const san of sans) {
+      const r = playSan(pos, san)!;
+      ucis.push(r.uci);
+      pos = r.pos;
+    }
+    const ev = (cp: number) => ({ cp });
+    const review = {
+      depth: 18, analyzedAt: 1, complete: true,
+      evals: [30, 30, 30, 40, 40, 40, 40, 40, 400, 20, 30].map(ev),
+      best: ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'b1c3', 'g8f6', 'h2h3', 'f8g7', 'f3e5', 'g4d1', null],
+      second: [30, 30, 30, 40, 40, 40, 40, 40, 30, 20, 30].map(ev),
+    };
+    const at8 = (line: string[]) => missedTactics({ ...review, lines: review.evals.map((_, i) => (i === 8 ? line : null)) }, ucis).find((t) => t.ply === 8)!;
+    // 5.Nxe5! Bxd1 6.Bxf7+ Ke7 7.Nd5#
+    expect(at8(['f3e5', 'g4d1', 'c4f7', 'e8e7', 'c3d5']).tactic).toBe(true);
+    // The same move with a quiet follow-up: no mate, no material kept.
+    expect(at8(['f3e5', 'd6e5', 'd1g4', 'g8f6', 'g4e2']).tactic).toBe(false);
+    // Line not known: can't tell yet.
+    expect(missedTactics(review, ucis).find((t) => t.ply === 8)!.tactic).toBeUndefined();
+  });
+});

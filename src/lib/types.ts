@@ -149,6 +149,11 @@ export interface StoredGame {
    * position index — kept where it searched deeper than the computer review, or without one.
    */
   liveEvals?: Record<string, LiveEval>;
+  /**
+   * The engine's best line (first moves, standard UCI) in positions a review from before lines were
+   * kept has a missed tactic in — looked up once, to tell a tactic from a positional move. By index.
+   */
+  bestLines?: Record<string, string[]>;
   /** Tournament / event name (over-the-board games). */
   event?: string;
   /** Your annotations (symbols, comments), by the move's index in `sans` (as a string key). */

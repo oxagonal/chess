@@ -9,9 +9,7 @@ import type { PuzzleAttempt, StoredGame } from './types';
 import type { Color } from './chess';
 import { crucialSwings } from './quickReview';
 import { missedTactics, ONLY_MOVE_GAP, onlyMoveGap, winFor, withLiveEvals, type Score } from './review';
-import { playSan, playUci, startPos } from './chess';
-import { materialBalance } from './material';
-import type { Position } from 'chessops/chess';
+import { playSan, startPos } from './chess';
 
 /** Why a puzzle was missed (the tap after a miss) — the pattern says what to work on. */
 export type MissReason = NonNullable<PuzzleAttempt['reason']>;
@@ -144,7 +142,8 @@ export function gameMistakes(game: StoredGame): GameMistake[] {
   const mine = (ply: number) => ply > 0 && ply < game.sans.length && (ply % 2 === 0 ? 'white' : 'black') === you;
   if (merged) {
     for (const s of crucialSwings(merged, game.timeClass, 8)) if (s.mover === you && mine(s.ply)) out.set(s.ply, at(s.ply));
-    for (const t of missedTactics(merged, ucisOf(game.sans))) {
+    // (A strong positional move isn't a missed tactic — its swing, if big, is a mistake card anyway.)
+    for (const t of missedTactics(merged, ucisOf(game.sans)).filter((x) => x.tactic !== false)) {
       if (t.mover === you && mine(t.ply) && !out.has(t.ply)) out.set(t.ply, at(t.ply, 'best'));
       // Their missed tactic: your move before it was a blunder they let you off — find the punishment.
       else if (t.mover !== you && mine(t.ply - 1) && !out.has(t.ply - 1)) out.set(t.ply - 1, at(t.ply - 1, 'punish'));
@@ -158,7 +157,7 @@ export function gameMistakes(game: StoredGame): GameMistake[] {
   return [...out.values()].sort((x, y) => x.ply - y.ply);
 }
 
-const mergedReview = (game: StoredGame) => withLiveEvals(game.review, game.liveEvals, game.sans.length + 1, ucisOf(game.sans));
+const mergedReview = (game: StoredGame) => withLiveEvals(game.review, game.liveEvals, game.sans.length + 1, ucisOf(game.sans), game.bestLines);
 
 /**
  * Your move at `ply` as a mistake: a missed tactic if one move stood out (above the second best, when
@@ -254,40 +253,7 @@ export function gameCards(game: StoredGame, now: number): TacticCard[] {
 /** A win chance lost (0–100, by the side to move) that still counts as a good move in your game's position. */
 export const GAME_MOVE_OK_LOSS = 10;
 
-/** Points `side` is ahead (behind: negative). */
-function pointsFor(pos: Position, side: Color): number {
-  const m = materialBalance(pos);
-  return side === 'white' ? m.white.plus - m.black.plus : m.black.plus - m.white.plus;
-}
-
-/** What a card's line must win (points), and keep after the reply, before it ends. */
-export const LINE_GAIN = 2;
-/** The longest line a card asks for (plies: 6 of your moves). */
-export const LINE_MAX_PLIES = 11;
-
-/**
- * The moves a card asks for, from the engine's line `pv` (standard UCI, starting with the solver's
- * move): through the solver's move that mates, or after which they're LINE_GAIN points up on the start
- * and still are after the reply. A sacrifice's whole point — 33.Rxg7+ Kxg7 34.Bc3+ Kg6 35.Bxb2 — not
- * just its first move. A line that wins nothing that soon (a quiet best move): only its first move.
- */
-export function solutionLine(start: Position, pv: readonly string[]): string[] {
-  const side = start.turn;
-  const base = pointsFor(start, side);
-  let pos = start;
-  const out: string[] = [];
-  for (let i = 0; i < pv.length && i < LINE_MAX_PLIES; i++) {
-    const r = playUci(pos, pv[i]);
-    if (!r) break;
-    out.push(r.uci);
-    pos = r.pos;
-    if (i % 2) continue;
-    if (pos.isCheckmate()) return out;
-    const reply = pv[i + 1] ? playUci(pos, pv[i + 1]) : undefined;
-    if (pointsFor(reply?.pos ?? pos, side) - base >= LINE_GAIN) return out;
-  }
-  return out.slice(0, 1);
-}
+export { LINE_GAIN, LINE_MAX_PLIES, solutionLine } from './lineGain';
 
 /** A game card whose solution is still only the engine's first move. */
 export const needsLine = (card: TacticCard) => card.source === 'game' && !!card.game && !card.game.lineChecked;

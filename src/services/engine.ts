@@ -333,12 +333,17 @@ export interface PositionEval {
   best?: string;
   /** With two lines: the second-best move's evaluation (an only move stands out from it). */
   second?: MoveEval;
+  /** The best line's first moves (standard UCI). */
+  line?: string[];
 }
 
 /**
  * Evaluate one position. Resolves `undefined` if the position is over (mate/stalemate) or the search
  * was replaced.
  */
+/** How much of the engine's line a review keeps (enough to tell a tactic from a positional move). */
+export const LINE_KEPT = 12;
+
 export function evaluatePosition(fen: string, depth: number, multiPv = 1): Promise<PositionEval | undefined> {
   if (!(depth > 0)) depth = 18; // a review needs a finite search
   return new Promise((resolve) => {
@@ -353,7 +358,7 @@ export function evaluatePosition(fen: string, depth: number, multiPv = 1): Promi
         },
         resolve: (lines) => {
           const top = lines[0] ?? best;
-          resolve(top ? { eval: top.eval, best: top.moves[0], ...(lines[1] ? { second: lines[1].eval } : {}) } : undefined);
+          resolve(top ? { eval: top.eval, best: top.moves[0], line: top.moves.slice(0, LINE_KEPT), ...(lines[1] ? { second: lines[1].eval } : {}) } : undefined);
         },
       })
       .catch(() => resolve(undefined));

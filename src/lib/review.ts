@@ -2,7 +2,9 @@
  * Game review: given an engine evaluation for every position of a game, find the moves that lost
  * the most winning chances — the "computer swings" — classed like Lichess does.
  */
-import type { Color } from './chess';
+import { playUci, startPos, type Color } from './chess';
+import { lineWins } from './lineGain';
+import type { Position } from 'chessops/chess';
 
 /** Engine score, White's point of view. */
 export interface Score {
@@ -22,6 +24,11 @@ export interface GameReview {
    * looked at two (reviews since missed tactics): an only move stands out from it.
    */
   second?: (Score | null)[];
+  /**
+   * lines[i] = the engine's best line in position i (its first moves, standard UCI), when kept
+   * (reviews since tactics are told from positional moves): does it win something?
+   */
+  lines?: (string[] | null)[];
   /** false while the analysis is still running (or was interrupted): evals cover only the start. */
   complete?: boolean;
   /**
@@ -117,6 +124,8 @@ export interface LiveEval extends Score {
   best?: string;
   /** Its second-best move's evaluation (the Stockfish box shows several lines). */
   second?: Score;
+  /** Its best line's first moves. */
+  line?: string[];
 }
 
 /**
@@ -131,12 +140,16 @@ export function withLiveEvals(
   positions: number,
   /** The game's moves (standard UCI): judged knowing which were the engine's own. */
   played?: readonly string[],
+  /** Best lines worked out on their own (a review from before lines were kept), by position. */
+  extraLines?: Record<string, string[]>,
 ): GameReview | undefined {
   const keys = live ? Object.keys(live) : [];
-  if (!keys.length) return review && played ? { ...review, played: [...played] } : review;
+  const extra = extraLines && Object.keys(extraLines).length ? extraLines : undefined;
+  if (!keys.length && !extra) return review && played ? { ...review, played: [...played] } : review;
   const evals: (Score | null)[] = Array.from({ length: Math.max(positions, review?.evals.length ?? 0) }, (_, i) => review?.evals[i] ?? null);
   const best: (string | null)[] = evals.map((_, i) => review?.best[i] ?? null);
   const second: (Score | null)[] = evals.map((_, i) => review?.second?.[i] ?? null);
+  const lines: (string[] | null)[] = evals.map((_, i) => review?.lines?.[i] ?? null);
   for (const k of keys) {
     const i = Number(k);
     const l = live![k];
@@ -145,6 +158,12 @@ export function withLiveEvals(
     evals[i] = { cp: l.cp, mate: l.mate };
     if (l.best) best[i] = l.best;
     second[i] = l.second ?? null;
+    lines[i] = l.line ?? (l.best && l.best === review?.best[i] ? lines[i] : null);
+  }
+  // A line worked out on its own is for the best move it starts with.
+  for (const [k, line] of Object.entries(extra ?? {})) {
+    const i = Number(k);
+    if (i >= 0 && i < lines.length && !lines[i] && line[0] && line[0] === best[i]) lines[i] = line;
   }
   // Trailing positions nobody has looked at aren't part of an interrupted review.
   let n = evals.length;
@@ -155,6 +174,7 @@ export function withLiveEvals(
     evals: evals.slice(0, Math.max(n, review?.evals.length ?? 0)),
     best: best.slice(0, Math.max(n, review?.evals.length ?? 0)),
     ...(second.some(Boolean) ? { second: second.slice(0, Math.max(n, review?.evals.length ?? 0)) } : {}),
+    ...(lines.some(Boolean) ? { lines: lines.slice(0, Math.max(n, review?.evals.length ?? 0)) } : {}),
     ...(review?.complete === false ? { complete: false } : {}),
     ...(played ? { played: [...played] } : {}),
   };
@@ -192,6 +212,11 @@ export interface MissedTactic {
   played: number;
   /** How far it stood out from the second-best move, when known. */
   gap?: number;
+  /**
+   * A tactic: the engine's line mates or wins material it keeps (lineWins). false: a strong move
+   * all the same, but positional (10.h4 wrecking the pawns); undefined: its line isn't known yet.
+   */
+  tactic?: boolean;
 }
 
 /**
@@ -211,7 +236,21 @@ export function missedTactics(review: GameReview, ucis: readonly string[]): Miss
     const played = winFor(after, mover);
     const gap = onlyMoveGap(review, ply);
     if (withBest < TACTIC_WIN || withBest - played < TACTIC_LOSS || (gap !== undefined && gap < ONLY_MOVE_GAP)) continue;
-    out.push({ ply, mover, best, withBest, played, ...(gap !== undefined ? { gap } : {}) });
+    const line = review.lines?.[ply];
+    const at = line ? positionAt(ucis, ply) : undefined;
+    const tactic = line && at ? lineWins(at, line) : undefined;
+    out.push({ ply, mover, best, withBest, played, ...(gap !== undefined ? { gap } : {}), ...(tactic !== undefined ? { tactic } : {}) });
   }
   return out;
+}
+
+/** The position before move `ply` of a game given as standard UCI moves. */
+function positionAt(ucis: readonly string[], ply: number): Position | undefined {
+  let pos: Position = startPos();
+  for (let i = 0; i < ply; i++) {
+    const r = playUci(pos, ucis[i]);
+    if (!r) return undefined;
+    pos = r.pos;
+  }
+  return pos;
 }
