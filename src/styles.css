@@ -1411,3 +1411,11 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
 .ruler-line span.mid { color: #000; position: relative; z-index: 1; }
 .ruler-info { position: absolute; top: 230px; left: 16px; right: 16px; font-size: 15px; }
 .ruler-info .btn { color: #fff; }
+/* Ruler "in the page": ordinary page content at the very top (no Tabiya bar, no fixed strip — or,
+   "+ top strip", a 2px fixed one), and a page tall enough to scroll. */
+.ruler.ruler-inflow { position: relative; inset: auto; z-index: auto; height: 1400px; margin: 0 -12px; }
+.ruler-flow .topbar { height: 0 !important; min-height: 0; padding: 0 !important; border: 0; }
+.ruler-flow .topbar > :not(.nav) { display: none; }
+.ruler-flow .app::before { display: none; }
+.ruler-flow.ruler-edge .app::before { content: ''; display: block; position: fixed; top: 0; left: 0; right: 0; height: 2px; background: var(--bg2); z-index: 40; }
+.ruler-flow .main { padding-top: 0 !important; }
