@@ -1115,9 +1115,9 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 @media (max-width: 700px) {
   .app:has(.phone-studio) .topbar { height: var(--safe-top); border-bottom: none; }
   .app:has(.phone-studio) .topbar > :not(.nav) { display: none; }
-  .main:has(> .phone-studio) { padding: 6px 0 calc(62px + env(safe-area-inset-bottom)); }
+  .main:has(> .phone-studio) { padding: calc(6px + var(--studio-top, 0px)) 0 calc(62px + env(safe-area-inset-bottom)); }
   .phone-studio {
-    height: calc(100dvh - var(--safe-top) - 6px - 62px - env(safe-area-inset-bottom));
+    height: calc(100dvh - var(--safe-top) - 6px - var(--studio-top, 0px) - 62px - env(safe-area-inset-bottom));
     display: flex; flex-direction: column; gap: 6px; container-type: size; font-size: 13px;
   }
   .phone-studio > * { flex: none; margin-inline: 8px; }
@@ -1396,5 +1396,6 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
 .stop-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
 
 @media (display-mode: standalone) and (max-width: 700px) {
-  :root { --safe-top: calc(env(safe-area-inset-top) + 32px); }
+  /* The tab bar's own padding covers part of the band; the phone studio's header sits right under it. */
+  :root { --safe-top: calc(env(safe-area-inset-top) + 20px); --studio-top: 12px; }
 }
