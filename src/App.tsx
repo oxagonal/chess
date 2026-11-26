@@ -12,6 +12,7 @@ import { PuzzlesPage } from './pages/Puzzles';
 import { GamesPage } from './pages/Games';
 import { PlanPage } from './pages/Plan';
 import { SettingsPage } from './pages/Settings';
+import { RulerPage } from './pages/Ruler';
 import { SyncIndicator } from './components/SyncPanel';
 import { NAV_ICONS } from './components/icons';
 
@@ -42,6 +43,8 @@ const TABS: Tab[] = [
   // Your training time against the 1/3 rule, and your week's plan.
   { path: 'plan', label: 'Plan', page: PlanPage },
   { path: 'settings', label: 'Settings', page: SettingsPage },
+  // A ruler for the top of the screen (temporary; Settings → About).
+  { path: 'ruler', label: 'Ruler', page: RulerPage, under: 'settings' },
 ];
 
 /**
