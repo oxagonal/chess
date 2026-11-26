@@ -1,4 +1,7 @@
 :root {
+  /* Room under the status bar for the app's top edge. On a phone, iOS 26 dims a band below the clock
+     in a home-screen web app (not in Safari), so the app's content starts below that band too. */
+  --safe-top: env(safe-area-inset-top);
   --bg: #121110;
   --bg2: #1a1917;
   --panel: #211f1d;
@@ -49,8 +52,8 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
   display: flex; align-items: center; gap: 4px;
   /* Installed on an iPad (or a phone sideways) the app runs under the status bar: the clock, the
      battery and a sideways notch get room of their own. */
-  padding: env(safe-area-inset-top) max(20px, env(safe-area-inset-right)) 0 max(20px, env(safe-area-inset-left));
-  height: calc(56px + env(safe-area-inset-top));
+  padding: var(--safe-top) max(20px, env(safe-area-inset-right)) 0 max(20px, env(safe-area-inset-left));
+  height: calc(56px + var(--safe-top));
   background: rgba(18, 17, 16, 0.82);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border-soft);
@@ -82,11 +85,11 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 @media (max-width: 700px) {
   /* No blur/overflow here: either would trap the fixed tab bar inside the header. */
   .topbar {
-    height: calc(48px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left));
+    height: calc(48px + var(--safe-top)); padding: var(--safe-top) max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left));
     backdrop-filter: none; background: var(--bg2); overflow: visible; position: static;
   }
   /* Keeps the clock and battery readable while the page scrolls underneath them. */
-  .app::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: var(--bg2); z-index: 40; }
+  .app::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-top); background: var(--bg2); z-index: 40; }
   .topbar .nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
     display: grid !important; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0; /* as many equal columns as there are tabs */
     background: rgba(26, 25, 23, 0.96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
@@ -263,7 +266,7 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .board-layout { display: grid; grid-template-columns: minmax(280px, 640px) minmax(340px, 1fr); gap: 24px; align-items: start; }
 .board-layout > * { min-width: 0; }
 @media (max-width: 900px) { .board-layout { grid-template-columns: 1fr; gap: 14px; } }
-.board-col { position: sticky; top: calc(76px + env(safe-area-inset-top)); }
+.board-col { position: sticky; top: calc(76px + var(--safe-top)); }
 @media (max-width: 900px) { .board-col { position: static; } }
 .board-wrap { position: relative; width: 100%; border-radius: 6px; transition: box-shadow .15s; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.5); }
 .board-wrap .cg-wrap-host { width: 100%; aspect-ratio: 1 / 1; border-radius: 6px; overflow: hidden; }
@@ -356,7 +359,7 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 .coverage-box.done { border-color: color-mix(in srgb, var(--good) 55%, transparent); background: color-mix(in srgb, var(--good) 8%, var(--panel)); }
 /* Finished a chapter: a message over the page for a few seconds (tap to close). */
 .cheer-toast {
-  position: fixed; z-index: 1001; left: 50%; top: calc(70px + env(safe-area-inset-top)); transform: translateX(-50%);
+  position: fixed; z-index: 1001; left: 50%; top: calc(70px + var(--safe-top)); transform: translateX(-50%);
   width: max-content; max-width: min(560px, calc(100vw - 24px)); padding: 12px 16px; border-radius: var(--radius);
   background: color-mix(in srgb, var(--good) 22%, var(--panel)); border: 1px solid var(--good); color: var(--text);
   font-weight: 600; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); cursor: pointer; animation: cheer-in .35s ease-out;
@@ -527,7 +530,7 @@ button.chip:hover:not(:disabled) { background: var(--border); }
 @media (max-width: 700px) {
   .main:has(> .puzzles.phone) { padding-top: 8px; padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
 }
-.puzzles.phone { height: calc(100dvh - 48px - env(safe-area-inset-top) - 8px - 62px - env(safe-area-inset-bottom)); gap: 0 !important; }
+.puzzles.phone { height: calc(100dvh - 48px - var(--safe-top) - 8px - 62px - env(safe-area-inset-bottom)); gap: 0 !important; }
 .puzzles.phone > .pz-settings { flex: 1; min-height: 0; overflow-y: auto; gap: 12px; }
 .puzzles.phone > .pz-live { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
 .pz-live > .pz-session { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px !important; }
@@ -835,7 +838,7 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .train-phone {
   --tp-reserve: 250px;
   display: flex; flex-direction: column; gap: 8px; container-type: size;
-  height: calc(100dvh - 48px - env(safe-area-inset-top) - 8px - 62px - env(safe-area-inset-bottom));
+  height: calc(100dvh - 48px - var(--safe-top) - 8px - 62px - env(safe-area-inset-bottom));
 }
 @media (max-width: 700px) {
   .main:has(> .train-phone) { padding-top: 8px; padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
@@ -909,7 +912,7 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .inline-field select { padding: 3px 6px; }
 /* Desktop builder "studio": edge to edge, a dockview workspace (tabs, rows, columns, floating). */
 .main:has(.studio) { max-width: none; padding: 8px max(10px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
-.studio { height: calc(100dvh - 56px - env(safe-area-inset-top) - 18px - env(safe-area-inset-bottom)); gap: 8px; }
+.studio { height: calc(100dvh - 56px - var(--safe-top) - 18px - env(safe-area-inset-bottom)); gap: 8px; }
 .studio .builder-head h1 { font-size: 19px; }
 .studio-wrap { flex: 1; min-height: 0; }
 .studio-dock {
@@ -1108,11 +1111,11 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 /* The current move stays readable when it isn't saved yet (grey italic elsewhere). */
 .line .mv.current.out, .ml-move.current.out, .iv-move.current.out { color: #fff; }
 @media (max-width: 700px) {
-  .app:has(.phone-studio) .topbar { height: env(safe-area-inset-top); border-bottom: none; }
+  .app:has(.phone-studio) .topbar { height: var(--safe-top); border-bottom: none; }
   .app:has(.phone-studio) .topbar > :not(.nav) { display: none; }
   .main:has(> .phone-studio) { padding: 6px 0 calc(62px + env(safe-area-inset-bottom)); }
   .phone-studio {
-    height: calc(100dvh - env(safe-area-inset-top) - 6px - 62px - env(safe-area-inset-bottom));
+    height: calc(100dvh - var(--safe-top) - 6px - 62px - env(safe-area-inset-bottom));
     display: flex; flex-direction: column; gap: 6px; container-type: size; font-size: 13px;
   }
   .phone-studio > * { flex: none; margin-inline: 8px; }
@@ -1388,3 +1391,7 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
 /* Plan → Stop rule: the phone check's link and steps. */
 .stop-link { padding: 4px 8px; border-radius: var(--radius-sm); background: var(--panel2); overflow-wrap: anywhere; user-select: all; }
 .stop-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+
+@media (display-mode: standalone) and (max-width: 700px) {
+  :root { --safe-top: calc(env(safe-area-inset-top) + 32px); }
+}
