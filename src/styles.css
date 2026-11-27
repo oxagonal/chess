@@ -29,7 +29,9 @@
 html, body, #root { height: 100%; }
 body {
   margin: 0;
-  background: radial-gradient(1200px 600px at 10% -10%, #1d2419 0%, transparent 60%), var(--bg);
+  /* A faint green glow at the top left — below the top bar, so the very top is the app's one colour
+     (the theme colour iOS paints its status bar with). */
+  background: radial-gradient(1200px 600px at 10% -10%, #1d2419 0%, transparent 60%) 0 56px / 100% 100% no-repeat, var(--bg);
   background-attachment: fixed;
   color: var(--text);
   font: 14px/1.5 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
@@ -82,13 +84,17 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 /* Phones: navigation moves to a bottom tab bar so every tab is reachable with a thumb. The app runs
    edge to edge (viewport-fit=cover, translucent status bar), so the safe areas are padded here. */
 @media (max-width: 700px) {
-  /* No blur/overflow here: either would trap the fixed tab bar inside the header. */
+  /* No brand bar on a phone (the tabs are at the bottom, the home-screen icon says what app this is):
+     the header keeps only the tab bar, and its room goes to the page. No blur/overflow here: either
+     would trap the fixed tab bar inside the header. */
+  body { background: var(--bg); }
   .topbar {
-    height: calc(48px + var(--safe-top)); padding: var(--safe-top) max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left));
-    backdrop-filter: none; background: var(--bg2); overflow: visible; position: static;
+    height: var(--safe-top); padding: var(--safe-top) 0 0; border-bottom: none;
+    backdrop-filter: none; background: var(--bg); overflow: visible; position: static;
   }
+  .topbar > :not(.nav) { display: none; }
   /* Keeps the clock and battery readable while the page scrolls underneath them. */
-  .app::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-top); background: var(--bg2); z-index: 40; }
+  .app::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-top); background: var(--bg); z-index: 40; }
   .topbar .nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
     display: grid !important; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0; /* as many equal columns as there are tabs */
     background: rgba(26, 25, 23, 0.96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
@@ -99,6 +105,7 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
   .topbar .nav .nav-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: -0.01em; }
   .topbar .nav a.active { background: transparent; color: var(--accent); }
   .topbar .nav a.active::after { display: none; }
+  .topbar .nav .sync-dot { display: block; position: absolute; top: 4px; left: calc(50% + 9px); margin: 0; width: 8px; height: 8px; }
   .topbar .nav .badge { position: absolute; top: 0; left: calc(50% + 6px); font-size: 9.5px; padding: 0 5px; min-width: 16px; line-height: 15px; }
   .main { padding: 14px max(12px, env(safe-area-inset-right)) calc(84px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
 }
@@ -253,6 +260,8 @@ button.linklike:hover:not(:disabled) { background: none; text-decoration: underl
 /* ---------- sync ---------- */
 .sync-dot { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--good); opacity: .75; }
 .topbar .sync-dot { margin: 0 4px 0 12px; }
+/* On the Settings tab (phones only, where there's no top bar for it). */
+.nav .sync-dot { display: none; }
 .sync-dot.syncing { background: var(--accent2); opacity: 1; animation: sync-pulse 1s ease-in-out infinite alternate; }
 .sync-dot.error { background: var(--bad); opacity: 1; }
 .sync-dot.offline { background: var(--faint); }
@@ -531,7 +540,7 @@ button.chip:hover:not(:disabled) { background: var(--border); }
 @media (max-width: 700px) {
   .main:has(> .puzzles.phone) { padding-top: 8px; padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
 }
-.puzzles.phone { height: calc(100dvh - 48px - var(--safe-top) - 8px - 62px - env(safe-area-inset-bottom)); gap: 0 !important; }
+.puzzles.phone { height: calc(100dvh - var(--safe-top) - 8px - 62px - env(safe-area-inset-bottom)); gap: 0 !important; }
 .puzzles.phone > .pz-settings { flex: 1; min-height: 0; overflow-y: auto; gap: 12px; }
 .puzzles.phone > .pz-live { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
 .pz-live > .pz-session { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px !important; }
@@ -829,6 +838,11 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
   .hero h1 { font-size: 24px; }
   .stat { padding: 12px 14px; }
   .stat .v { font-size: 22px; }
+  /* Home's counts: one slim row of four, not four big tiles. */
+  .home-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .home-stats .stat { padding: 8px 8px 9px; text-align: center; box-shadow: none; }
+  .home-stats .stat .v { font-size: 18px; }
+  .home-stats .stat .l { font-size: 9px; letter-spacing: .03em; line-height: 1.25; }
 }
 
 /* ---------- training session on a phone ---------- */
@@ -839,7 +853,7 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 .train-phone {
   --tp-reserve: 250px;
   display: flex; flex-direction: column; gap: 8px; container-type: size;
-  height: calc(100dvh - 48px - var(--safe-top) - 8px - 62px - env(safe-area-inset-bottom));
+  height: calc(100dvh - var(--safe-top) - 8px - 62px - env(safe-area-inset-bottom));
 }
 @media (max-width: 700px) {
   .main:has(> .train-phone) { padding-top: 8px; padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
@@ -1112,8 +1126,6 @@ details[open] > .ctree-summary::before { transform: rotate(90deg); }
 /* The current move stays readable when it isn't saved yet (grey italic elsewhere). */
 .line .mv.current.out, .ml-move.current.out, .iv-move.current.out { color: #fff; }
 @media (max-width: 700px) {
-  .app:has(.phone-studio) .topbar { height: var(--safe-top); border-bottom: none; }
-  .app:has(.phone-studio) .topbar > :not(.nav) { display: none; }
   .main:has(> .phone-studio) { padding: calc(6px + var(--studio-top, 0px)) 0 calc(62px + env(safe-area-inset-bottom)); }
   .phone-studio {
     height: calc(100dvh - var(--safe-top) - 6px - var(--studio-top, 0px) - 62px - env(safe-area-inset-bottom));
@@ -1396,28 +1408,8 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
 
 @media (display-mode: standalone) and (max-width: 700px) {
   /* iOS 26 shades the top ~35pt of a home-screen web app's page under the status bar — but not a fixed
-     layer over the page (tried with a ruler: Settings → About). So on a phone the app runs in one, and
+     layer over the page (measured with a ruler page). So on a phone the app runs in one, and
      scrolls inside it: nothing is shaded, and no room has to be left for the shading. */
   html, body { height: 100%; overflow: hidden; }
   .app { position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; }
 }
-
-/* The top-of-screen ruler (Settings → About): lines every 5pt from the very top, on the app's dark
-   background (iOS shades the top in the page's own colour: white on white would hide it), with a white
-   bar down the middle that shows the shading plainly. */
-.ruler { position: fixed; inset: 0; z-index: 5000; background: var(--bg2); color: #ece9e3; overflow: hidden; }
-.ruler-bar { position: absolute; top: 0; left: calc(50% - 22px); width: 44px; height: 205px; background: #fff; }
-.ruler-line { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid rgba(236, 233, 227, 0.7); display: flex; justify-content: space-between; padding: 0 6px; }
-.ruler-line.minor { border-top: 1px dashed rgba(236, 233, 227, 0.45); left: 12%; right: 62%; }
-.ruler-line span { font: 600 10px/1 ui-monospace, Menlo, monospace; transform: translateY(1px); padding: 0 2px; color: #fff; }
-.ruler-line span.mid { color: #000; position: relative; z-index: 1; }
-.ruler-info { position: absolute; top: 230px; left: 16px; right: 16px; font-size: 15px; }
-.ruler-info .btn { color: #fff; }
-/* Ruler "in the page": ordinary page content at the very top (no Tabiya bar, no fixed strip — or,
-   "+ top strip", a 2px fixed one), and a page tall enough to scroll. */
-.ruler.ruler-inflow { position: relative; inset: auto; z-index: auto; height: 1400px; margin: 0 -12px; }
-.ruler-flow .topbar { height: 0 !important; min-height: 0; padding: 0 !important; border: 0; }
-.ruler-flow .topbar > :not(.nav) { display: none; }
-.ruler-flow .app::before { display: none; }
-.ruler-flow.ruler-edge .app::before { content: ''; display: block; position: fixed; top: 0; left: 0; right: 0; height: 2px; background: var(--bg2); z-index: 40; }
-.ruler-flow .main { padding-top: 0 !important; }

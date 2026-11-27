@@ -12,10 +12,14 @@ function statusText(st: SyncStatus): string {
   return st.lastSyncAt ? `Synced ${timeAgo(st.lastSyncAt)}` : 'Connected';
 }
 
-/** Small dot in the top bar: syncing, failed, offline (hidden when sync is off). */
-export function SyncIndicator() {
+/**
+ * Small dot in the top bar: syncing, failed, offline (hidden when sync is off). `inNav`: on the
+ * Settings tab of a phone's tab bar instead (no top bar there) — only when something's happening.
+ */
+export function SyncIndicator({ inNav = false }: { inNav?: boolean }) {
   const st = useSyncStatus();
   if (!st.connected) return null;
+  if (inNav) return st.state === 'idle' ? null : <span className={`sync-dot ${st.state}`} aria-label={statusText(st)} />;
   return (
     <a className={`sync-dot ${st.state}`} href={href('settings')} title={st.message ? `${statusText(st)}: ${st.message}` : statusText(st)} aria-label={statusText(st)} />
   );

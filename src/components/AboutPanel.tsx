@@ -2,8 +2,6 @@
  * About & credits (Settings). Tabiya uses GPL-3.0 libraries, so the app is GPL-3.0-or-later too:
  * this panel is its "Appropriate Legal Notices" — copyright, no warranty, the license and the source.
  */
-import { href } from '../router';
-
 const REPO = 'https://github.com/oxagonal/chess';
 const LICENSE_URL = `${REPO}/blob/main/LICENSE`;
 
@@ -70,7 +68,7 @@ export function AboutPanel() {
         </p>
       </div>
       <p className="muted small" style={{ margin: 0 }}>
-        Version {__BUILD_COMMIT__} · built {built} · <a href={href('ruler')}>top-of-screen ruler</a>
+        Version {__BUILD_COMMIT__} · built {built}
       </p>
     </div>
   );

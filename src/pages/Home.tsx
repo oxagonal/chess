@@ -89,7 +89,7 @@ export function HomePage() {
         </div>
       </div>
 
-      <div className="grid3">
+      <div className="grid3 home-stats">
         <Stat value={learned} label="Moves learned" />
         <Stat value={mature} label="Mature (21d+)" hint="Moves whose review interval is three weeks or more" />
         <Stat value={reviewsToday ?? 0} label="Reviews today" />
