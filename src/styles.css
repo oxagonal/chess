@@ -1,6 +1,5 @@
 :root {
-  /* Room under the status bar for the app's top edge. On a phone, iOS 26 dims a band below the clock
-     in a home-screen web app (not in Safari), so the app's content starts below that band too. */
+  /* Room under the status bar for the app's top edge (where the page runs under a translucent one). */
   --safe-top: env(safe-area-inset-top);
   --bg: #121110;
   --bg2: #1a1917;
@@ -1396,8 +1395,11 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
 .stop-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
 
 @media (display-mode: standalone) and (max-width: 700px) {
-  /* The tab bar's own padding covers part of the band; the phone studio's header sits right under it. */
-  :root { --safe-top: calc(env(safe-area-inset-top) + 20px); --studio-top: 12px; }
+  /* iOS 26 shades the top ~35pt of a home-screen web app's page under the status bar — but not a fixed
+     layer over the page (tried with a ruler: Settings → About). So on a phone the app runs in one, and
+     scrolls inside it: nothing is shaded, and no room has to be left for the shading. */
+  html, body { height: 100%; overflow: hidden; }
+  .app { position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; }
 }
 
 /* The top-of-screen ruler (Settings → About): lines every 5pt from the very top, on the app's dark
