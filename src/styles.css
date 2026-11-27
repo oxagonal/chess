@@ -1411,5 +1411,6 @@ button.engine-switch.on > span { left: 17px; background: #fff; }
      layer over the page (measured with a ruler page). So on a phone the app runs in one, and
      scrolls inside it: nothing is shaded, and no room has to be left for the shading. */
   html, body { height: 100%; overflow: hidden; }
-  .app { position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; }
+  /* Opaque, like the ruler's layer: a see-through one let the shading come back. */
+  .app { position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--bg); }
 }
